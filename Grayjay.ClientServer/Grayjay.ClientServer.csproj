@@ -11,10 +11,6 @@
     <AssemblyVersion>1.10.0.0</AssemblyVersion>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
-  </PropertyGroup>
-
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <DebugSymbols>False</DebugSymbols>
     <DebugType>None</DebugType>
