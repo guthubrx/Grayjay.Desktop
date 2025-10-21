@@ -371,7 +371,7 @@ namespace Grayjay.Desktop
                 else
                 {
                     if (Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") != null)
-                        cef.Start("--disable-web-security --use-alloy-style --no-sandbox " + userDataDirCmd + extraArgs);
+                        cef.Start("--disable-web-security --no-sandbox " + userDataDirCmd + extraArgs);
                     else
                         cef.Start("--disable-web-security --use-alloy-style --use-native --no-sandbox " + userDataDirCmd + extraArgs);
                 }
