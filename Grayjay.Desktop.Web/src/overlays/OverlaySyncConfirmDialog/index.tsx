@@ -20,7 +20,7 @@ const OverlaySyncConfirmDialog: Component<OverlaySyncConfirmDialogProps> = (prop
   }
 
   return (
-    <OverlayCustomDialog hideHeader={true} onRootClick={() => cancel()}>
+    <OverlayCustomDialog hideHeader={true} onRootClick={() => cancel()} focusScope={true}>
       <div style="text-align: center;">
         <div>
           <img src={iconDeviceUnknown} style="width: 100px" />
@@ -35,6 +35,12 @@ const OverlaySyncConfirmDialog: Component<OverlaySyncConfirmDialogProps> = (prop
           <Button text='Confirm' onClick={(ev) => {
             confirm();
             ev.stopPropagation();
+          }} focusableOpts={{
+            onPress: confirm,
+            onBack: () => {
+              cancel();
+              return true;
+            }
           }}></Button>
         </div>
       </div>

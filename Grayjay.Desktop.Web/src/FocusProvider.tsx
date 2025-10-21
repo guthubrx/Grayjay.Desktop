@@ -938,9 +938,10 @@ export function FocusProvider(props: { children: JSX.Element }) {
     function resetPadState() {
         padState.dirHeld = undefined;
         padState.lastFire = undefined;
+        padState.firstRepeatDone = undefined;
         padState.pressed.clear();
     }
-    const initialDelay = 220; // ms before repeat
+    const initialDelay = 350;
     const repeatDelay = 90;
     const axisThreshold = 0.45;
     const btn = {
@@ -954,7 +955,9 @@ export function FocusProvider(props: { children: JSX.Element }) {
         dirHeld?: Direction;
         lastFire?: number;
         pressed: Set<number>;
+        firstRepeatDone?: boolean;
     };
+
     const padState: PadState = { pressed: new Set() };
 
     function pollGamepads(ts: number) {
@@ -968,13 +971,15 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
         const pads = navigator.getGamepads?.() ?? [];
         const gp = pads.find(Boolean);
+
         if (gp) {
             const lx = gp.axes[0] ?? 0;
             const ly = gp.axes[1] ?? 0;
             const now = ts;
 
+            const axisThreshold = 0.45;
             const horiz = Math.abs(lx) > axisThreshold ? (lx > 0 ? "right" : "left") as Direction : undefined;
-            const vert = Math.abs(ly) > axisThreshold ? (ly > 0 ? "down" : "up") as Direction : undefined;
+            const vert = Math.abs(ly) > axisThreshold ? (ly > 0 ? "down"  : "up") as Direction : undefined;
             const stickDir = vert ?? horiz;
 
             const dpadDir =
@@ -989,19 +994,24 @@ export function FocusProvider(props: { children: JSX.Element }) {
                 if (padState.dirHeld !== dir) {
                     padState.dirHeld = dir;
                     padState.lastFire = now;
+                    padState.firstRepeatDone = false;
                     navigateDirection(dir, "gamepad");
+                    setLastInputSource("gamepad");
                 } else {
-                    const delay = padState.lastFire ? (now - padState.lastFire) : Infinity;
-                    if (delay >= repeatDelay) {
+                    const elapsed = (padState.lastFire ?? 0) ? (now - (padState.lastFire as number)) : Infinity;
+                    const threshold = padState.firstRepeatDone ? repeatDelay : initialDelay;
+
+                    if (elapsed >= threshold) {
                         navigateDirection(dir, "gamepad");
                         padState.lastFire = now;
+                        padState.firstRepeatDone = true;
+                        setLastInputSource("gamepad");
                     }
                 }
-
-                setLastInputSource("gamepad");
             } else {
                 padState.dirHeld = undefined;
                 padState.lastFire = undefined;
+                padState.firstRepeatDone = undefined;
             }
 
             const pressBtn = gp.buttons[btn.A]?.pressed;
@@ -1025,6 +1035,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
             if (startBtn && !padState.pressed.has(btn.START)) { padState.pressed.add(btn.START); }
             if (!startBtn) padState.pressed.delete(btn.START);
         }
+
         if (running) raf = requestAnimationFrame(pollGamepads);
     }
 
