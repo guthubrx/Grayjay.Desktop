@@ -26,7 +26,7 @@ build_sign_notarize() {
     # Build backend
     rm -rf bin/ obj/
     dotnet publish -r $ARCH -c Release -p:AssemblyVersion=1.$VERSION.0.0
-    PUBLISH_PATH="bin/Release/net9.0/$ARCH/publish"
+    PUBLISH_PATH="bin/Release/net8.0/$ARCH/publish"
     mkdir -p "$PUBLISH_PATH/wwwroot"
     cp -r ../Grayjay.Desktop.Web/dist "$PUBLISH_PATH/wwwroot/web"
 
@@ -45,6 +45,7 @@ build_sign_notarize() {
     cp -a "$PUBLISH_PATH/dotcefnative.app/Contents/MacOS/dotcefnative" "$APP_NAME/Contents/MacOS"
     cp -a "$PUBLISH_PATH/cef/steam_appid.txt" "$APP_NAME/Contents/MacOS"
     cp -a "../Grayjay.ClientServer/deps/${ARCH}/ffmpeg" "$APP_NAME/Contents/MacOS"
+    chmod +x "$APP_NAME/Contents/MacOS/ffmpeg"
     cp -a "../Grayjay.ClientServer/deps/${ARCH}/libsteam_api.dylib" "$APP_NAME/Contents/MacOS"
     cp -a "$PUBLISH_PATH/wwwroot" "$APP_NAME/Contents/Resources/wwwroot"
 
