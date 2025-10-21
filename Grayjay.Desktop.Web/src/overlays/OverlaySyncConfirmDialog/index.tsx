@@ -31,7 +31,13 @@ const OverlaySyncConfirmDialog: Component<OverlaySyncConfirmDialogProps> = (prop
           <Button text='Cancel' onClick={(ev) => {
             cancel();
             ev.stopPropagation();
-          }} style={{"margin-right": "8px"}}></Button>
+          }} style={{"margin-right": "8px"}} focusableOpts={{
+            onPress: cancel,
+            onBack: () => {
+              cancel();
+              return true;
+            }
+          }}></Button>
           <Button text='Confirm' onClick={(ev) => {
             confirm();
             ev.stopPropagation();
