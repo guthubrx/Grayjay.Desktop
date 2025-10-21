@@ -43,7 +43,9 @@ build_sign_notarize() {
     cp -a "$PUBLISH_PATH/libsodium.dylib" "$APP_NAME/Contents/MacOS"
     cp -a "$PUBLISH_PATH/ClearScriptV8.$ARCH.dylib" "$APP_NAME/Contents/MacOS"
     cp -a "$PUBLISH_PATH/dotcefnative.app/Contents/MacOS/dotcefnative" "$APP_NAME/Contents/MacOS"
+    cp -a "$PUBLISH_PATH/cef/steam_appid.txt" "$APP_NAME/Contents/MacOS"
     cp -a "../Grayjay.ClientServer/deps/${ARCH}/ffmpeg" "$APP_NAME/Contents/MacOS"
+    cp -a "../Grayjay.ClientServer/deps/${ARCH}/libsteam_api.dylib" "$APP_NAME/Contents/MacOS"
     cp -a "$PUBLISH_PATH/wwwroot" "$APP_NAME/Contents/Resources/wwwroot"
 
     cp -a "$PUBLISH_PATH/dotcefnative.app/Contents/Frameworks" "$APP_NAME/Contents/Frameworks"

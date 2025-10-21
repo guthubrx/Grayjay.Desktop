@@ -59,6 +59,18 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>ffmpeg</TargetPath>
     </ContentWithTargetPath>
+
+    <ContentWithTargetPath Include="deps/win-x64/steam_api64.dll" Condition="'$(RuntimeIdentifier)'=='win-x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>cef/steam_api64.dll</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/linux-x64/libsteam_api.so" Condition="'$(RuntimeIdentifier)'=='linux-x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>cef/libsteam_api.so</TargetPath>
+    </ContentWithTargetPath>
+
     <Content Include="Changelogs\3.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
