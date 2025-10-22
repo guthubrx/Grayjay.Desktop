@@ -7,6 +7,7 @@ import { IPlaylist } from "./backend/models/IPlaylist";
 import { Accessor, createResource, InitializedResourceOptions, InitializedResourceReturn, Resource, ResourceFetcher, ResourceOptions, ResourceReturn, ResourceSource } from "solid-js";
 import { IPlatformVideo } from "./backend/models/content/IPlatformVideo";
 import { IPlatformAuthorLink } from "./backend/models/IPlatformAuthorLink";
+import { SettingsBackend } from "./backend/SettingsBackend";
 
 const countInKilo: number = 1000;
 const countInMillion: number = countInKilo * 1000;
@@ -583,4 +584,20 @@ export function getNestedOffsetTop(el: HTMLElement, ancestor: HTMLElement) {
 
 export function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export async function getDefaultPlaybackSpeed() {
+    const value = (await SettingsBackend.settings())?.object?.playback?.defaultPlaybackSpeed;
+    switch (value) {
+        case 0: return 0.25;
+        case 1: return 0.5;
+        case 2: return 0.75;
+        case 3: return 1.0;
+        case 4: return 1.25;
+        case 5: return 1.5;
+        case 6: return 1.75;
+        case 7: return 2.0;
+        case 8: return 2.25;
+        default: return 1.0;
+    }
 }
