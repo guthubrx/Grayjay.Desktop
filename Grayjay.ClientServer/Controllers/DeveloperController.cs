@@ -81,8 +81,8 @@ namespace Grayjay.ClientServer.Controllers
         {
             if (!IsDeveloperMode())
                 return NotFound();
-            var html = (System.IO.File.Exists(Path.Combine(Directories.Base, "Developer", "Embed", "index.html"))) ?
-                System.IO.File.ReadAllText(Path.Combine(Directories.Base, "Developer", "Embed", "index.html")) :
+            var html = //(System.IO.File.Exists(Path.Combine(Directories.Base, "Developer", "Embed", "index.html"))) ?
+                //System.IO.File.ReadAllText(Path.Combine(Directories.Base, "Developer", "Embed", "index.html")) :
                 Encoding.UTF8.GetString(ReadResource("Grayjay.ClientServer.Developer.Embed.index.html"));
             html = html
                 .Replace("SUPPORT_INTEGRATION: true", "SUPPORT_INTEGRATION: true");

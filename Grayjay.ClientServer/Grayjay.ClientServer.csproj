@@ -121,9 +121,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Developer\Embed\dev_bridge.js" />
-    <Content Include="Developer\Embed\index.html">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <EmbeddedResource Include="Developer\Embed\index.html">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
