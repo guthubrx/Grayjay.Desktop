@@ -11,7 +11,8 @@ import Button from '../../components/buttons/Button';
 import InputText from '../../components/basics/inputs/InputText';
 import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
 import { focusScope } from '../../focusScope'; void focusScope;
-import { focusable } from '../../focusable'; void focusable;
+import { focusable } from '../../focusable';import ScrollContainer from '../../components/containers/ScrollContainer';
+ void focusable;
 
 export interface OverlaySubscsriptionsSelectorDialogProps {
   title: string,
@@ -87,29 +88,31 @@ const OverlaySubscriptionsSelector: Component<OverlaySubscsriptionsSelectorDialo
               onBack={dialogBack} 
             />
           </div>
-          <div class={styles.subscriptionsContainer}>
-            <For each={subscriptions$()}>{ (sub, i) =>
-              <div 
-                class={styles.subscription} 
-                classList={{[styles.enabled]: selected$().indexOf(sub.channel.url) >= 0}} 
-                onClick={()=>select(sub)}
-                use:focusable={{
-                  onPress: () => select(sub),
-                  onBack: dialogBack,
-                }}
-              >
-                <div class={styles.check}>
-                  <img src={iconCheck} />
-                </div>
-                <div class={styles.image} style={{"background-image": "url(" + sub.channel.thumbnail + ")"}}>
+          <ScrollContainer wrapperStyle={{"max-height": "400px"}}>
+            <div class={styles.subscriptionsContainer}>
+              <For each={subscriptions$()}>{ (sub, i) =>
+                <div 
+                  class={styles.subscription} 
+                  classList={{[styles.enabled]: selected$().indexOf(sub.channel.url) >= 0}} 
+                  onClick={()=>select(sub)}
+                  use:focusable={{
+                    onPress: () => select(sub),
+                    onBack: dialogBack,
+                  }}
+                >
+                  <div class={styles.check}>
+                    <img src={iconCheck} />
+                  </div>
+                  <div class={styles.image} style={{"background-image": "url(" + sub.channel.thumbnail + ")"}}>
 
+                  </div>
+                  <div class={styles.name}>
+                    {sub.channel.name}
+                  </div>
                 </div>
-                <div class={styles.name}>
-                  {sub.channel.name}
-                </div>
-              </div>
-            }</For>
-          </div>
+              }</For>
+            </div>
+          </ScrollContainer>
         </div>
         <div style="height: 1px; background-color: rgba(255, 255, 255, 0.09); margin-top: 10px; margin-bottom: 10px;"></div>
         <div style="text-align: right">

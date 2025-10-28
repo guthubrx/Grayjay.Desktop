@@ -12,6 +12,7 @@ import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
 import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from '../../focusable'; void focusable;
 import { ImagesBackend } from '../../backend/ImagesBackend';
+import ScrollContainer from '../../components/containers/ScrollContainer';
 
 
 export interface OverlayImageSelectorDialogProps {
@@ -88,7 +89,10 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
           <div class={styles.headerSubText}>
             {props.description}
           </div>
-          <div class={styles.closeButton} onClick={()=>UIOverlay.dismiss()}>
+          <div class={styles.closeButton} onClick={()=>{ 
+            UIOverlay.dismiss();
+            console.info("close clicked");
+          }}>
             <img src={iconClose} />
           </div>
         </div>
@@ -135,24 +139,26 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
           </div>
           <div class={styles.sectionTitle}>Creator Thumbnails</div>
           <div class={styles.sectionDescription}>Select a creator thumbnail as image</div>
-          <div class={styles.subscriptionsContainer}>
-            <For each={subscriptions$()}>{ sub =>
-              <div class={styles.subscription} classList={{[styles.enabled]: isSelectedSubscription(sub.channel.url)}} onClick={()=>selectSubscription(sub.channel.url, sub.channel.thumbnail)} use:focusable={{
-                  onPress: () => selectSubscription(sub.channel.url, sub.channel.thumbnail),
-                  onBack: globalBack
-                }}>
-                <div class={styles.check}>
-                  <img src={iconCheck} />
-                </div>
-                <div class={styles.image} style={{"background-image": "url(" + sub.channel.thumbnail + ")"}}>
+          <ScrollContainer wrapperStyle={{"max-height": "400px"}}>
+            <div class={styles.subscriptionsContainer}>
+              <For each={subscriptions$()}>{ sub =>
+                <div class={styles.subscription} classList={{[styles.enabled]: isSelectedSubscription(sub.channel.url)}} onClick={()=>selectSubscription(sub.channel.url, sub.channel.thumbnail)} use:focusable={{
+                    onPress: () => selectSubscription(sub.channel.url, sub.channel.thumbnail),
+                    onBack: globalBack
+                  }}>
+                  <div class={styles.check}>
+                    <img src={iconCheck} />
+                  </div>
+                  <div class={styles.image} style={{"background-image": "url(" + sub.channel.thumbnail + ")"}}>
 
+                  </div>
+                  <div class={styles.name}>
+                    {sub.channel.name}
+                  </div>
                 </div>
-                <div class={styles.name}>
-                  {sub.channel.name}
-                </div>
-              </div>
-            }</For>
-          </div>
+              }</For>
+            </div>
+          </ScrollContainer>
         </div>
         <div style="height: 1px; background-color: rgba(255, 255, 255, 0.09); margin-top: 10px; margin-bottom: 10px;"></div>
         <div style="text-align: right">

@@ -130,8 +130,8 @@ const OverlaySubscriptionGroupEditDialog: Component<OverlaySubscriptionGroupEdit
         </Show>
         <Show when={stateView$() == 0}>
           <div class={styles.container} use:focusScope={{
-            initialMode: 'trap'
-          }}> 
+            initialMode: 'trap',
+          }} onClick={(e) => e.stopPropagation()} onMouseDown={(ev) => ev.stopPropagation()}> 
             <div class={styles.dialogHeader}>
               <div class={styles.headerText}>
                 Edit Subscription Group
@@ -139,51 +139,56 @@ const OverlaySubscriptionGroupEditDialog: Component<OverlaySubscriptionGroupEdit
               <div class={styles.headerSubText}>
                 Here you can edit your subscription group
               </div>
-              <div class={styles.closeButton} onClick={()=>UIOverlay.dismiss()}>
+              <div class={styles.closeButton} onClick={()=> {
+                UIOverlay.dismiss();
+                console.info("close button clicked");
+              }}>
                 <img src={iconClose} />
               </div>
             </div>
-            <ScrollContainer wrapperStyle={{"margin-left": "20px", "margin-right": "20px", "height": "65vh"}}>
-              <div style="margin-top: 20px;">
-                <div class={styles.sectionTitle}>Image</div>
-                <div class={styles.sectionDescription}>Edit which image is used as background for your group</div>
-                <div>
-                    <div class={styles.image} style={{"background-image": "url(" + proxyImageVariable(props.subscriptionGroup.image) + ")"}} onClick={()=>changeView(1)} use:focusable={{
-                      onPress: () => changeView(1),
-                      onBack: globalBack
-                    }}>
-                      <div class={styles.text}>
-                        <img src={iconEdit} />
+            <ScrollContainer>
+              <div style={{"margin-left": "20px", "margin-right": "20px", "height": "65vh"}}>
+                <div style="margin-top: 20px;">
+                  <div class={styles.sectionTitle}>Image</div>
+                  <div class={styles.sectionDescription}>Edit which image is used as background for your group</div>
+                  <div>
+                      <div class={styles.image} style={{"background-image": "url(" + proxyImageVariable(props.subscriptionGroup.image) + ")"}} onClick={()=>changeView(1)} use:focusable={{
+                        onPress: () => changeView(1),
+                        onBack: globalBack
+                      }}>
+                        <div class={styles.text}>
+                          <img src={iconEdit} />
+                        </div>
                       </div>
-                    </div>
+                  </div>
                 </div>
-              </div>
-              <div style="margin-top: 20px;">
-                <div class={styles.sectionTitle}>Name</div>
-                <div class={styles.sectionDescription}>Edit what the name of your group is.</div>
-                <InputText placeholder='Subscription group name'
-                  value={props.subscriptionGroup.name} onTextChanged={(val) => props.subscriptionGroup.name = val} focusable={true} onBack={globalBack}  />
-              </div>
-              <div style="margin-top: 20px;">
-                <div class={styles.sectionTitle}>Subscriptions</div>
-                <div class={styles.sectionDescription}>These are the subscriptions in the group, you can delete groups by selecting them and clicking Delete Selected.</div>
-                <div class={styles.subscriptionsContainer}>
-                  <For each={subscriptions$()?.filter(x=>props.subscriptionGroup.urls.indexOf(x.channel.url) >= 0)}>{ sub =>
-                    <div class={styles.subscription} classList={{[styles.enabled]: selected$().indexOf(sub.channel.url) >= 0}} onClick={()=>select(sub)} use:focusable={{
-                      onPress: () => select(sub),
-                      onBack: globalBack
-                    }}>
-                      <div class={styles.check}>
-                        <img src={iconCheck} />
-                      </div>
-                      <div class={styles.image} style={{"background-image": "url(" + sub.channel.thumbnail + ")"}}>
+                <div style="margin-top: 20px;">
+                  <div class={styles.sectionTitle}>Name</div>
+                  <div class={styles.sectionDescription}>Edit what the name of your group is.</div>
+                  <InputText placeholder='Subscription group name'
+                    value={props.subscriptionGroup.name} onTextChanged={(val) => props.subscriptionGroup.name = val} focusable={true} onBack={globalBack}  />
+                </div>
+                <div style="margin-top: 20px;">
+                  <div class={styles.sectionTitle}>Subscriptions</div>
+                  <div class={styles.sectionDescription}>These are the subscriptions in the group, you can delete groups by selecting them and clicking Delete Selected.</div>
+                  <div class={styles.subscriptionsContainer}>
+                    <For each={subscriptions$()?.filter(x=>props.subscriptionGroup.urls.indexOf(x.channel.url) >= 0)}>{ sub =>
+                      <div class={styles.subscription} classList={{[styles.enabled]: selected$().indexOf(sub.channel.url) >= 0}} onClick={()=>select(sub)} use:focusable={{
+                        onPress: () => select(sub),
+                        onBack: globalBack
+                      }}>
+                        <div class={styles.check}>
+                          <img src={iconCheck} />
+                        </div>
+                        <div class={styles.image} style={{"background-image": "url(" + sub.channel.thumbnail + ")"}}>
 
+                        </div>
+                        <div class={styles.name}>
+                          {sub.channel.name}
+                        </div>
                       </div>
-                      <div class={styles.name}>
-                        {sub.channel.name}
-                      </div>
-                    </div>
-                  }</For>
+                    }</For>
+                  </div>
                 </div>
               </div>
             </ScrollContainer>
