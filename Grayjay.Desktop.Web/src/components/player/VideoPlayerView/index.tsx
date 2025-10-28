@@ -535,7 +535,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             return;
         }
 
-        if (shouldSetCurrentPosition) {
+        if (shouldSetCurrentPosition && (props.source?.isLive ?? false) === false) {
             setCurrentPosition(getResumePosition(shouldResume, startTime));
         }
         play();
@@ -909,7 +909,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
 
                 videoElement
                 
-                hlsPlayer = new Hls();
+                hlsPlayer = new Hls({ startPosition: -1 });
 
                 //TODO: Framerate
                 /*hlsPlayer.on(Hls.Events.MANIFEST_PARSED, (eventName, data) => {
@@ -927,6 +927,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     if(props.onPlayerQualityChanged)
                         props.onPlayerQualityChanged(data.level);
                 });
+
                 hlsPlayer.on(Hls.Events.ERROR, function(eventName, data) {
                     console.error("HLS player error", data);
                     onError(`HLS Error: ${JSON.stringify({ details: data.details, error: data.error })}`, data.fatal);

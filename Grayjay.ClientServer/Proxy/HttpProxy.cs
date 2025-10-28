@@ -20,11 +20,6 @@ namespace Grayjay.ClientServer.Proxy
 
         public string Add(HttpProxyRegistryEntry entry, IPAddress? localAddress = null)
         {
-            if(entry.Url.Contains("#"))
-            {
-
-            }
-
             if (LocalEndPoint.Address == IPAddress.Any && localAddress == null)
                 throw new ArgumentException("When adding a proxy on any, you must specify the local address.");
 
