@@ -25,7 +25,7 @@ import PillButton from "../../buttons/PillButton";
 import IconButton from "../../buttons/IconButton";
 import CustomButton from "../../buttons/CustomButton";
 import CommentView from "../../CommentView";
-import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, sanitzeHtml, toHumanNowDiffString, toHumanNowDiffStringMinDay, toHumanNumber, formatAudioSourceName } from "../../../utility";
+import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, sanitzeHtml, toHumanNowDiffString, toHumanNowDiffStringMinDay, toHumanNumber, formatAudioSourceName, getDefaultPlaybackSpeed } from "../../../utility";
 import { DetailsBackend } from "../../../backend/DetailsBackend";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
@@ -68,7 +68,6 @@ import StateGlobal from "../../../state/StateGlobal";
 import StateSync from "../../../state/StateSync";
 import { SyncDevice } from "../../../backend/models/sync/SyncDevice";
 import { SyncBackend } from "../../../backend/SyncBackend";
-import { SettingsBackend } from "../../../backend/SettingsBackend";
 import FlexibleArrayList from "../../containers/FlexibleArrayList";
 import { IPlatformContent } from "../../../backend/models/content/IPlatformContent";
 import VideoThumbnailView from "../../content/VideoThumbnailView";
@@ -357,22 +356,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             }
         }
     };
-
-    async function getDefaultPlaybackSpeed() {
-        const value = (await SettingsBackend.settings())?.object?.playback?.defaultPlaybackSpeed;
-        switch (value) {
-            case 0: return 0.25;
-            case 1: return 0.5;
-            case 2: return 0.75;
-            case 3: return 1.0;
-            case 4: return 1.25;
-            case 5: return 1.5;
-            case 6: return 1.75;
-            case 7: return 2.0;
-            case 8: return 2.25;
-            default: return 1.0;
-        }
-    }
 
     createEffect(async () => {
         if (videoSource$()?.shouldResume !== true) {

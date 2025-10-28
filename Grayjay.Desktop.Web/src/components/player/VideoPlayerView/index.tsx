@@ -12,13 +12,14 @@ import Hls from 'hls.js';
 import { ChapterType, IChapter } from '../../../backend/models/contentDetails/IChapter';
 import { IPlatformVideoDetails } from '../../../backend/models/contentDetails/IPlatformVideoDetails';
 import CircleLoader from '../../basics/loaders/CircleLoader';
-import { formatDuration, uuidv4 } from '../../../utility';
+import { formatDuration, getDefaultPlaybackSpeed, uuidv4 } from '../../../utility';
 import { LoaderGame, LoaderGameHandle } from '../../LoaderGame';
 import StateWebsocket from '../../../state/StateWebsocket';
 import Globals from '../../../globals';
 import { clearLiveChatOnSeek } from '../../../state/StateLiveChat';
 import { focusable } from '../../../focusable'; void focusable;
 import { FocusableOptions, InputSource } from '../../../nav';
+import { SettingsBackend } from '../../../backend/SettingsBackend';
 
 interface VideoProps {
     onVideoDimensionsChanged: (width: number, height: number) => void;
@@ -254,7 +255,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     resumePosition: getResumePosition(shouldResume, startTime),
                     duration: untrack(duration),
                     sourceSelected: props.source,
-                    speed: 1.0,
+                    speed: await getDefaultPlaybackSpeed(),
                     tag,
                     title: props.video?.name
                 });
