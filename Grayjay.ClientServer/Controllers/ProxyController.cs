@@ -5,6 +5,7 @@ using Grayjay.Desktop.POC.Port.States;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Web;
@@ -91,6 +92,8 @@ namespace Grayjay.ClientServer.Controllers
             return hlsMasterPlaylist;
         }
 
+        private static Dictionary<string, string> ExistingHlsProxies = new Dictionary<string, string>();
+
         public static HLS.VariantPlaylist ProxyHLSPlaylist(string baseUri, HLS.VariantPlaylist hlsMediaPlaylist, bool proxyMedia)
         {
             if (!proxyMedia)
@@ -104,42 +107,67 @@ namespace Grayjay.ClientServer.Controllers
                 var uri = new Uri(baseUri);
                 var isLoopback = uri.Host.Contains("127.0.0.1");
                 var ip = IPAddress.Parse(uri.Host);
-                ms.Uri = HttpProxy.Get(isLoopback).Add(new HttpProxyRegistryEntry()
+
+
+                lock (ExistingHlsProxies)
                 {
-                    Url = ms.Uri,
-                    FollowRedirects = true,
-                    RequestHeaderOptions = new RequestHeaderOptions()
+                    if (ExistingHlsProxies.TryGetValue(ms.Uri, out var ur))
+                        ms.Uri = ur;
+                    else
                     {
-                        HeadersToInject = new Dictionary<string, string>()
+                        var proxiedUri = HttpProxy.Get(isLoopback).Add(new HttpProxyRegistryEntry()
                         {
-                            { "Origin", null }
-                        }
-                    },
-                    ResponseHeaderOptions = new ResponseHeaderOptions()
-                    {
-                        InjectPermissiveCORS = true
+                            Url = ms.Uri,
+                            FollowRedirects = true,
+                            RequestHeaderOptions = new RequestHeaderOptions()
+                            {
+                                HeadersToInject = new Dictionary<string, string>()
+                                {
+                                    { "Origin", null }
+                                }
+                            },
+                            ResponseHeaderOptions = new ResponseHeaderOptions()
+                            {
+                                InjectPermissiveCORS = true
+                            }
+                        }, ip);
+
+                        ExistingHlsProxies[ms.Uri] = proxiedUri;
+                        ms.Uri = proxiedUri;
                     }
-                }, ip);
+                }
             }
 
-            if(!string.IsNullOrEmpty(hlsMediaPlaylist.MapUrl))
-                hlsMediaPlaylist.MapUrl = HttpProxy.Get().Add(new HttpProxyRegistryEntry()
+            if (!string.IsNullOrEmpty(hlsMediaPlaylist.MapUrl))
+            {
+                lock (ExistingHlsProxies)
                 {
-                    Url = hlsMediaPlaylist.MapUrl,
-                    FollowRedirects = true,
-                    RequestHeaderOptions = new RequestHeaderOptions()
+                    if (ExistingHlsProxies.TryGetValue(hlsMediaPlaylist.MapUrl, out var ur))
+                        hlsMediaPlaylist.MapUrl = ur;
+                    else
                     {
-                        HeadersToInject = new Dictionary<string, string>()
+                        var proxiedUri = HttpProxy.Get().Add(new HttpProxyRegistryEntry()
                         {
-                            { "Origin", null }
-                        }
-                    },
-                    ResponseHeaderOptions = new ResponseHeaderOptions()
-                    {
-                        InjectPermissiveCORS = true
-                    }
-                });
+                            Url = hlsMediaPlaylist.MapUrl,
+                            FollowRedirects = true,
+                            RequestHeaderOptions = new RequestHeaderOptions()
+                            {
+                                HeadersToInject = new Dictionary<string, string>()
+                                {
+                                    { "Origin", null }
+                                }
+                            },
+                            ResponseHeaderOptions = new ResponseHeaderOptions()
+                            {
+                                InjectPermissiveCORS = true
+                            }
+                        });
 
+                        ExistingHlsProxies[hlsMediaPlaylist.MapUrl] = proxiedUri;
+                        hlsMediaPlaylist.MapUrl = proxiedUri;
+                    }
+                }
+            }
 
             return hlsMediaPlaylist;
         }
