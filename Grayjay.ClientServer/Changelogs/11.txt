@@ -1,0 +1,43 @@
+Features:
+ - Added native wayland support.
+ - Conditional mobile emulation for auth/captcha.
+ - Added new experimental casting backend.
+ - New key bindings:
+   o Added CTRL+Left/Right Arrow for navigating chapters. 
+   o Added Shift + n/p for navigating queue.
+   o Added j/l for jumping 10s instead of 5s with arrows. 
+   o Added c for toggling subtitles. 
+   o Added / for opening search. 
+   o Added </> for changing playback speed. 
+   o Added ,/. for skipping single frames when paused.
+   o Space/k for pausing video (already existed).
+   o f for full screen toggle (already existed).
+   o Arrows up/down for controlling volume (already existed).
+   o ...
+ 
+Improvements:
+ - Added LoginButton support for auth.
+ - Improved size/speed estimation for UMP downloads.
+ - Added copy settings to clipboard option on plugin.
+ - Sync pairing will now always happen in parallel for direct and relayed.
+ 
+Fixes:
+ - Fixed issue with plugin dialog staying open after install succeeded.
+ - DevPortal fix for when there are no settings.
+ - Added separate desktop auth config.
+ - Fix download completion, and overflow for big files.
+ - Fixed sources page toggle states.
+ - Search history toggle now works.
+ - Fixed issue where headless would not have key events work on login screen.
+ - Gamepad polling loop now only active during focus and connected gamepad.
+ - Fixed overflow for chapter overlay.
+ - Fixed icons double clicking cause fullscreen on player.
+ - Search bar now hides whenever scrolling down on ChannelPage and no longer wrongly overlays.
+ - Added stop propagation to all dialogs that did not have it yet.
+ - Fixed bug where i when comments are open would cause minimized view to be incorrect. 
+ - Removed arrow keys from being able to navigate elements, instead WASD is used for this. Arrow keys now function globally to control the video player like they used to. Remapped space to uniquely work for globally controlling playback state (play/pause).
+ - Fixed dialog background not closing dialog. 
+ - Fixed checkbox list not changing properly when interacted with mouse. 
+ - Fixed issue where arrow left/right would skip/not skip depending on editable state.
+ - File picker now works with windows network paths and additional improvements.
+ - Fixed issue where file dialog would not work when you have a bad hard drive connected on windows.
