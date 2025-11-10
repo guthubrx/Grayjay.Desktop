@@ -76,6 +76,22 @@
       <TargetPath>libcurl-impersonate.so</TargetPath>
     </ContentWithTargetPath>
 
+    <ContentWithTargetPath Include="deps/win-x64/libcurlshim.dll" Condition="'$(RuntimeIdentifier)'=='win-x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>libcurlshim.dll</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/linux-x64/libcurlshim.so" Condition="'$(RuntimeIdentifier)'=='linux-x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>libcurlshim.so</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/linux-arm64/libcurlshim.so" Condition="'$(RuntimeIdentifier)'=='linux-arm64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>libcurlshim.so</TargetPath>
+    </ContentWithTargetPath>
+
     <ContentWithTargetPath Include="deps/win-x64/steam_api64.dll" Condition="'$(RuntimeIdentifier)'=='win-x64'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
