@@ -21,6 +21,7 @@ using System.Net;
 using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using static Grayjay.ClientServer.Parsers.HLS;
 
 namespace Grayjay.ClientServer.Models.Downloads
@@ -811,11 +812,10 @@ namespace Grayjay.ClientServer.Models.Downloads
 
         }
 
-        private long DownloadHLSSource(string name, ManagedHttpClient client, string hlsUrl, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default)
+        private async Task<long> DownloadHLSSource(string name, ManagedHttpClient client, string hlsUrl, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default)
         {
             long downloadedTotalLength = 0;
 
-            List<FileInfo> segmentFiles = new List<FileInfo>();
             try
             {
                 var response = client.GET(hlsUrl, new Dictionary<string, string>());
@@ -826,32 +826,42 @@ namespace Grayjay.ClientServer.Models.Downloads
 
                 var variantPlaylist = HLS.ParseVariantPlaylist(vpContent, hlsUrl);
                 SpeedMonitor speedMeter = new SpeedMonitor();
+                using FileStream outStr = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+                        
+                if (!string.IsNullOrEmpty(variantPlaylist.MapUrl))
+                {
+                    Logger.i(nameof(VideoDownload), "Downloading HLS initialization map");
+
+                    var mapResp = client.GET(variantPlaylist.MapUrl, new Dictionary<string, string>());
+                    if (!mapResp.IsOk)
+                        throw new InvalidDataException("Failed to download map: " + mapResp.Code);
+
+                    var mapBytes = mapResp.Body.AsBytes();
+                    await outStr.WriteAsync(mapBytes, 0, mapBytes.Length, cancel);
+                    downloadedTotalLength += mapBytes.Length;
+
+                }
+
                 for(int i = 0; i < variantPlaylist.Segments.Count; i++)
                 {
-                    var segment = variantPlaylist.Segments[i];
-                    if(!(segment is HLS.MediaSegment))
+                    if (!(variantPlaylist.Segments[i] is HLS.MediaSegment seg))
                         continue;
-                    var mediaSegment = segment as HLS.MediaSegment;
 
                     Logger.i(nameof(VideoDownload), $"Download {Video.Name} segment {i} sequential");
-                    FileInfo segmentFile = StateApp.GetTemporaryFile(null, "segment-");
-                    using (FileStream str = new FileStream(segmentFile.FullName, FileMode.Create, FileAccess.Write, FileShare.Delete))
+                    long segmentLength = DownloadSourceSequential(client, outStr, seg.Uri, (long segLen, long totalRead, long lastSpeed) =>
                     {
-                        var segmentLength = DownloadSourceSequential(client, str, mediaSegment.Uri, (long segmentLength, long totalRead, long lastSpeed) =>
-                        {
-                            var averageSegmentLength = (i == 0) ? segmentLength : downloadedTotalLength / i;
-                            var expectedTotalLength = averageSegmentLength * (variantPlaylist.Segments.Count - 1) + segmentLength;
-                            speedMeter.Activity(totalRead);
-                            onProgress(expectedTotalLength, downloadedTotalLength + totalRead, speedMeter.GetCurrentSpeed());
-                        });
-                        downloadedTotalLength += segmentLength;
-                    }
-                    segmentFiles.Add(segmentFile);
+                        var avgLen = (i == 0) ? segLen : downloadedTotalLength / i;
+                        var expectedTotal = avgLen * (variantPlaylist.Segments.Count - 1) + segLen;
+
+                        speedMeter.Activity(totalRead);
+                        onProgress(expectedTotal,
+                                downloadedTotalLength + totalRead,
+                                speedMeter.GetCurrentSpeed());
+                    });
+
+                    downloadedTotalLength += segmentLength;
+
                 }
-                Logger.i(nameof(VideoDownload), "Combining segments");
-                CombineHLSSegments(segmentFiles, targetFile);
-                if (!File.Exists(targetFile))
-                    throw new InvalidDataException("No file found after ffmpeg");
                 Logger.i(nameof(VideoDownload), $"Finished HLS Source for {Video.Name}");
             }
             catch(Exception ex)
@@ -859,28 +869,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                 //TODO: Filter errors like not enough space
                 throw;
             }
-            finally
-            {
-                foreach (var seg in segmentFiles)
-                    seg.Delete();
-            }
             return downloadedTotalLength;
-        }
-        private static void CombineHLSSegments(List<FileInfo> segmentFiles, string targetPath)
-        {
-            var fileList = StateApp.GetTemporaryFile(".txt", "filelist-");
-            File.WriteAllText(fileList.FullName, string.Join("\n", segmentFiles.Select(x => $"file '{x.FullName}'")));
-
-            //var cmd = $"-f concat -safe 0 -i \"{fileList.FullName}\" -c copy \"{targetPath}\"";
-            string[] args = new string[]{
-                "-f", "concat", "-safe", "0", "-i", fileList.FullName, "-c", "copy", targetPath
-            };
-            if (FFMPEG.ExecuteSafe(args, true) == 0)
-            {
-
-            }
-            else
-                throw new InvalidDataException("Transcoding failed");
         }
         #endregion
 
