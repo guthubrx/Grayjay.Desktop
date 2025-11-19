@@ -1,4 +1,4 @@
-﻿using Grayjay.ClientServer.States;
+using Grayjay.ClientServer.States;
 using Grayjay.Desktop.POC;
 using Grayjay.Engine;
 using Grayjay.Engine.Setting;
@@ -278,7 +278,7 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Enabled", SettingsField.TOGGLE, "Enable casting", 0)]
             public bool Enabled { get; set; } = true;
             [SettingsField("Experimental", SettingsField.TOGGLE, "Enable experimental casting backend. Requires restart", 0)]
-            public bool Experimental { get; set; } = false;
+            public bool Experimental { get; set; } = true;
         }
         
 
