@@ -45,6 +45,8 @@ interface ChannelTopBarProps {
 }
 
 const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
+  const focus = useFocus();
+
   let moreElement: HTMLDivElement | undefined;
 
   const [subscriptionMenu$, setSubscriptionMenu] = createSignal<{
@@ -115,13 +117,23 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
             </Show>
           </div>
           <div style="flex-grow: 1"></div>
+          <Show when={!focus?.isControllerMode()}>
+            <div class={styles.containerChannelButtons}>
+              <Show when={subscription$()}>
+                <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} />
+              </Show>
+              <SubscribeButton small={true} author={props.authorUrl} style={{"width": "110px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
+            </div>
+          </Show>
+        </div>
+        <Show when={focus?.isControllerMode()}>
           <div class={styles.containerChannelButtons}>
             <Show when={subscription$()}>
               <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} />
             </Show>
-            <SubscribeButton small={true} author={props.authorUrl} style={{"width": "110px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
+            <SubscribeButton small={true} author={props.authorUrl} style={{"width": "300px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
           </div>
-        </div>
+        </Show>
         <div class={styles.containerTabButtons}>
           <ButtonGroup defaultSelectedItem="Videos" items={["Videos"/*, "Channels", "Support"*/, "About"]}
           style={{opacity: 1 - p(), "flex-shrink": 0}} onItemChanged={(item) => props.onActiveTabChanged?.(item)} focusableOpts={{}} />

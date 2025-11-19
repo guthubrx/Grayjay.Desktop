@@ -46,6 +46,8 @@ build_sign_notarize() {
     cp -a "$PUBLISH_PATH/cef/steam_appid.txt" "$APP_NAME/Contents/MacOS"
     cp -a "../Grayjay.ClientServer/deps/${ARCH}/ffmpeg" "$APP_NAME/Contents/MacOS"
     chmod +x "$APP_NAME/Contents/MacOS/ffmpeg"
+    cp -a "../Grayjay.ClientServer/deps/${ARCH}/libcurl-impersonate.dylib" "$APP_NAME/Contents/MacOS"
+    cp -a "../Grayjay.ClientServer/deps/${ARCH}/libcurlshim.dylib" "$APP_NAME/Contents/MacOS"
     cp -a "../Grayjay.ClientServer/deps/${ARCH}/libsteam_api.dylib" "$APP_NAME/Contents/MacOS"
     cp -a "$PUBLISH_PATH/wwwroot" "$APP_NAME/Contents/Resources/wwwroot"
 
