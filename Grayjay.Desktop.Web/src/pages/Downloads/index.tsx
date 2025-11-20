@@ -1,4 +1,4 @@
-import { createResource, type Component, For, Show, createMemo, onCleanup, createSignal, Switch, Match, batch } from 'solid-js';
+import { createResource, type Component, For, Show, createMemo, onCleanup, createSignal, Switch, Match, batch, createEffect } from 'solid-js';
 import { createResourceDefault, getBestThumbnail, getDummyVideo, getPlaylistThumbnail, proxyImage, toHumanBitrate, toHumanBytesSize } from '../../utility';
 import { PlatformBackend } from '../../backend/PlatformBackend';
 import { ChannelBackend } from '../../backend/ChannelBackend';
@@ -57,6 +57,7 @@ import { InputSource } from '../../nav';
 const DownloadsPage: Component = () => {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [isDownloadingRetryable$, setIsDownloadingRetryable] = createSignal(false);
   const [storageInfo$, storageInfoResource] = createResourceDefault(async () => [], async () => await DownloadBackend.getStorageInfo());
   const [downloading$, downloadingResource] = createResourceDefault(async () => [], 
   
@@ -112,7 +113,11 @@ const DownloadsPage: Component = () => {
   const [downloaded$, downloadedResource] = createResourceDefault(async () => [], async () => await DownloadBackend.getDownloaded());
   const [playlists$, playlistsResource] = createResourceDefault(async () => [], async () => []);
 
-  const isReady$ = createMemo(()=>downloading$.state == "ready" && downloaded$.state == "ready");
+  const isLoading$ = createMemo(() => {
+    const dState = downloading$.state;
+    const dlState = downloaded$.state;
+    return (dState === "unresolved" || dState === "pending" || dlState === "unresolved" || dlState === "pending");
+  });
 
   StateWebsocket.registerHandlerNew("DownloadCompleted", (packet)=>{
     const videoLocal = packet.payload as IVideoLocal;
@@ -231,7 +236,9 @@ const DownloadsPage: Component = () => {
           return [];
     }
   }
-  
+  const downloadedItems$ = createMemo(getDownloadedItems);
+  const hasDownloads$ = createMemo(() => (downloaded$()?.length ?? 0) > 0);
+
   const [playlistMenu$, setPlaylistMenu] = createSignal<Menu>()
   const playlistMenuShow$ = createMemo(()=>!!playlistMenu$());
   const [playlistMenuInputSource$, setPlaylistMenuInputSource] = createSignal<InputSource>();
@@ -320,7 +327,8 @@ const DownloadsPage: Component = () => {
 
 
   function gridUI(scrollContainerRef: HTMLDivElement | undefined) {
-    const data = getDownloadedItems();
+    const data = downloadedItems$();
+
     return (
       <>
         <Show when={videoType$() != "playlist"}>          
@@ -392,7 +400,7 @@ const DownloadsPage: Component = () => {
 
   let [selected$, setSelected] = createSignal<IVideoLocal[]>([]);
   function listUI(){
-    const data = getDownloadedItems();
+    const data = downloadedItems$();
       
     function calcSize(downloaded: IVideoLocal): number{
       let size = 0;
@@ -518,8 +526,6 @@ const DownloadsPage: Component = () => {
     )
   }
 
-  const [isDownloadingRetryable$, setIsDownloadingRetryable] = createSignal(false);
-
   const doExport = () => {
   if(videoType$() != "playlist")
     selected$().forEach(x=>exportDownload(x.id));
@@ -537,7 +543,7 @@ const DownloadsPage: Component = () => {
   const video = useVideo();
   let scrollContainerRef: HTMLDivElement | undefined;
   return (
-    <LoaderContainer isLoading={!isReady$()} loadingText={"Loading Downloads"} loadingSubText={params.url} background='#141414'>
+    <LoaderContainer isLoading={isLoading$()} loadingText={"Loading Downloads"} loadingSubText={params.url} background='#141414'>
       <ScrollContainer ref={scrollContainerRef}>
         <Show when={storageInfo$()}>
         <div class={styles.storageContainer}>
@@ -607,7 +613,7 @@ const DownloadsPage: Component = () => {
           </div>
         </Show>
 
-        <Show when={downloaded$() && downloaded$()!.length > 0}>
+        <Show when={hasDownloads$()}>
           <div style="margin-left: 30px; margin-right: 30px; margin-bottom: 30px; flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;">
             <h2 style="margin-bottom: 5px;">Downloaded</h2>
             <div class={styles.downloadFilterBar}>
@@ -644,7 +650,7 @@ const DownloadsPage: Component = () => {
             </Show>
           </div>
         </Show>
-        <Show when={!(downloaded$() && downloaded$()!.length > 0)}>
+        <Show when={!hasDownloads$()}>
           <EmptyContentView 
             icon={iconDownloads}
             title='You have no finished downloads'
