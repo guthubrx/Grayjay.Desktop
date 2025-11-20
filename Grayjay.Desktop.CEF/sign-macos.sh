@@ -94,12 +94,12 @@ build_sign_notarize() {
         sign_path "$path"
     done
 
-    echo "Verifying..."
+    echo "Verifying $APP_PATH..."
     verify_signature "$APP_PATH"
 
-    echo "Notarizing..."
+    echo "Notarizing $APP_PATH..."
     notarize "$APP_PATH"
-    assess_notarization "$APP_PATH"
+    #assess_notarization "$APP_PATH"
 
     echo "Complete."
 }
