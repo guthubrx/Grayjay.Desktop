@@ -1,6 +1,8 @@
 import { Component, JSX } from 'solid-js'
 
 import styles from './index.module.css';
+import { focusable } from '../../../focusable'; void focusable;
+import { FocusableOptions } from '../../../nav';
 
 interface TransparentIconButtonProps {
     icon: string;
@@ -8,6 +10,7 @@ interface TransparentIconButtonProps {
     onClick?: (event: MouseEvent) => void;
     ref?: HTMLDivElement | undefined
     style?: JSX.CSSProperties
+    focusableOpts?: FocusableOptions;
 }
 
 const TransparentIconButton: Component<TransparentIconButtonProps> = (props) => {
@@ -22,7 +25,7 @@ const TransparentIconButton: Component<TransparentIconButtonProps> = (props) => 
             ... props.style,
             width: props.style?.width ?? '48px',
             height: props.style?.height ?? '48px'
-        }} onClick={handleClick}>
+        }} onClick={handleClick} use:focusable={props.focusableOpts}>
             <img
                 class={styles.icon}
                 src={props.icon}

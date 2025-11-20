@@ -129,7 +129,9 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
         <Show when={focus?.isControllerMode()}>
           <div class={styles.containerChannelButtons}>
             <Show when={subscription$()}>
-              <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} />
+              <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} focusableOpts={{
+                  onPress: (el) => showSubscriptionSettings(el, subscription$()!)
+                }} />
             </Show>
             <SubscribeButton small={true} author={props.authorUrl} style={{"width": "300px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
           </div>
