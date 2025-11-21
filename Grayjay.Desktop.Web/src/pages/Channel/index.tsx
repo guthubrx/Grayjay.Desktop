@@ -1,4 +1,4 @@
-import { createResource, type Component, Show, createMemo, createSignal, Switch, Match, createEffect, untrack } from 'solid-js';
+import { createResource, type Component, Show, createMemo, createSignal, Switch, Match, createEffect, untrack, onMount, onCleanup } from 'solid-js';
 import { createResourceDefault, toHumanNumber } from '../../utility';
 import { ChannelBackend } from '../../backend/ChannelBackend';
 import { useLocation, useParams, useSearchParams } from '@solidjs/router';
@@ -32,6 +32,10 @@ import { Portal } from 'solid-js/web';
 import UIOverlay from '../../state/UIOverlay';
 import { useFocus } from '../../FocusProvider';
 
+interface ChannelTopBarInit {
+  hideSubscriptionSettings: () => void;
+}
+
 interface ChannelTopBarProps {
   authorUrl?: string;
   bannerUrl?: string;
@@ -42,6 +46,7 @@ interface ChannelTopBarProps {
   activeTab?: string;
   onActiveTabChanged?: (tab: string) => void;
   suggestionsVisible?: boolean;
+  onInit?: (init: ChannelTopBarInit) => void;
 }
 
 const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
@@ -90,6 +95,10 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
   const progress = useShrinkProgress();
   const p = createMemo(() => easeOutExpo(progress()));
   const [subscription$, subscriptionResource] = createResourceDefault(props.authorUrl, async (u) => await SubscriptionsBackend.subscription(u));
+
+  props.onInit({
+    hideSubscriptionSettings
+  });
 
   return (
     <div class={styles.containerTopBar}>
@@ -226,6 +235,19 @@ const ChannelPage: Component = () => {
   const isReadyContents$ = createMemo(()=>!!(params?.url && channelPager$()))
 
   let scrollContainerRef: HTMLDivElement | undefined;
+  let topBarInit: ChannelTopBarInit | undefined;
+
+  const handleScroll = () => {
+    topBarInit?.hideSubscriptionSettings();
+  };
+
+  onMount(() => {
+    scrollContainerRef?.addEventListener('scroll', handleScroll);
+  });
+
+  onCleanup(() => {
+    scrollContainerRef?.removeEventListener('scroll', handleScroll);
+  });
 
   return (
     <div class={styles.container}>
@@ -259,7 +281,10 @@ const ChannelPage: Component = () => {
                 authorUrl={channel$()?.url ?? authorSummary$()?.url}
                 activeTab={activeTab$()}
                 onActiveTabChanged={(tab) => setActiveTab(tab)}
-                suggestionsVisible={suggestionsVisible$()} />
+                suggestionsVisible={suggestionsVisible$()}
+                onInit={(init) => {
+                  topBarInit = init;
+                }} />
             </StickyShrinkOnScrollContainer>
             <div>
               <Show when={activeTab$() === "Videos"}>

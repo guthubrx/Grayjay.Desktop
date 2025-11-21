@@ -150,6 +150,56 @@ export interface SettingsMenuProps {
 const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) => {
     let containerRef: HTMLDivElement | undefined;
 
+
+    const isMenuFullyInView = (el: HTMLElement): boolean => {
+      if (typeof window === "undefined") return true;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return true;
+
+      const withinViewport =
+        rect.left >= 0 &&
+        rect.top >= 0 &&
+        rect.right <= window.innerWidth &&
+        rect.bottom <= window.innerHeight;
+
+      if (!withinViewport) return false;
+
+      let parent: HTMLElement | null = el.parentElement;
+      while (parent) {
+        const style = window.getComputedStyle(parent);
+        const overflowY = style.overflowY;
+        const overflowX = style.overflowX;
+
+        if (
+          overflowY === "auto" ||
+          overflowY === "scroll" ||
+          overflowX === "auto" ||
+          overflowX === "scroll"
+        ) {
+          const parentRect = parent.getBoundingClientRect();
+          const insideParent =
+            rect.left >= parentRect.left &&
+            rect.top >= parentRect.top &&
+            rect.right <= parentRect.right &&
+            rect.bottom <= parentRect.bottom;
+
+          if (!insideParent) return false;
+        }
+
+        parent = parent.parentElement;
+      }
+
+      return true;
+    };
+
+    const checkBoundsAndMaybeHide = () => {
+      if (!props.show || !containerRef) return;
+      if (!isMenuFullyInView(containerRef)) {
+        props.onHide?.();
+      }
+    };
+
     const [alignment$, setAlignment] = createSignal(Alignment.TopLeft);
     const [invoker$, setInvoker] = createSignal<HTMLElement>();
     const [menu$, setMenu] = createSignal<Menu>(props.menu);
@@ -345,20 +395,21 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
 
 
     const anchorStyle$ = createMemo(()=>{
-      const height = estimatedHeight$();
-      const style = props.anchor?.style$();
-      if(style?.top) {
-        const topVal = parseInt(style?.top.substring(0, style?.top.length - 2));
-        if(topVal + height > window.innerHeight)
-          return props.anchor?.styleFlipped$();
-      }
-      if(style?.bottom) {
-        const bottomVal = parseInt(style?.bottom.substring(0, style?.bottom.length - 2));
-        if(bottomVal - height < 0)
-          return props.anchor?.styleFlipped$();
-      }
-
       return props.anchor?.style$();
+    });
+
+
+    createEffect(() => {
+      if (!props.show) return;
+
+      const style = anchorStyle$();
+      estimatedHeight$();
+      if (!style) return;
+      if (typeof window === "undefined") return;
+
+      requestAnimationFrame(() => {
+        checkBoundsAndMaybeHide();
+      });
     });
 
     const settingsMenuBack = () => {

@@ -252,11 +252,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                     }}
                     autosizeWidth={true}
                     notifyEndOnLast={5}
-                    onScroll={()=>{
-                        if(show$()) {
-                            onSettingsHidden();
-                        }
-                    }}
+                    onScroll={()=>{}}
                     onEnd={onScrollEnd}
                     style={{
                         /*"margin-left": "15px",*/
