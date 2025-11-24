@@ -1,4 +1,4 @@
-import { createResource, type Component, Show, createMemo, createSignal, Switch, Match, createEffect, untrack } from 'solid-js';
+import { createResource, type Component, Show, createMemo, createSignal, Switch, Match, createEffect, untrack, onMount, onCleanup } from 'solid-js';
 import { createResourceDefault, toHumanNumber } from '../../utility';
 import { ChannelBackend } from '../../backend/ChannelBackend';
 import { useLocation, useParams, useSearchParams } from '@solidjs/router';
@@ -32,6 +32,10 @@ import { Portal } from 'solid-js/web';
 import UIOverlay from '../../state/UIOverlay';
 import { useFocus } from '../../FocusProvider';
 
+interface ChannelTopBarInit {
+  hideSubscriptionSettings: () => void;
+}
+
 interface ChannelTopBarProps {
   authorUrl?: string;
   bannerUrl?: string;
@@ -42,9 +46,12 @@ interface ChannelTopBarProps {
   activeTab?: string;
   onActiveTabChanged?: (tab: string) => void;
   suggestionsVisible?: boolean;
+  onInit?: (init: ChannelTopBarInit) => void;
 }
 
 const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
+  const focus = useFocus();
+
   let moreElement: HTMLDivElement | undefined;
 
   const [subscriptionMenu$, setSubscriptionMenu] = createSignal<{
@@ -89,6 +96,10 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
   const p = createMemo(() => easeOutExpo(progress()));
   const [subscription$, subscriptionResource] = createResourceDefault(props.authorUrl, async (u) => await SubscriptionsBackend.subscription(u));
 
+  props.onInit({
+    hideSubscriptionSettings
+  });
+
   return (
     <div class={styles.containerTopBar}>
       <div class={styles.containerTopBarImage} style={{opacity: 1 - p()}}>
@@ -115,13 +126,25 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
             </Show>
           </div>
           <div style="flex-grow: 1"></div>
+          <Show when={!focus?.isControllerMode()}>
+            <div class={styles.containerChannelButtons}>
+              <Show when={subscription$()}>
+                <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} />
+              </Show>
+              <SubscribeButton small={true} author={props.authorUrl} style={{"width": "110px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
+            </div>
+          </Show>
+        </div>
+        <Show when={focus?.isControllerMode()}>
           <div class={styles.containerChannelButtons}>
             <Show when={subscription$()}>
-              <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} />
+              <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} focusableOpts={{
+                  onPress: (el) => showSubscriptionSettings(el, subscription$()!)
+                }} />
             </Show>
-            <SubscribeButton small={true} author={props.authorUrl} style={{"width": "110px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
+            <SubscribeButton small={true} author={props.authorUrl} style={{"width": "300px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
           </div>
-        </div>
+        </Show>
         <div class={styles.containerTabButtons}>
           <ButtonGroup defaultSelectedItem="Videos" items={["Videos"/*, "Channels", "Support"*/, "About"]}
           style={{opacity: 1 - p(), "flex-shrink": 0}} onItemChanged={(item) => props.onActiveTabChanged?.(item)} focusableOpts={{}} />
@@ -212,6 +235,19 @@ const ChannelPage: Component = () => {
   const isReadyContents$ = createMemo(()=>!!(params?.url && channelPager$()))
 
   let scrollContainerRef: HTMLDivElement | undefined;
+  let topBarInit: ChannelTopBarInit | undefined;
+
+  const handleScroll = () => {
+    topBarInit?.hideSubscriptionSettings();
+  };
+
+  onMount(() => {
+    scrollContainerRef?.addEventListener('scroll', handleScroll);
+  });
+
+  onCleanup(() => {
+    scrollContainerRef?.removeEventListener('scroll', handleScroll);
+  });
 
   return (
     <div class={styles.container}>
@@ -245,7 +281,10 @@ const ChannelPage: Component = () => {
                 authorUrl={channel$()?.url ?? authorSummary$()?.url}
                 activeTab={activeTab$()}
                 onActiveTabChanged={(tab) => setActiveTab(tab)}
-                suggestionsVisible={suggestionsVisible$()} />
+                suggestionsVisible={suggestionsVisible$()}
+                onInit={(init) => {
+                  topBarInit = init;
+                }} />
             </StickyShrinkOnScrollContainer>
             <div>
               <Show when={activeTab$() === "Videos"}>

@@ -35,7 +35,6 @@ export default class Anchor {
 
     bounding$: Accessor<DOMRect>;
     style$: Accessor<JSX.CSSProperties>;
-    styleFlipped$: Accessor<JSX.CSSProperties>;
 
     condition$?: Accessor<boolean>;
 
@@ -50,97 +49,13 @@ export default class Anchor {
 
         const [bounding$, setBounding] = createSignal<DOMRect>(this.anchorEl?.getBoundingClientRect() ?? new DOMRect());
         this.bounding$ = bounding$;
-        this.styleFlipped$ = createMemo<JSX.CSSProperties>(() => {
+        this.style$ = createMemo<JSX.CSSProperties>(() => {
             const bounds = this.bounding$();
-            let style: JSX.CSSProperties;
-
-            switch(anchorStyle) {
-                case AnchorStyle.TopLeft: style = {
-                    top: bounds.top + bounds.height + "px",
-                    left: bounds.left + "px"
-                };
-                break;
-                case AnchorStyle.TopRight: style = {
-                    top: bounds.top + bounds.height + "px",
-                    right: (window.innerWidth - bounds.right) + "px"
-                }
-                break;
-                case AnchorStyle.BottomLeft: style = {
-                    bottom: (window.innerHeight - bounds.top) + "px",
-                    left:  bounds.left + "px",
-                }
-                break;
-                case AnchorStyle.BottomRight: style = {
-                    bottom: (window.innerHeight - bounds.top) + "px",
-                    right:  (window.innerWidth - bounds.right) + "px",
-                }
-                break;
-            }
-            for(let flag of anchorFlags) {
-                switch(flag) {
-                    case AnchorFlags.AnchorWidth:
-                        style.width = bounds.width + "px";
-                        break;
-                    case AnchorFlags.AnchorMinWidth:
-                        style["min-width"] = bounds.width + "px";
-                        break;
-                    case AnchorFlags.AnchorHeight:
-                        style.height = bounds.height + "px";
-                        break;
-                    case AnchorFlags.AnchorMinHeight:
-                        style["min-height"] = bounds.height + "px";
-                        break;
-                }
-            }
-
+            const effectiveAnchor = this.computeEffectiveAnchorStyle(bounds, this.anchorType);
+            const style = this.createBaseStyle(bounds, effectiveAnchor);
+            this.applyAnchorFlags(style, bounds, anchorFlags);
             return style;
         });
-        this.style$ = createMemo<JSX.CSSProperties>(()=>{
-            const bounds = this.bounding$();
-            let style: JSX.CSSProperties;
-
-            switch(anchorStyle) {
-                case AnchorStyle.TopLeft: style = {
-                    bottom: (window.innerHeight - bounds.top) + "px",
-                    left:  bounds.left + "px",
-                };
-                break;
-                case AnchorStyle.TopRight: style = {
-                    bottom: (window.innerHeight - bounds.top) + "px",
-                    right:  (window.innerWidth - bounds.right) + "px",
-                }
-                break;
-                case AnchorStyle.BottomLeft: style = {
-                    top: bounds.top + bounds.height + "px",
-                    left: bounds.left + "px"
-                }
-                break;
-                case AnchorStyle.BottomRight: style = {
-                    top: bounds.top + bounds.height + "px",
-                    right: (window.innerWidth - bounds.right) + "px"
-                }
-                break;
-            }
-
-            for(let flag of anchorFlags) {
-                switch(flag) {
-                    case AnchorFlags.AnchorWidth:
-                        style.width = bounds.width + "px";
-                        break;
-                    case AnchorFlags.AnchorMinWidth:
-                        style["min-width"] = bounds.width + "px";
-                        break;
-                    case AnchorFlags.AnchorHeight:
-                        style.height = bounds.height + "px";
-                        break;
-                    case AnchorFlags.AnchorMinHeight:
-                        style["min-height"] = bounds.height + "px";
-                        break;
-                }
-            }
-
-            return style;
-        }); 
         this.setBounding = setBounding;
         if(condition) {
             this.condition$ = condition;
@@ -205,31 +120,177 @@ export default class Anchor {
     };
 
     start = () => {
-        if(!this.destroyListener && this.anchorEl) {
-            this.destroyListener = observePosition(this.anchorEl, this.handleChange);
-            this.handleChange(this.anchorEl);
+        if (!this.destroyListener && this.anchorEl) {
+            const el = this.anchorEl;
+            const stopObserve = observePosition(el, this.handleChange);
+            const stopScroll = this.attachScrollListeners(el);
+
+            this.destroyListener = () => {
+                stopObserve();
+                stopScroll();
+            };
+
+            this.handleChange(el);
         }
     };
-    
+
     stop = () => {
-        if(this.destroyListener) {
+        if (this.destroyListener) {
             this.destroyListener();
             this.destroyListener = undefined;
         }
-    }
+        if (typeof window !== "undefined") {
+            window.removeEventListener("resize", this.handleWindowResize);
+        }
+    };
+
+    private handleWindowResize = () => {
+        if (!this.anchorEl) return;
+        const newBox = this.anchorEl.getBoundingClientRect();
+        this.setBounding(newBox);
+    };
 
     handleChange = (element?: HTMLElement) => {
         const target = element ?? this.anchorEl;
         if (!target) return;
         const oldBox = this.bounding$();
         const newBox = target.getBoundingClientRect();
-        if (newBox.x !== oldBox.x || newBox.y !== oldBox.y) {
+
+        if (
+            newBox.x !== oldBox.x ||
+            newBox.y !== oldBox.y ||
+            newBox.width !== oldBox.width ||
+            newBox.height !== oldBox.height
+        ) {
             console.log("New position:", newBox);
-            this.setBounding(newBox);
         }
+
+        this.setBounding(newBox);
     };
+
+    private attachScrollListeners(element: HTMLElement): () => void {
+        if (typeof window === "undefined") return () => {};
+
+        const disposers: Array<() => void> = [];
+        const handler = () => this.handleChange(element);
+
+        window.addEventListener("scroll", handler, { passive: true });
+        window.addEventListener("resize", handler);
+        disposers.push(() => {
+            window.removeEventListener("scroll", handler);
+            window.removeEventListener("resize", handler);
+        });
+
+        let parent: HTMLElement | null = element.parentElement;
+        while (parent) {
+            const style = window.getComputedStyle(parent);
+            const overflowY = style.overflowY;
+            const overflowX = style.overflowX;
+
+            if (
+                overflowY === "auto" ||
+                overflowY === "scroll" ||
+                overflowX === "auto" ||
+                overflowX === "scroll"
+            ) {
+                parent.addEventListener("scroll", handler, { passive: true });
+                const current = parent;
+                disposers.push(() => {
+                    current.removeEventListener("scroll", handler);
+                });
+            }
+
+            parent = parent.parentElement;
+        }
+
+        return () => {
+            for (const dispose of disposers) dispose();
+        };
+    }
 
     dispose() {
         this.stop();
+    }
+
+    private createBaseStyle(bounds: DOMRect, anchor: AnchorStyle): JSX.CSSProperties {
+        switch (anchor) {
+            case AnchorStyle.TopLeft:
+                return {
+                    bottom: (window.innerHeight - bounds.top) + "px",
+                    left: bounds.left + "px",
+                };
+            case AnchorStyle.TopRight:
+                return {
+                    bottom: (window.innerHeight - bounds.top) + "px",
+                    right: (window.innerWidth - bounds.right) + "px",
+                };
+            case AnchorStyle.BottomLeft:
+                return {
+                    top: bounds.top + bounds.height + "px",
+                    left: bounds.left + "px",
+                };
+            case AnchorStyle.BottomRight:
+            default:
+                return {
+                    top: bounds.top + bounds.height + "px",
+                    right: (window.innerWidth - bounds.right) + "px",
+                };
+        }
+    }
+
+    private applyAnchorFlags(style: JSX.CSSProperties, bounds: DOMRect, anchorFlags: AnchorFlags[]) {
+        for (let flag of anchorFlags) {
+            switch (flag) {
+                case AnchorFlags.AnchorWidth:
+                    style.width = bounds.width + "px";
+                    break;
+                case AnchorFlags.AnchorMinWidth:
+                    style["min-width"] = bounds.width + "px";
+                    break;
+                case AnchorFlags.AnchorHeight:
+                    style.height = bounds.height + "px";
+                    break;
+                case AnchorFlags.AnchorMinHeight:
+                    style["min-height"] = bounds.height + "px";
+                    break;
+            }
+        }
+    }
+
+    private computeEffectiveAnchorStyle(bounds: DOMRect, preferred: AnchorStyle): AnchorStyle {
+        if (typeof window === "undefined") return preferred;
+
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        if (!viewportWidth || !viewportHeight) return preferred;
+
+        const spaceTop = bounds.top;
+        const spaceBottom = viewportHeight - bounds.bottom;
+        const spaceRightwards = viewportWidth - bounds.left;
+        const spaceLeftwards = bounds.right;
+        const preferredIsTop = preferred === AnchorStyle.TopLeft || preferred === AnchorStyle.TopRight;
+        const preferredIsLeft = preferred === AnchorStyle.TopLeft || preferred === AnchorStyle.BottomLeft;
+
+        const MIN_DELTA = 32;
+
+        let useTop: boolean;
+        if (Math.abs(spaceTop - spaceBottom) <= MIN_DELTA) {
+            useTop = preferredIsTop;
+        } else {
+            useTop = spaceTop > spaceBottom;
+        }
+
+        let useLeft: boolean;
+        if (Math.abs(spaceRightwards - spaceLeftwards) <= MIN_DELTA) {
+            useLeft = preferredIsLeft;
+        } else {
+            useLeft = spaceRightwards > spaceLeftwards;
+        }
+
+        if (useTop && useLeft) return AnchorStyle.TopLeft;
+        if (useTop && !useLeft) return AnchorStyle.TopRight;
+        if (!useTop && useLeft) return AnchorStyle.BottomLeft;
+        return AnchorStyle.BottomRight;
     }
 }

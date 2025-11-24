@@ -223,7 +223,7 @@ export function dateFromAny(value?: any, def?: DateTime): DateTime | undefined {
 }
 
 export function toHumanNowDiffString(value?: any, abs: boolean = false): string | undefined {
-  if (!value) {
+  if (!value || value <= 0) {
     return undefined;
   }
 

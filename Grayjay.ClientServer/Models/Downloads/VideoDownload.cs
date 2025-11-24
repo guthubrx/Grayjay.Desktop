@@ -20,6 +20,7 @@ using System.Diagnostics.Eventing.Reader;
 using System.Net;
 using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using static Grayjay.ClientServer.Parsers.HLS;
@@ -114,7 +115,7 @@ namespace Grayjay.ClientServer.Models.Downloads
             VideoDetails = video;
             VideoSource = videoSource;
             AudioSource = audioSource;
-            if(subtitleSource?.HasFetch ?? true)
+            if (subtitleSource?.HasFetch ?? true)
                 SubtitleSource = null;
             else
                 SubtitleSource = new SubtitleSource.Serializable(subtitleSource);
@@ -185,31 +186,31 @@ namespace Grayjay.ClientServer.Models.Downloads
                 throw new InvalidOperationException("No sources or query values set");
 
             //If live source are required, ensure a live object is present
-            if(VideoSourceRequiresLive)
+            if (VideoSourceRequiresLive)
             {
                 VideoDetails = null;
                 VideoSource = null;
                 VideoSourceLive = null;
             }
-            if(AudioSourceRequiresLive)
+            if (AudioSourceRequiresLive)
             {
                 VideoDetails = null;
                 AudioSource = null;
                 AudioSourceLive = null;
             }
-            if(SubtitleSourceRequiresLive)
+            if (SubtitleSourceRequiresLive)
             {
                 SubtitleSource = null;
                 SubtitleSourceLive = null;
             }
-            
+
             //The following exceptions seem contradictory for certain cases.
             //if (Video == null && VideoDetails == null) //Include query options?
             //    throw new InvalidDataException("Missing information for download to complete");
             //if (TargetPixelCount == null && TargetBitrate == null && VideoSourceToUse == null && AudioSourceToUse == null && VideoFileName == null && AudioFileName == null)
             //    throw new InvalidOperationException("No sources or query values set");
 
-            if(Video != null && (VideoDetails == null || VideoSourceRequiresLive || AudioSourceRequiresLive || SubtitleSourceRequiresLive))
+            if (Video != null && (VideoDetails == null || VideoSourceRequiresLive || AudioSourceRequiresLive || SubtitleSourceRequiresLive))
             {
                 var originalContent = StatePlatform.GetContentDetails(Video.Url);
                 if (!(originalContent is PlatformVideoDetails))
@@ -228,33 +229,33 @@ namespace Grayjay.ClientServer.Models.Downloads
                 AudioSourceMimeTypeOverride = null;
 
                 VideoDetails = original;
-                if(VideoSource == null && TargetPixelCount != null)
+                if (VideoSource == null && TargetPixelCount != null)
                 {
                     var videoSources = new List<IVideoSource>();
-                    foreach(var source in original.Video.VideoSources)
+                    foreach (var source in original.Video.VideoSources)
                     {
                         if (source is HLSManifestSource hlsManifestSource)
                         {
                             try
                             {
                                 var manifest = client.GET(hlsManifestSource.Url, new Dictionary<string, string>());
-                                if(manifest.IsOk)
+                                if (manifest.IsOk)
                                 {
                                     var sources = HLS.ParseToVideoSources(source, manifest.Body.AsString(), hlsManifestSource.Url);
                                     videoSources.AddRange(sources);
                                 }
                             }
-                            catch(Exception ex)
+                            catch (Exception ex)
                             {
                                 Logger.i(nameof(VideoDownload), $"Failed to fetch hls manifest: {ex.Message}");
                             }
                         }
-                        else if(source.IsDownloadable())
+                        else if (source.IsDownloadable())
                             videoSources.Add(source);
                     }
 
                     var vsource = VideoHelper.SelectBestVideoSource(videoSources, (int)TargetPixelCount, new List<string>());
-                    if(vsource != null)
+                    if (vsource != null)
                     {
                         if (vsource is VideoUrlSource || vsource is DashManifestRawSource)
                             VideoSource = vsource;
@@ -263,18 +264,18 @@ namespace Grayjay.ClientServer.Models.Downloads
                     }
                 }
 
-                if(AudioSource == null && TargetBitrate != null)
+                if (AudioSource == null && TargetBitrate != null)
                 {
                     var audioSources = new List<IAudioSource>();
-                    if(original.Video is UnMuxedVideoDescriptor unmuxed)
+                    if (original.Video is UnMuxedVideoDescriptor unmuxed)
                     {
-                        foreach(var source in unmuxed.AudioSources)
+                        foreach (var source in unmuxed.AudioSources)
                         {
                             if (source is HLSManifestAudioSource hLSManifestAudioSource)
                             {
                                 continue;
                             }
-                            else if(source.IsDownloadable())
+                            else if (source.IsDownloadable())
                                 audioSources.Add(source);
                         }
                     }
@@ -317,7 +318,7 @@ namespace Grayjay.ClientServer.Models.Downloads
 
             string videoDash = (VideoSource is DashManifestRawSource dVideoSource) ? dVideoSource.Generate() : null;
             List<DashRepresentation> videoRepresentations = (!string.IsNullOrEmpty(videoDash)) ? DashHelper.GetRepresentations(videoDash) : null;
-            if(VideoSource != null)
+            if (VideoSource != null)
             {
                 var representation = videoRepresentations?.FirstOrDefault();
                 var mimeType = representation?.MimeType ?? VideoSource.Container;
@@ -333,9 +334,9 @@ namespace Grayjay.ClientServer.Models.Downloads
                 var mimeType = representation?.MimeType ?? AudioSource.Container;
 
                 AudioFileName = $"{VideoDetails.ID.Value} [{AudioSource.Language}-{AudioSource.Bitrate}].{VideoHelper.AudioContainerToExtension(mimeType)}".SanitizeFileName();
-                AudioFilePath = Path.Combine(downloadDir , AudioFileName);
+                AudioFilePath = Path.Combine(downloadDir, AudioFileName);
             }
-            if(SubtitleSourcetoUse != null)
+            if (SubtitleSourcetoUse != null)
             {
                 SubtitleFileName = $"{VideoDetails.ID.Value} [{SubtitleSourcetoUse.Name}].{VideoHelper.SubtitleContainerToExtension(SubtitleSourcetoUse.Format)}".SanitizeFileName();
                 SubtitleFilePath = Path.Combine(downloadDir, SubtitleFileName);
@@ -349,14 +350,14 @@ namespace Grayjay.ClientServer.Models.Downloads
 
             List<Task> downloadTasks = new List<Task>();
 
-            if(VideoSourceToUse != null)
+            if (VideoSourceToUse != null)
             {
                 Logger.i(nameof(VideoDownload), "Started downloading video");
                 downloadTasks.Add(StateApp.ThreadPoolDownload.Run(async () =>
                 {
                     var progressCallback = (long length, long totalRead, long speed) =>
                     {
-                        lock(progressLock)
+                        lock (progressLock)
                         {
                             lastVideoLength = length;
                             lastVideoRead = totalRead;
@@ -365,7 +366,7 @@ namespace Grayjay.ClientServer.Models.Downloads
 
                             var totalLength = lastVideoLength + lastAudioLength;
                             var total = lastVideoRead + lastAudioRead;
-                            if(totalLength > 0)
+                            if (totalLength > 0)
                             {
                                 var percentage = (total / (double)totalLength);
                                 onProgress?.Invoke(percentage);
@@ -393,7 +394,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                         switch (VideoSource.Container)
                         {
                             case "application/vnd.apple.mpegurl":
-                                DownloadHLSSource("Video", client, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
+                                await DownloadHLSSource("Video", client, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
                                 break;
                             default:
                                 if (!(VideoSource is VideoUrlSource))
@@ -405,7 +406,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                     DownloadSpeedVideo = 0;
                 }));
             }
-            if(AudioSourceToUse != null)
+            if (AudioSourceToUse != null)
             {
                 Logger.i(nameof(VideoDownload), "Started downloading audio");
                 downloadTasks.Add(StateApp.ThreadPoolDownload.Run(async () =>
@@ -464,7 +465,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                     DownloadSpeedAudio = 0;
                 }));
             }
-            if(SubtitleSourcetoUse != null)
+            if (SubtitleSourcetoUse != null)
             {
                 downloadTasks.Add(StateApp.ThreadPoolDownload.RunAsync(() =>
                 {
@@ -493,7 +494,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                     await task;
                 wasSuccesful = true;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Error = ex.Message;
                 ChangeState(DownloadState.ERROR);
@@ -502,11 +503,11 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
             finally
             {
-                if(!wasSuccesful)
+                if (!wasSuccesful)
                 {
                     try
                     {
-                        if(VideoFilePath != null)
+                        if (VideoFilePath != null)
                         {
                             if (File.Exists(VideoFilePath) && new FileInfo(VideoFilePath).Length > 0)
                             {
@@ -514,7 +515,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                                 File.Delete(VideoFilePath);
                             }
                         }
-                        if(AudioFilePath != null)
+                        if (AudioFilePath != null)
                         {
                             if (File.Exists(AudioFilePath) && new FileInfo(AudioFilePath).Length > 0)
                             {
@@ -523,7 +524,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                             }
                         }
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         Logger.e(nameof(VideoDownload), $"Failed to delete files after failure:\n{ex.Message}", ex);
                     }
@@ -567,6 +568,105 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
 
         }
+
+        private static bool RemuxWithFfmpegInPlace(string inputPath)
+        {
+            var inputFile = new FileInfo(inputPath);
+            if (!inputFile.Exists)
+            {
+                Logger.w(nameof(VideoDownload), $"RemuxWithFfmpegInPlace: input does not exist: {inputPath}");
+                return false;
+            }
+
+            var parent = inputFile.Directory;
+            if (parent == null)
+            {
+                Logger.w(nameof(VideoDownload), $"RemuxWithFfmpegInPlace: input has no parent: {inputPath}");
+                return false;
+            }
+
+            var tmpPath = Path.Combine(parent.FullName, Path.GetFileNameWithoutExtension(inputFile.Name) + "_fixed" + inputFile.Extension);
+            var args = new[]
+            {
+                "-y", "-i", inputFile.FullName, "-c", "copy", "-movflags", "+faststart", tmpPath
+            };
+
+            var cmdForLog = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+            Logger.i(nameof(VideoDownload), $"FFmpeg remux command: {cmdForLog}");
+
+            var rc = FFMPEG.ExecuteSafe(args, true);
+            if (rc == 0)
+            {
+                try
+                {
+                    var tmpFile = new FileInfo(tmpPath);
+                    var newLen = tmpFile.Exists ? tmpFile.Length : 0;
+
+                    try
+                    {
+                        if (inputFile.Exists)
+                            inputFile.Delete();
+                    }
+                    catch (Exception exDel)
+                    {
+                        Logger.w(nameof(VideoDownload), $"RemuxWithFfmpegInPlace: failed to delete original: {inputFile.FullName}", exDel);
+                    }
+
+                    try
+                    {
+                        if (File.Exists(inputFile.FullName))
+                            File.Delete(inputFile.FullName);
+
+                        File.Move(tmpFile.FullName, inputFile.FullName);
+                    }
+                    catch (Exception exMove)
+                    {
+                        Logger.w(nameof(VideoDownload), $"RemuxWithFfmpegInPlace: failed to move tmp: {tmpFile.FullName}", exMove);
+
+                        try
+                        {
+                            if (File.Exists(tmpPath))
+                                File.Delete(tmpPath);
+                        }
+                        catch { }
+
+                        return false;
+                    }
+
+                    Logger.i(nameof(VideoDownload), $"RemuxWithFfmpegInPlace: success for {inputPath} (size={newLen} bytes)");
+                    try
+                    {
+                        if (File.Exists(tmpPath))
+                            File.Delete(tmpPath);
+                    }
+                    catch { }
+
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Logger.e(nameof(VideoDownload), $"RemuxWithFfmpegInPlace: unexpected error for {inputPath}: {ex.Message}", ex);
+                    try
+                    {
+                        if (File.Exists(tmpPath))
+                            File.Delete(tmpPath);
+                    }
+                    catch { }
+                    return false;
+                }
+            }
+            else
+            {
+                Logger.e(nameof(VideoDownload), $"FFmpeg remux failed for {inputPath}. rc={rc}");try
+                {
+                    if (File.Exists(tmpPath))
+                        File.Delete(tmpPath);
+                }
+                catch { }
+                return false;
+            }
+        }
+        
         private long DownloadSourceSequential(ManagedHttpClient client, Stream fileStream, string url, Action<long, long, long> onProgress)
         {
             DateTime lastProgressNotify = DateTime.Now;
@@ -632,13 +732,13 @@ namespace Grayjay.ClientServer.Models.Downloads
             long totalRead = 0;
 
             //TODO: Full thread pool
-            while(totalRead < sourceLength)
+            while (totalRead < sourceLength)
             {
                 reqCount++;
 
                 Logger.i(nameof(VideoDownload), $"Download {Video.Name} Batch #{reqCount} [{concurrency}] ({lastSpeed.ToHumanBytesSpeed()})");
                 var byteRangeResults = await RequestByteRangeParallel(client, url, sourceLength, concurrency, totalRead, rangeSize, 1024 * 512, cancel);
-                foreach(var byteRange in byteRangeResults)
+                foreach (var byteRange in byteRangeResults)
                 {
                     var read = ((byteRange.end - byteRange.start) + 1);
 
@@ -647,7 +747,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                     readSinceLastSpeedTest += read;
                 }
 
-                if(DateTime.Now.Subtract(lastProgressNotify).TotalMilliseconds > progressNotifyInterval)
+                if (DateTime.Now.Subtract(lastProgressNotify).TotalMilliseconds > progressNotifyInterval)
                 {
                     var lastSpeedTime = timeSinceLastSpeedTest;
                     timeSinceLastSpeedTest = DateTime.Now;
@@ -670,7 +770,7 @@ namespace Grayjay.ClientServer.Models.Downloads
         {
             List<Task<(byte[] data, long start, long end)>> tasks = new List<Task<(byte[] data, long start, long end)>>();
             var readPosition = rangePosition;
-            for(int i = 0; i < concurrency; i++)
+            for (int i = 0; i < concurrency; i++)
             {
                 if (readPosition >= totalLength - 1)
                     continue;
@@ -764,7 +864,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                     long read = 0;
                     var speedmeter = new SpeedMonitor(TimeSpan.FromSeconds(5));
                     int preRead = 0;
-                    if(rep?.InitializationUrl != null)
+                    if (rep?.InitializationUrl != null)
                     {
                         int segRead = 0;
                         if (executor != null)
@@ -780,7 +880,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                         onProgress?.Invoke(rep.Segments.Count * (read), read, speedmeter.GetCurrentSpeed());
                         preRead += segRead;
                     }
-                    for(int i = 0; i < rep.Segments.Count; i++)
+                    for (int i = 0; i < rep.Segments.Count; i++)
                     {
                         var segment = rep.Segments[i];
                         int segRead = 0;
@@ -811,64 +911,242 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
 
         }
-
+        
         private async Task<long> DownloadHLSSource(string name, ManagedHttpClient client, string hlsUrl, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default)
         {
+            static byte[] DownloadBytes(ManagedHttpClient httpClient, string url, long? rangeStart, long? rangeLength)
+            {
+                var headers = new Dictionary<string, string>();
+
+                if (rangeStart.HasValue)
+                {
+                    if (rangeLength.HasValue && rangeLength.Value > 0)
+                    {
+                        long end = rangeStart.Value + rangeLength.Value - 1;
+                        headers["Range"] = $"bytes={rangeStart.Value}-{end}";
+                    }
+                    else
+                    {
+                        headers["Range"] = $"bytes={rangeStart.Value}-";
+                    }
+                }
+
+                var resp = httpClient.GET(url, headers);
+                if (!resp.IsOk)
+                    throw new InvalidDataException($"Failed to download HLS resource ({url}): HTTP {resp.Code}");
+
+                return resp.Body.AsBytes();
+            }
+
+            static byte[] HexToBytes(string hex)
+            {
+                if (string.IsNullOrWhiteSpace(hex))
+                    throw new ArgumentException("Hex string is null or empty.", nameof(hex));
+
+                if ((hex.Length & 1) != 0)
+                    throw new ArgumentException("Hex string must have an even length.", nameof(hex));
+
+                var bytes = new byte[hex.Length / 2];
+                for (int i = 0; i < bytes.Length; i++)
+                    bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+
+                return bytes;
+            }
+
+            static byte[] BuildSequenceIv(long sequenceNumber)
+            {
+                var iv = new byte[16];
+                for (int i = 0; i < 8; i++)
+                {
+                    iv[15 - i] = (byte)(sequenceNumber & 0xFF);
+                    sequenceNumber >>= 8;
+                }
+                return iv;
+            }
+
+            static byte[] DecryptAes128Cbc(byte[] data, byte[] key, byte[] iv)
+            {
+                using (var aes = Aes.Create())
+                {
+                    if (aes == null)
+                        throw new CryptographicException("Unable to create AES algorithm instance.");
+
+                    aes.KeySize = 128;
+                    aes.BlockSize = 128;
+                    aes.Mode = CipherMode.CBC;
+                    aes.Padding = PaddingMode.PKCS7;
+                    aes.Key = key;
+                    aes.IV = iv;
+
+                    using (var decryptor = aes.CreateDecryptor())
+                    {
+                        return decryptor.TransformFinalBlock(data, 0, data.Length);
+                    }
+                }
+            }
+
             long downloadedTotalLength = 0;
+            var response = client.GET(hlsUrl, new Dictionary<string, string>());
+            if (!response.IsOk)
+                throw new InvalidDataException("Failed to get variant playlist: " + response.Code.ToString());
+
+            string vpContent = response.Body?.AsString() ?? throw new InvalidDataException("Variant playlist content is empty");
+            var variantPlaylist = HLS.ParseVariantPlaylist(vpContent, hlsUrl);
+            var decryption = variantPlaylist.Decryption;
+            bool useDecryption = decryption != null && decryption.IsEncrypted;
+            byte[]? keyBytes = null;
+            byte[]? staticIvBytes = null;
+
+            if (useDecryption)
+            {
+                if (!string.Equals(decryption!.Method, "AES-128", StringComparison.OrdinalIgnoreCase))
+                    throw new NotSupportedException($"HLS decryption method '{decryption.Method}' is not supported.");
+
+                if (string.IsNullOrEmpty(decryption.KeyUrl))
+                    throw new InvalidDataException("Encrypted HLS playlist without key URI is not supported.");
+
+                var keyResp = client.GET(decryption.KeyUrl, new Dictionary<string, string>());
+                if (!keyResp.IsOk)
+                    throw new InvalidDataException("Failed to download AES-128 key: " + keyResp.Code);
+
+                keyBytes = keyResp.Body.AsBytes();
+
+                if (!string.IsNullOrEmpty(decryption.IV))
+                    staticIvBytes = HexToBytes(decryption.IV);
+            }
+
+            long mediaSequence = variantPlaylist.MediaSequence ?? 0;
+
+            SpeedMonitor speedMeter = new SpeedMonitor();
+            using FileStream outStr = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+
+            var rangeOffsets = new Dictionary<string, long>(StringComparer.Ordinal);
+            if (!string.IsNullOrEmpty(variantPlaylist.MapUrl))
+            {
+                cancel.ThrowIfCancellationRequested();
+
+                Logger.i(nameof(VideoDownload), "Downloading HLS initialization map");
+
+                long? mapRangeStart = null;
+                long? mapRangeLength = null;
+
+                if (variantPlaylist.MapBytesLength > 0)
+                {
+                    mapRangeLength = variantPlaylist.MapBytesLength;
+
+                    if (variantPlaylist.MapBytesStart >= 0)
+                    {
+                        mapRangeStart = variantPlaylist.MapBytesStart;
+                        rangeOffsets[variantPlaylist.MapUrl] =
+                            variantPlaylist.MapBytesStart + variantPlaylist.MapBytesLength;
+                    }
+                    else
+                    {
+                        long offset = 0;
+                        rangeOffsets.TryGetValue(variantPlaylist.MapUrl, out offset);
+                        mapRangeStart = offset;
+                        rangeOffsets[variantPlaylist.MapUrl] = offset + variantPlaylist.MapBytesLength;
+                    }
+                }
+
+                byte[] mapBytes = DownloadBytes(client, variantPlaylist.MapUrl, mapRangeStart, mapRangeLength);
+
+                if (useDecryption)
+                {
+                    if (keyBytes == null)
+                        throw new InvalidDataException("Decryption key bytes are missing.");
+
+                    if (staticIvBytes == null)
+                        throw new NotSupportedException("Encrypted EXT-X-MAP without explicit IV is not supported.");
+
+                    mapBytes = DecryptAes128Cbc(mapBytes, keyBytes, staticIvBytes);
+                }
+
+                if (mapBytes.LongLength > int.MaxValue)
+                    throw new InvalidDataException("HLS MAP segment too large to handle.");
+
+                await outStr.WriteAsync(mapBytes, 0, mapBytes.Length, cancel);
+                downloadedTotalLength += mapBytes.Length;
+            }
+
+            int totalSegments = variantPlaylist.Segments.Count;
+            int mediaSegmentIndex = 0;
+            for (int i = 0; i < variantPlaylist.Segments.Count; i++)
+            {
+                cancel.ThrowIfCancellationRequested();
+
+                if (!(variantPlaylist.Segments[i] is HLS.MediaSegment seg))
+                    continue;
+
+                Logger.i(nameof(VideoDownload), $"Download {Video.Name} segment {i} sequential");
+
+                long? rangeStart = null;
+                long? rangeLength = null;
+
+                if (seg.BytesLength > 0)
+                {
+                    rangeLength = seg.BytesLength;
+
+                    if (seg.BytesStart >= 0)
+                    {
+                        rangeStart = seg.BytesStart;
+                        rangeOffsets[seg.Uri] = seg.BytesStart + seg.BytesLength;
+                    }
+                    else
+                    {
+                        long offset = 0;
+                        rangeOffsets.TryGetValue(seg.Uri, out offset);
+                        rangeStart = offset;
+                        rangeOffsets[seg.Uri] = offset + seg.BytesLength;
+                    }
+                }
+
+                byte[] segmentBytes = DownloadBytes(client, seg.Uri, rangeStart, rangeLength);
+                if (useDecryption)
+                {
+                    if (keyBytes == null)
+                        throw new InvalidDataException("Decryption key bytes are missing.");
+
+                    byte[] ivBytes;
+                    if (staticIvBytes != null)
+                    {
+                        ivBytes = staticIvBytes;
+                    }
+                    else
+                    {
+                        long sequenceNumber = mediaSequence + mediaSegmentIndex;
+                        ivBytes = BuildSequenceIv(sequenceNumber);
+                    }
+
+                    segmentBytes = DecryptAes128Cbc(segmentBytes, keyBytes, ivBytes);
+                }
+
+                var segmentLength = segmentBytes.LongLength;
+
+                if (segmentLength > int.MaxValue)
+                    throw new InvalidDataException("HLS media segment too large to handle.");
+
+                var avgLen = (i == 0) ? segmentLength : (i > 0 ? downloadedTotalLength / i : segmentLength);
+                var expectedTotal = avgLen * (totalSegments - 1) + segmentLength;
+
+                await outStr.WriteAsync(segmentBytes, 0, (int)segmentLength, cancel);
+                downloadedTotalLength += segmentLength;
+
+                speedMeter.Activity(downloadedTotalLength);
+                onProgress(expectedTotal, downloadedTotalLength, speedMeter.GetCurrentSpeed());
+                mediaSegmentIndex++;
+            }
 
             try
             {
-                var response = client.GET(hlsUrl, new Dictionary<string, string>());
-                if (!response.IsOk)
-                    throw new InvalidDataException("Failed to get variant playlist: " + response.Code.ToString());
-
-                string vpContent = response.Body?.AsString() ?? throw new InvalidDataException("Variant playlist content is empty");
-
-                var variantPlaylist = HLS.ParseVariantPlaylist(vpContent, hlsUrl);
-                SpeedMonitor speedMeter = new SpeedMonitor();
-                using FileStream outStr = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-                        
-                if (!string.IsNullOrEmpty(variantPlaylist.MapUrl))
-                {
-                    Logger.i(nameof(VideoDownload), "Downloading HLS initialization map");
-
-                    var mapResp = client.GET(variantPlaylist.MapUrl, new Dictionary<string, string>());
-                    if (!mapResp.IsOk)
-                        throw new InvalidDataException("Failed to download map: " + mapResp.Code);
-
-                    var mapBytes = mapResp.Body.AsBytes();
-                    await outStr.WriteAsync(mapBytes, 0, mapBytes.Length, cancel);
-                    downloadedTotalLength += mapBytes.Length;
-
-                }
-
-                for(int i = 0; i < variantPlaylist.Segments.Count; i++)
-                {
-                    if (!(variantPlaylist.Segments[i] is HLS.MediaSegment seg))
-                        continue;
-
-                    Logger.i(nameof(VideoDownload), $"Download {Video.Name} segment {i} sequential");
-                    long segmentLength = DownloadSourceSequential(client, outStr, seg.Uri, (long segLen, long totalRead, long lastSpeed) =>
-                    {
-                        var avgLen = (i == 0) ? segLen : downloadedTotalLength / i;
-                        var expectedTotal = avgLen * (variantPlaylist.Segments.Count - 1) + segLen;
-
-                        speedMeter.Activity(totalRead);
-                        onProgress(expectedTotal,
-                                downloadedTotalLength + totalRead,
-                                speedMeter.GetCurrentSpeed());
-                    });
-
-                    downloadedTotalLength += segmentLength;
-
-                }
-                Logger.i(nameof(VideoDownload), $"Finished HLS Source for {Video.Name}");
+                RemuxWithFfmpegInPlace(targetFile);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                //TODO: Filter errors like not enough space
-                throw;
+                Logger.w(nameof(VideoDownload), $"RemuxWithFfmpegInPlace failed for {targetFile}: {ex.Message}", ex);
             }
+
+            Logger.i(nameof(VideoDownload), $"Finished HLS Source for {Video.Name}");
             return downloadedTotalLength;
         }
         #endregion
@@ -876,7 +1154,7 @@ namespace Grayjay.ClientServer.Models.Downloads
         public void Validate()
         {
             Logger.i(nameof(VideoDownload), $"VideoDownload Validate [{Video.Name}]");
-            if(VideoSource != null)
+            if (VideoSource != null)
             {
                 if (VideoFilePath == null)
                     throw new InvalidDataException("Missing video file name after download");
@@ -887,7 +1165,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                     if (expectedFile.Length != VideoFileSize)
                         throw new InvalidDataException($"Expected size [{VideoFileSize}], but found {expectedFile.Length}");
             }
-            if(AudioSource != null)
+            if (AudioSource != null)
             {
                 if (AudioFilePath == null)
                     throw new InvalidDataException("Missing audio file name after download");
@@ -898,7 +1176,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                     if (expectedFile.Length != AudioFileSize)
                         throw new InvalidDataException($"Expected size [{AudioFileSize}], but found {expectedFile.Length}");
             }
-            if(SubtitleSource != null)
+            if (SubtitleSource != null)
             {
                 if (SubtitleFilePath == null)
                     throw new InvalidDataException("Missing subtitle file name after download");
@@ -923,22 +1201,22 @@ namespace Grayjay.ClientServer.Models.Downloads
             //TODO: Save stream metadata video?
             //TODO: Save stream metadata audio?
 
-            if(existing != null)
+            if (existing != null)
             {
                 existing.VideoDetails = VideoDetails;
-                if(localVideoSource != null)
+                if (localVideoSource != null)
                 {
                     var newVideos = new List<LocalVideoSource>(existing.VideoSources);
                     newVideos.Add(localVideoSource);
                     existing.VideoSources = newVideos;
                 }
-                if(localAudioSource != null)
+                if (localAudioSource != null)
                 {
                     var newAudios = new List<LocalAudioSource>(existing.AudioSources);
                     newAudios.Add(localAudioSource);
                     existing.AudioSources = newAudios;
                 }
-                if(localSubtitleSource != null)
+                if (localSubtitleSource != null)
                 {
                     var newSubtitles = new List<LocalSubtitleSource>(existing.SubtitleSources);
                     newSubtitles.Add(localSubtitleSource);
@@ -949,7 +1227,7 @@ namespace Grayjay.ClientServer.Models.Downloads
             else
             {
                 var newVideo = new VideoLocal(VideoDetails);
-                if(localVideoSource != null)
+                if (localVideoSource != null)
                     newVideo.VideoSources.Add(localVideoSource);
                 if (localAudioSource != null)
                     newVideo.AudioSources.Add(localAudioSource);
