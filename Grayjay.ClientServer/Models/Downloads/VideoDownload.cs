@@ -1052,138 +1052,147 @@ namespace Grayjay.ClientServer.Models.Downloads
 
             SpeedMonitor speedMeter = new SpeedMonitor();
             List<FileInfo> segmentFiles = new List<FileInfo>(variantPlaylist.Segments.Count);
-            var rangeOffsets = new Dictionary<string, long>(StringComparer.Ordinal);
-            if (!string.IsNullOrEmpty(variantPlaylist.MapUrl))
+            try
             {
-                cancel.ThrowIfCancellationRequested();
-
-                Logger.i(nameof(VideoDownload), "Downloading HLS initialization map");
-
-                long? mapRangeStart = null;
-                long? mapRangeLength = null;
-
-                if (variantPlaylist.MapBytesLength > 0)
+                var rangeOffsets = new Dictionary<string, long>(StringComparer.Ordinal);
+                if (!string.IsNullOrEmpty(variantPlaylist.MapUrl))
                 {
-                    mapRangeLength = variantPlaylist.MapBytesLength;
+                    cancel.ThrowIfCancellationRequested();
 
-                    if (variantPlaylist.MapBytesStart >= 0)
+                    Logger.i(nameof(VideoDownload), "Downloading HLS initialization map");
+
+                    long? mapRangeStart = null;
+                    long? mapRangeLength = null;
+
+                    if (variantPlaylist.MapBytesLength > 0)
                     {
-                        mapRangeStart = variantPlaylist.MapBytesStart;
-                        rangeOffsets[variantPlaylist.MapUrl] =
-                            variantPlaylist.MapBytesStart + variantPlaylist.MapBytesLength;
+                        mapRangeLength = variantPlaylist.MapBytesLength;
+
+                        if (variantPlaylist.MapBytesStart >= 0)
+                        {
+                            mapRangeStart = variantPlaylist.MapBytesStart;
+                            rangeOffsets[variantPlaylist.MapUrl] =
+                                variantPlaylist.MapBytesStart + variantPlaylist.MapBytesLength;
+                        }
+                        else
+                        {
+                            long offset = 0;
+                            rangeOffsets.TryGetValue(variantPlaylist.MapUrl, out offset);
+                            mapRangeStart = offset;
+                            rangeOffsets[variantPlaylist.MapUrl] = offset + variantPlaylist.MapBytesLength;
+                        }
                     }
-                    else
+
+                    byte[] mapBytes = DownloadBytes(client, variantPlaylist.MapUrl, mapRangeStart, mapRangeLength);
+
+                    if (useDecryption)
                     {
-                        long offset = 0;
-                        rangeOffsets.TryGetValue(variantPlaylist.MapUrl, out offset);
-                        mapRangeStart = offset;
-                        rangeOffsets[variantPlaylist.MapUrl] = offset + variantPlaylist.MapBytesLength;
+                        if (keyBytes == null)
+                            throw new InvalidDataException("Decryption key bytes are missing.");
+
+                        if (staticIvBytes == null)
+                            throw new NotSupportedException("Encrypted EXT-X-MAP without explicit IV is not supported.");
+
+                        mapBytes = DecryptAes128Cbc(mapBytes, keyBytes, staticIvBytes);
                     }
+
+                    if (mapBytes.LongLength > int.MaxValue)
+                        throw new InvalidDataException("HLS MAP segment too large to handle.");
+
+                    FileInfo segmentFile = StateApp.GetTemporaryFile(null, "segment-");
+                    using (FileStream str = new FileStream(segmentFile.FullName, FileMode.Create, FileAccess.Write, FileShare.Delete))
+                        await str.WriteAsync(mapBytes, 0, mapBytes.Length);
+                    segmentFiles.Add(segmentFile);
+
+                    downloadedTotalLength += mapBytes.Length;
                 }
 
-                byte[] mapBytes = DownloadBytes(client, variantPlaylist.MapUrl, mapRangeStart, mapRangeLength);
-
-                if (useDecryption)
+                int totalSegments = variantPlaylist.Segments.Count;
+                int mediaSegmentIndex = 0;
+                for (int i = 0; i < variantPlaylist.Segments.Count; i++)
                 {
-                    if (keyBytes == null)
-                        throw new InvalidDataException("Decryption key bytes are missing.");
+                    cancel.ThrowIfCancellationRequested();
 
-                    if (staticIvBytes == null)
-                        throw new NotSupportedException("Encrypted EXT-X-MAP without explicit IV is not supported.");
+                    if (!(variantPlaylist.Segments[i] is HLS.MediaSegment seg))
+                        continue;
 
-                    mapBytes = DecryptAes128Cbc(mapBytes, keyBytes, staticIvBytes);
+                    Logger.i(nameof(VideoDownload), $"Download {Video.Name} segment {i} sequential");
+
+                    long? rangeStart = null;
+                    long? rangeLength = null;
+
+                    if (seg.BytesLength > 0)
+                    {
+                        rangeLength = seg.BytesLength;
+
+                        if (seg.BytesStart >= 0)
+                        {
+                            rangeStart = seg.BytesStart;
+                            rangeOffsets[seg.Uri] = seg.BytesStart + seg.BytesLength;
+                        }
+                        else
+                        {
+                            long offset = 0;
+                            rangeOffsets.TryGetValue(seg.Uri, out offset);
+                            rangeStart = offset;
+                            rangeOffsets[seg.Uri] = offset + seg.BytesLength;
+                        }
+                    }
+
+                    byte[] segmentBytes = DownloadBytes(client, seg.Uri, rangeStart, rangeLength);
+                    if (useDecryption)
+                    {
+                        if (keyBytes == null)
+                            throw new InvalidDataException("Decryption key bytes are missing.");
+
+                        byte[] ivBytes;
+                        if (staticIvBytes != null)
+                        {
+                            ivBytes = staticIvBytes;
+                        }
+                        else
+                        {
+                            long sequenceNumber = mediaSequence + mediaSegmentIndex;
+                            ivBytes = BuildSequenceIv(sequenceNumber);
+                        }
+
+                        segmentBytes = DecryptAes128Cbc(segmentBytes, keyBytes, ivBytes);
+                    }
+
+                    var segmentLength = segmentBytes.LongLength;
+
+                    if (segmentLength > int.MaxValue)
+                        throw new InvalidDataException("HLS media segment too large to handle.");
+
+                    var avgLen = (i == 0) ? segmentLength : (i > 0 ? downloadedTotalLength / i : segmentLength);
+                    var expectedTotal = avgLen * (totalSegments - 1) + segmentLength;
+
+                    Logger.i(nameof(VideoDownload), $"Download {Video.Name} segment {i} sequential");
+                    FileInfo segmentFile = StateApp.GetTemporaryFile(null, "segment-");
+                    using (FileStream str = new FileStream(segmentFile.FullName, FileMode.Create, FileAccess.Write, FileShare.Delete))
+                        await str.WriteAsync(segmentBytes, 0, (int)segmentLength);
+                    segmentFiles.Add(segmentFile);
+
+                    downloadedTotalLength += segmentLength;
+
+                    speedMeter.Activity(downloadedTotalLength);
+                    onProgress(expectedTotal, downloadedTotalLength, speedMeter.GetCurrentSpeed());
+                    mediaSegmentIndex++;
                 }
 
-                if (mapBytes.LongLength > int.MaxValue)
-                    throw new InvalidDataException("HLS MAP segment too large to handle.");
+                Logger.i(nameof(VideoDownload), "Combining segments");
+                CombineHLSSegments(segmentFiles, targetFile);
+                if (!File.Exists(targetFile))
+                    throw new InvalidDataException("No file found after ffmpeg");
 
-                FileInfo segmentFile = StateApp.GetTemporaryFile(null, "segment-");
-                using (FileStream str = new FileStream(segmentFile.FullName, FileMode.Create, FileAccess.Write, FileShare.Delete))
-                    await str.WriteAsync(mapBytes, 0, mapBytes.Length);
-                segmentFiles.Add(segmentFile);
-
-                downloadedTotalLength += mapBytes.Length;
+                Logger.i(nameof(VideoDownload), $"Finished HLS Source for {Video.Name}");
+            }
+            finally
+            {
+                foreach (var seg in segmentFiles)
+                    seg.Delete();
             }
 
-            int totalSegments = variantPlaylist.Segments.Count;
-            int mediaSegmentIndex = 0;
-            for (int i = 0; i < variantPlaylist.Segments.Count; i++)
-            {
-                cancel.ThrowIfCancellationRequested();
-
-                if (!(variantPlaylist.Segments[i] is HLS.MediaSegment seg))
-                    continue;
-
-                Logger.i(nameof(VideoDownload), $"Download {Video.Name} segment {i} sequential");
-
-                long? rangeStart = null;
-                long? rangeLength = null;
-
-                if (seg.BytesLength > 0)
-                {
-                    rangeLength = seg.BytesLength;
-
-                    if (seg.BytesStart >= 0)
-                    {
-                        rangeStart = seg.BytesStart;
-                        rangeOffsets[seg.Uri] = seg.BytesStart + seg.BytesLength;
-                    }
-                    else
-                    {
-                        long offset = 0;
-                        rangeOffsets.TryGetValue(seg.Uri, out offset);
-                        rangeStart = offset;
-                        rangeOffsets[seg.Uri] = offset + seg.BytesLength;
-                    }
-                }
-
-                byte[] segmentBytes = DownloadBytes(client, seg.Uri, rangeStart, rangeLength);
-                if (useDecryption)
-                {
-                    if (keyBytes == null)
-                        throw new InvalidDataException("Decryption key bytes are missing.");
-
-                    byte[] ivBytes;
-                    if (staticIvBytes != null)
-                    {
-                        ivBytes = staticIvBytes;
-                    }
-                    else
-                    {
-                        long sequenceNumber = mediaSequence + mediaSegmentIndex;
-                        ivBytes = BuildSequenceIv(sequenceNumber);
-                    }
-
-                    segmentBytes = DecryptAes128Cbc(segmentBytes, keyBytes, ivBytes);
-                }
-
-                var segmentLength = segmentBytes.LongLength;
-
-                if (segmentLength > int.MaxValue)
-                    throw new InvalidDataException("HLS media segment too large to handle.");
-
-                var avgLen = (i == 0) ? segmentLength : (i > 0 ? downloadedTotalLength / i : segmentLength);
-                var expectedTotal = avgLen * (totalSegments - 1) + segmentLength;
-
-                Logger.i(nameof(VideoDownload), $"Download {Video.Name} segment {i} sequential");
-                FileInfo segmentFile = StateApp.GetTemporaryFile(null, "segment-");
-                using (FileStream str = new FileStream(segmentFile.FullName, FileMode.Create, FileAccess.Write, FileShare.Delete))
-                    await str.WriteAsync(segmentBytes, 0, (int)segmentLength);
-                segmentFiles.Add(segmentFile);
-
-                downloadedTotalLength += segmentLength;
-
-                speedMeter.Activity(downloadedTotalLength);
-                onProgress(expectedTotal, downloadedTotalLength, speedMeter.GetCurrentSpeed());
-                mediaSegmentIndex++;
-            }
-
-            Logger.i(nameof(VideoDownload), "Combining segments");
-            CombineHLSSegments(segmentFiles, targetFile);
-            if (!File.Exists(targetFile))
-                throw new InvalidDataException("No file found after ffmpeg");
-
-            Logger.i(nameof(VideoDownload), $"Finished HLS Source for {Video.Name}");
             return downloadedTotalLength;
         }
         #endregion
