@@ -11,6 +11,7 @@ using Grayjay.Engine.Models.Detail;
 using Grayjay.Engine.Models.Feed;
 using Grayjay.Engine.Models.Subtitles;
 using Grayjay.Engine.Models.Video;
+using Grayjay.Engine.Models.Video.Additions;
 using Grayjay.Engine.Models.Video.Sources;
 using Grayjay.Engine.Web;
 using Microsoft.ClearScript;
@@ -125,9 +126,9 @@ namespace Grayjay.ClientServer.Models.Downloads
             SubtitleName = subtitleSource?.Name;
 
             VideoSourceRequiresLive = (videoSource is DashManifestRawSource dashManifestRawSource && dashManifestRawSource.HasGenerate) ||
-                (videoSource is JSSource videoJSSource && videoJSSource.HasRequestExecutor);
+                (videoSource is JSSource videoJSSource && (videoJSSource.HasRequestExecutor || videoJSSource.HasRequestModifier));
             AudioSourceRequiresLive = (audioSource is DashManifestRawAudioSource dashManifestRawAudioSource && dashManifestRawAudioSource.HasGenerate) ||
-                (audioSource is JSSource audioJSSource && audioJSSource.HasRequestExecutor);
+                (audioSource is JSSource audioJSSource && (audioJSSource.HasRequestExecutor || audioJSSource.HasRequestModifier));
             SubtitleSourceRequiresLive = subtitleSource?.HasFetch ?? false;
 
             RequireVideoSource = videoSource != null;
@@ -394,12 +395,12 @@ namespace Grayjay.ClientServer.Models.Downloads
                         switch (VideoSource.Container)
                         {
                             case "application/vnd.apple.mpegurl":
-                                await DownloadHLSSource("Video", client, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
+                                await DownloadHLSSource("Video", client, (VideoSourceToUse is JSSource jssv) ? jssv : null, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
                                 break;
                             default:
                                 if (!(VideoSource is VideoUrlSource))
                                     throw new NotImplementedException("Only support video urls for download");
-                                await DownloadSourceFile("Video", client, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
+                                await DownloadSourceFile("Video", client, (VideoSourceToUse is JSSource jssv2) ? jssv2 : null, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
                                 break;
                         }
                     }
@@ -450,15 +451,15 @@ namespace Grayjay.ClientServer.Models.Downloads
                         switch (AudioSourceToUse.Container)
                         {
                             case "application/vnd.apple.mpegurl":
-                                if (VideoSource is HLSVariantAudioUrlSource)
-                                    DownloadHLSSource("Audio", client, ((AudioUrlSource)VideoSource).Url, AudioFilePath, progressCallback);
+                                if (AudioSourceToUse is HLSVariantAudioUrlSource)
+                                    await DownloadHLSSource("Audio", client, (AudioSourceToUse is JSSource jssv) ? jssv : null, ((AudioUrlSource)AudioSourceToUse).Url, AudioFilePath, progressCallback);
                                 else
                                     throw new NotImplementedException();
                                 break;
                             default:
-                                if (!(AudioSource is AudioUrlSource))
+                                if (!(AudioSourceToUse is AudioUrlSource))
                                     throw new NotImplementedException("Only support audio urls for download");
-                                await DownloadSourceFile("Audio", client, ((AudioUrlSource)AudioSource).Url, AudioFilePath, progressCallback);
+                                await DownloadSourceFile("Audio", client, (AudioSourceToUse is JSSource jssa) ? jssa : null, ((AudioUrlSource)AudioSourceToUse).Url, AudioFilePath, progressCallback);
                                 break;
                         }
                     }
@@ -534,7 +535,7 @@ namespace Grayjay.ClientServer.Models.Downloads
         }
         #region Download Deps
 
-        private async Task DownloadSourceFile(string name, ManagedHttpClient client, string url, string targetFile, Action<long, long, long> onProgress, bool allowByteRangeDownload = true, CancellationToken cancel = default)
+        private async Task DownloadSourceFile(string name, ManagedHttpClient client, JSSource source, string url, string targetFile, Action<long, long, long> onProgress, bool allowByteRangeDownload = true, CancellationToken cancel = default)
         {
             if (File.Exists(targetFile))
                 File.Delete(targetFile);
@@ -542,6 +543,8 @@ namespace Grayjay.ClientServer.Models.Downloads
             long sourceLength = 0;
             try
             {
+                var modifier = (source != null && source is JSSource) ? source.GetRequestModifier() : null;
+
                 using (FileStream stream = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
                 {
                     var head = client.TryHead(url);
@@ -551,12 +554,12 @@ namespace Grayjay.ClientServer.Models.Downloads
                         Logger.i(nameof(VideoDownload), $"Download {Video.Name} ByteRange Parallel ({concurrency})");
                         sourceLength = long.Parse(head.Headers["content-length"]);
                         onProgress?.Invoke(sourceLength, 0, 0);
-                        await DownloadSourceRanges(client, stream, url, sourceLength, 1024 * 512, concurrency, onProgress);
+                        await DownloadSourceRanges(client, modifier, stream, url, sourceLength, 1024 * 512, concurrency, onProgress);
                     }
                     else
                     {
                         Logger.i(nameof(VideoDownload), $"Download {Video.Name} Sequentially");
-                        sourceLength = DownloadSourceSequential(client, stream, url, onProgress);
+                        sourceLength = DownloadSourceSequential(client, modifier, stream, url, onProgress);
                     }
                 }
             }
@@ -667,7 +670,7 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
         }
         
-        private long DownloadSourceSequential(ManagedHttpClient client, Stream fileStream, string url, Action<long, long, long> onProgress)
+        private long DownloadSourceSequential(ManagedHttpClient client, IRequestModifier? modifier, Stream fileStream, string url, Action<long, long, long> onProgress)
         {
             DateTime lastProgressNotify = DateTime.Now;
             int progressNotifyInterval = 500;
@@ -676,7 +679,9 @@ namespace Grayjay.ClientServer.Models.Downloads
 
             long lastSpeed = 0;
 
-            var result = client.GET(url, new Dictionary<string, string>());
+            var modified = modifier?.ModifyRequest(url, new Dictionary<string, string>());
+
+            var result = client.GET(modified?.Url ?? url, modified?.Headers ?? new Dictionary<string, string>());
             if (!result.IsOk)
                 throw new InvalidDataException($"Failed to download source. Web[{result.Code}] Error");
             if (result.Body == null)
@@ -716,7 +721,7 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
             return sourceLength;
         }
-        private async Task DownloadSourceRanges(ManagedHttpClient client, Stream fileStream, string url, long sourceLength, int rangeSize, int concurrency, Action<long, long, long> onProgress, CancellationToken cancel = default)
+        private async Task DownloadSourceRanges(ManagedHttpClient client, IRequestModifier? modifier, Stream fileStream, string url, long sourceLength, int rangeSize, int concurrency, Action<long, long, long> onProgress, CancellationToken cancel = default)
         {
             DateTime lastProgressNotify = DateTime.Now;
             int progressNotifyInterval = 500;
@@ -737,7 +742,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                 reqCount++;
 
                 Logger.i(nameof(VideoDownload), $"Download {Video.Name} Batch #{reqCount} [{concurrency}] ({lastSpeed.ToHumanBytesSpeed()})");
-                var byteRangeResults = await RequestByteRangeParallel(client, url, sourceLength, concurrency, totalRead, rangeSize, 1024 * 512, cancel);
+                var byteRangeResults = await RequestByteRangeParallel(client, modifier, url, sourceLength, concurrency, totalRead, rangeSize, 1024 * 512, cancel);
                 foreach (var byteRange in byteRangeResults)
                 {
                     var read = ((byteRange.end - byteRange.start) + 1);
@@ -766,7 +771,7 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
             onProgress?.Invoke(sourceLength, totalRead, 0);
         }
-        private async Task<(byte[] data, long start, long end)[]> RequestByteRangeParallel(ManagedHttpClient client, string url, long totalLength, int concurrency, long rangePosition, int rangeSize, int rangeVariance, CancellationToken cancel = default)
+        private async Task<(byte[] data, long start, long end)[]> RequestByteRangeParallel(ManagedHttpClient client, IRequestModifier? modifier, string url, long totalLength, int concurrency, long rangePosition, int rangeSize, int rangeVariance, CancellationToken cancel = default)
         {
             List<Task<(byte[] data, long start, long end)>> tasks = new List<Task<(byte[] data, long start, long end)>>();
             var readPosition = rangePosition;
@@ -781,7 +786,7 @@ namespace Grayjay.ClientServer.Models.Downloads
 
                 tasks.Add(StateApp.ThreadPoolDownload.Run(() =>
                 {
-                    return RequestByteRange(client, url, rangeStart, rangeEnd);
+                    return RequestByteRange(client, modifier, url, rangeStart, rangeEnd);
                 }, cancel));
                 readPosition = rangeEnd + 1;
             }
@@ -790,14 +795,16 @@ namespace Grayjay.ClientServer.Models.Downloads
                 items[i] = await tasks[i];
             return items;
         }
-        private (byte[] data, long start, long end) RequestByteRange(ManagedHttpClient client, string url, long rangeStart, long rangeEnd)
+        private (byte[] data, long start, long end) RequestByteRange(ManagedHttpClient client, IRequestModifier? modifier, string url, long rangeStart, long rangeEnd)
         {
             var toRead = rangeEnd - rangeStart;
             ManagedHttpClient.Response req = null;
+            var headers = new Dictionary<string, string>() { { "range", $"bytes={rangeStart}-{rangeEnd}" } };
+            var modified = modifier?.ModifyRequest(url, headers);
 
             for (int i = 0; i <= 5; i++)
             {
-                req = client.GET(url, new Dictionary<string, string>() { { "range", $"bytes={rangeStart}-{rangeEnd}" } });
+                req = client.GET(modified?.Url ?? url, modified?.Headers ?? headers);
                 if (!req.IsOk)
                 {
                     if (i < 4)
@@ -844,6 +851,7 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
 
             var executor = source.GetRequestExecutor();
+            var modifier = source?.GetRequestModifier();
             StreamMetaData metaData = null;
 
             if (source.HasStreamMetadata)
@@ -874,7 +882,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                             segRead = data.Length;
                         }
                         else
-                            segRead = (int)DownloadSourceSequential(client, stream, rep.InitializationUrl, onProgress);
+                            segRead = (int)DownloadSourceSequential(client, modifier, stream, rep.InitializationUrl, onProgress);
                         read += segRead;
                         speedmeter.Activity(read);
                         onProgress?.Invoke(rep.Segments.Count * (read), read, speedmeter.GetCurrentSpeed());
@@ -891,7 +899,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                             segRead = data.Length;
                         }
                         else
-                            segRead = (int)DownloadSourceSequential(client, stream, segment.Url, onProgress);
+                            segRead = (int)DownloadSourceSequential(client, modifier, stream, segment.Url, onProgress);
                         read += segRead;
                         speedmeter.Activity(segRead);
 
@@ -912,9 +920,12 @@ namespace Grayjay.ClientServer.Models.Downloads
 
         }
         
-        private async Task<long> DownloadHLSSource(string name, ManagedHttpClient client, string hlsUrl, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default)
+        private async Task<long> DownloadHLSSource(string name, ManagedHttpClient client, JSSource? source, string hlsUrl, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default)
         {
-            static byte[] DownloadBytes(ManagedHttpClient httpClient, string url, long? rangeStart, long? rangeLength)
+            var modifier = (source?.HasRequestModifier ?? false) ?
+                source.GetRequestModifier() : null;
+
+            byte[] DownloadBytes(ManagedHttpClient httpClient, string url, long? rangeStart, long? rangeLength)
             {
                 var headers = new Dictionary<string, string>();
 
@@ -931,7 +942,9 @@ namespace Grayjay.ClientServer.Models.Downloads
                     }
                 }
 
-                var resp = httpClient.GET(url, headers);
+                var modified = modifier?.ModifyRequest(url, headers);
+
+                var resp = httpClient.GET(modified?.Url ?? url, modified?.Headers ?? headers);
                 if (!resp.IsOk)
                     throw new InvalidDataException($"Failed to download HLS resource ({url}): HTTP {resp.Code}");
 
@@ -986,12 +999,13 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
 
             long downloadedTotalLength = 0;
-            var response = client.GET(hlsUrl, new Dictionary<string, string>());
+            var modified = modifier?.ModifyRequest(hlsUrl, new Dictionary<string, string>());
+            var response = client.GET(modified?.Url ?? hlsUrl, modified?.Headers ?? new Dictionary<string, string>());
             if (!response.IsOk)
                 throw new InvalidDataException("Failed to get variant playlist: " + response.Code.ToString());
 
             string vpContent = response.Body?.AsString() ?? throw new InvalidDataException("Variant playlist content is empty");
-            var variantPlaylist = HLS.ParseVariantPlaylist(vpContent, hlsUrl);
+            var variantPlaylist = HLS.ParseVariantPlaylist(vpContent, modified?.Url ?? hlsUrl);
             var decryption = variantPlaylist.Decryption;
             bool useDecryption = decryption != null && decryption.IsEncrypted;
             byte[]? keyBytes = null;
@@ -1005,7 +1019,9 @@ namespace Grayjay.ClientServer.Models.Downloads
                 if (string.IsNullOrEmpty(decryption.KeyUrl))
                     throw new InvalidDataException("Encrypted HLS playlist without key URI is not supported.");
 
-                var keyResp = client.GET(decryption.KeyUrl, new Dictionary<string, string>());
+
+                var modifiedDec = modifier?.ModifyRequest(decryption.KeyUrl, new Dictionary<string, string>());
+                var keyResp = client.GET(modifiedDec?.Url ?? decryption.KeyUrl, modifiedDec?.Headers ?? new Dictionary<string, string>());
                 if (!keyResp.IsOk)
                     throw new InvalidDataException("Failed to download AES-128 key: " + keyResp.Code);
 
