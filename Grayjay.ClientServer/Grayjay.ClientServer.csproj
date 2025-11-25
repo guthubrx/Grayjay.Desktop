@@ -76,10 +76,10 @@
       <TargetPath>libcurl-impersonate.so</TargetPath>
     </ContentWithTargetPath>
 
-    <ContentWithTargetPath Include="deps/win-x64/libcurlshim.dll" Condition="'$(RuntimeIdentifier)'=='win-x64'">
+    <ContentWithTargetPath Include="deps/win-x64/curlshim.dll" Condition="'$(RuntimeIdentifier)'=='win-x64'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <TargetPath>libcurlshim.dll</TargetPath>
+      <TargetPath>curlshim.dll</TargetPath>
     </ContentWithTargetPath>
     <ContentWithTargetPath Include="deps/linux-x64/libcurlshim.so" Condition="'$(RuntimeIdentifier)'=='linux-x64'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
