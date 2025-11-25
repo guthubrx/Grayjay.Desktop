@@ -55,6 +55,7 @@ export interface FocusAPI {
     setScopeMode: (id: string, mode: 'off' | 'on' | 'trap') => void;
     getScopeMode: (id: string) => 'off' | 'on' | 'trap' | undefined;
     getFocusedNode: Accessor<NodeEntry | undefined>;
+    focusFirstInActiveScope: (isDefaultFocus?: boolean) => void;
 }
 
 const FocusCtx = createContext<FocusAPI>();
@@ -1140,6 +1141,11 @@ export function FocusProvider(props: { children: JSX.Element }) {
         navigate: navigateDirection,
         press,
         focusFirstInScope,
+        focusFirstInActiveScope: (isDefaultFocus = false) => {
+            const scope = findScopeForNavigation();
+            if (!scope) return;
+            focusFirstInScope(scope.id, isDefaultFocus);
+        },
         setActiveScope: setActiveScopeSafe,
         getActiveScope: activeScope,
         resolveScopeId,

@@ -8,6 +8,7 @@ using Grayjay.ClientServer.Threading;
 using Grayjay.Desktop.POC.Port.States;
 using Grayjay.Engine;
 using Grayjay.Engine.Exceptions;
+using Grayjay.Engine.Packages;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -126,6 +127,19 @@ namespace Grayjay.ClientServer.States
         public static async Task Startup()
         {
             Stopwatch sw = Stopwatch.StartNew();
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var caFile = await AppCaUpdater.EnsureCaBundleAsync(Directories.Base).ConfigureAwait(false);
+                    Libcurl.SetDefaultCAPath(caFile.FullName);
+                }
+                catch (Exception e)
+                {
+                    Logger.e(nameof(StateApp), "Startup: Failed to download CA bundle.", e);
+                }
+            });
 
             if (Connection != null)
                 throw new InvalidOperationException("Connection already set");
