@@ -239,10 +239,15 @@ namespace Grayjay.ClientServer.Models.Downloads
                         {
                             try
                             {
-                                var manifest = client.GET(hlsManifestSource.Url, new Dictionary<string, string>());
+                                var modifier = hlsManifestSource?.GetRequestModifier();
+                                var modified = modifier?.ModifyRequest(hlsManifestSource.Url, new Dictionary<string, string>());
+                                var manifest = client.GET(modified?.Url ?? hlsManifestSource.Url, modified?.Headers ?? new Dictionary<string, string>());
                                 if (manifest.IsOk)
                                 {
                                     var sources = HLS.ParseToVideoSources(source, manifest.Body.AsString(), hlsManifestSource.Url);
+                                    foreach (var subSource in sources)
+                                        if(subSource != null)
+                                            subSource.Modifier = modifier;
                                     videoSources.AddRange(sources);
                                 }
                             }
@@ -392,15 +397,19 @@ namespace Grayjay.ClientServer.Models.Downloads
                     }
                     else
                     {
+                        IRequestModifier modifier = null;
+                        if (VideoSourceToUse is JSSource jss)
+                            modifier = jss.GetRequestModifier();
+
                         switch (VideoSource.Container)
                         {
                             case "application/vnd.apple.mpegurl":
-                                await DownloadHLSSource("Video", client, (VideoSourceToUse is JSSource jssv) ? jssv : null, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
+                                await DownloadHLSSource("Video", client, modifier, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
                                 break;
                             default:
                                 if (!(VideoSource is VideoUrlSource))
                                     throw new NotImplementedException("Only support video urls for download");
-                                await DownloadSourceFile("Video", client, (VideoSourceToUse is JSSource jssv2) ? jssv2 : null, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
+                                await DownloadSourceFile("Video", client, modifier, ((VideoUrlSource)VideoSource).Url, VideoFilePath, progressCallback);
                                 break;
                         }
                     }
@@ -448,18 +457,22 @@ namespace Grayjay.ClientServer.Models.Downloads
                     }
                     else
                     {
+                        IRequestModifier modifier = null;
+                        if (VideoSourceToUse is JSSource jss)
+                            modifier = jss.GetRequestModifier();
+
                         switch (AudioSourceToUse.Container)
                         {
                             case "application/vnd.apple.mpegurl":
                                 if (AudioSourceToUse is HLSVariantAudioUrlSource)
-                                    await DownloadHLSSource("Audio", client, (AudioSourceToUse is JSSource jssv) ? jssv : null, ((AudioUrlSource)AudioSourceToUse).Url, AudioFilePath, progressCallback);
+                                    await DownloadHLSSource("Audio", client, modifier, ((AudioUrlSource)AudioSourceToUse).Url, AudioFilePath, progressCallback);
                                 else
                                     throw new NotImplementedException();
                                 break;
                             default:
                                 if (!(AudioSourceToUse is AudioUrlSource))
                                     throw new NotImplementedException("Only support audio urls for download");
-                                await DownloadSourceFile("Audio", client, (AudioSourceToUse is JSSource jssa) ? jssa : null, ((AudioUrlSource)AudioSourceToUse).Url, AudioFilePath, progressCallback);
+                                await DownloadSourceFile("Audio", client, modifier, ((AudioUrlSource)AudioSourceToUse).Url, AudioFilePath, progressCallback);
                                 break;
                         }
                     }
@@ -535,7 +548,7 @@ namespace Grayjay.ClientServer.Models.Downloads
         }
         #region Download Deps
 
-        private async Task DownloadSourceFile(string name, ManagedHttpClient client, JSSource source, string url, string targetFile, Action<long, long, long> onProgress, bool allowByteRangeDownload = true, CancellationToken cancel = default)
+        private async Task DownloadSourceFile(string name, ManagedHttpClient client, IRequestModifier? modifier, string url, string targetFile, Action<long, long, long> onProgress, bool allowByteRangeDownload = true, CancellationToken cancel = default)
         {
             if (File.Exists(targetFile))
                 File.Delete(targetFile);
@@ -543,8 +556,6 @@ namespace Grayjay.ClientServer.Models.Downloads
             long sourceLength = 0;
             try
             {
-                var modifier = (source != null && source is JSSource) ? source.GetRequestModifier() : null;
-
                 using (FileStream stream = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
                 {
                     var head = client.TryHead(url);
@@ -937,11 +948,8 @@ namespace Grayjay.ClientServer.Models.Downloads
                 throw new InvalidDataException("Transcoding failed");
         }
 
-        private async Task<long> DownloadHLSSource(string name, ManagedHttpClient client, JSSource? source, string hlsUrl, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default)
+        private async Task<long> DownloadHLSSource(string name, ManagedHttpClient client, IRequestModifier? modifier, string hlsUrl, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default)
         {
-            var modifier = (source?.HasRequestModifier ?? false) ?
-                source.GetRequestModifier() : null;
-
             byte[] DownloadBytes(ManagedHttpClient httpClient, string url, long? rangeStart, long? rangeLength)
             {
                 var headers = new Dictionary<string, string>();

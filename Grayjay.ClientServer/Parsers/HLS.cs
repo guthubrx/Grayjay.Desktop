@@ -1,5 +1,6 @@
 namespace Grayjay.ClientServer.Parsers;
 
+using Grayjay.Engine.Models.Video.Additions;
 using Grayjay.Engine.Models.Video.Sources;
 using System;
 using System.Collections.Generic;
@@ -186,10 +187,21 @@ public static class HLS
         };
     }
 
-    public static async Task<IHLSPlaylist> DownloadAndParsePlaylist(string url)
+    public static async Task<IHLSPlaylist> DownloadAndParsePlaylist(string url, IRequestModifier? modifier = null)
     {
         using (HttpClient client = new HttpClient())
         {
+            var modified = modifier?.ModifyRequest(url, new Dictionary<string, string>());
+            if (modified != null)
+            {
+                url = modified.Url ?? url;
+                if (modified.Headers != null)
+                    foreach (var header in modified.Headers)
+                    {
+                        client.DefaultRequestHeaders.Add(header.Key, header.Value);
+                    }
+            }
+
             var result = await client.GetAsync(url);
             if (result.StatusCode != HttpStatusCode.OK)
                 throw new InvalidDataException($"Failed to fetch manifest [" + result.StatusCode + "]");
