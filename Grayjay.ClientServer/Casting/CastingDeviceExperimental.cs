@@ -83,7 +83,13 @@ public class CastingDeviceExperimentalWrapper : CastingDevice
         public void SpeedChanged(double speed) => PlaybackState.SetSpeed(speed);
         public void SourceChanged(FCast.SenderSDK.Source @source) {}
         public void KeyEvent(FCast.SenderSDK.KeyEvent @event) {}
-        public void MediaEvent(FCast.SenderSDK.MediaEvent @event) {}
+
+        public void MediaEvent(FCast.SenderSDK.MediaEvent @event) {
+            if (@event.type == FCast.SenderSDK.MediaItemEventType.End) {
+                PlaybackState.MediaItemDidEnd();
+            }
+        }
+
         public void PlaybackError(string message) => Logger.e(nameof(CastingDeviceExperimentalWrapper), $"Playback error: {@message}");
     }
 
@@ -200,6 +206,16 @@ public class CastingDeviceExperimentalWrapper : CastingDevice
             inner.Disconnect();
         } catch (Exception e) {
             Logger.e(nameof(CastingDeviceExperimentalWrapper), "Failed to disconnect from device", e);
+        }
+    }
+
+    public override void DidConnect() {
+        if (inner.SupportsFeature(FCast.SenderSDK.DeviceFeature.MediaEventSubscription)) {
+            try {
+                inner.SubscribeEvent(new FCast.SenderSDK.EventSubscription.MediaItemEnd());
+            } catch (Exception e) {
+                Logger.e(nameof(CastingDeviceExperimentalWrapper), "Failed to subscribe to media end events", e);
+            }
         }
     }
 }
