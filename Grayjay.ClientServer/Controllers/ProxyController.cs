@@ -1,14 +1,18 @@
 ﻿using Grayjay.ClientServer.Parsers;
 using Grayjay.ClientServer.Proxy;
+using Grayjay.ClientServer.States;
 using Grayjay.ClientServer.Subscriptions;
 using Grayjay.Desktop.POC.Port.States;
+using Grayjay.Engine.Models.Video.Additions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Web;
+using static Grayjay.ClientServer.Controllers.DetailsController;
 
 namespace Grayjay.ClientServer.Controllers
 {
@@ -39,9 +43,14 @@ namespace Grayjay.ClientServer.Controllers
 
 
         [HttpGet]
-        public async Task<IActionResult> HLS(string url, bool proxyMedia)
+        public async Task<IActionResult> HLS(string url, bool proxyMedia, string modifierId = null)
         {
-            var playlist = await GenerateProxiedHLS(url, proxyMedia, $"{Request.Scheme}://{Request.Host.Value}");
+            var state = this.State();
+            IRequestModifier modifier = null;
+            if (modifierId != null)
+                DetailsState.Modifiers.TryGetValue(modifierId, out modifier);
+
+            var playlist = await GenerateProxiedHLS(url, proxyMedia, $"{Request.Scheme}://{Request.Host.Value}", state, modifier);
 
             return new ContentResult()
             {
@@ -50,13 +59,26 @@ namespace Grayjay.ClientServer.Controllers
             };
         }
 
-        public static async Task<Parsers.HLS.IHLSPlaylist> GenerateProxiedHLS(string hlsUrl, bool proxyMedia, string baseUri)
+        public static async Task<Parsers.HLS.IHLSPlaylist> GenerateProxiedHLS(string hlsUrl, bool proxyMedia, string baseUri, WindowState state = null, IRequestModifier? modifier = null)
         {
             if (string.IsNullOrEmpty(hlsUrl))
                 throw new BadHttpRequestException("Missing url");
 
+            string modifierId = (state != null && modifier != null) ? state.DetailsState.RegisterModifier(modifier) : null;
+
             using (HttpClient client = new HttpClient())
             {
+                var modified = modifier?.ModifyRequest(hlsUrl, new Dictionary<string, string>());
+                if(modified != null)
+                {
+                    hlsUrl = modified.Url ?? hlsUrl;
+                    if(modified.Headers != null)
+                        foreach(var header in modified.Headers)
+                        {
+                            client.DefaultRequestHeaders.Add(header.Key, header.Value);
+                        }
+                }
+                    
                 var result = await client.GetAsync(hlsUrl);
                 if (result.StatusCode != HttpStatusCode.OK)
                     throw new InvalidDataException($"Failed to fetch manifest [" + result.StatusCode + "]");
@@ -68,13 +90,13 @@ namespace Grayjay.ClientServer.Controllers
                     var masterPlaylist = Parsers.HLS.ParseMasterPlaylist(body, result.RequestMessage.RequestUri.ToString());
                     if (masterPlaylist.Unhandled.Any(x=>x.StartsWith("#EXTINF:")))
                         throw new ArgumentException("Is a variant playlist");
-                    masterPlaylist = ProxyHLSMasterPlaylist(baseUri, masterPlaylist, proxyMedia);
+                    masterPlaylist = ProxyHLSMasterPlaylist(baseUri, masterPlaylist, proxyMedia, modifierId);
                     return masterPlaylist;
                 }
                 catch
                 {
                     var playlist = Parsers.HLS.ParseVariantPlaylist(body, hlsUrl);
-                    playlist = ProxyHLSPlaylist(baseUri, playlist, proxyMedia);
+                    playlist = ProxyHLSPlaylist(baseUri, playlist, proxyMedia, modifier);
                     return playlist;
                 }
             }
@@ -82,19 +104,19 @@ namespace Grayjay.ClientServer.Controllers
 
 
 
-        public static HLS.MasterPlaylist ProxyHLSMasterPlaylist(string baseUri, HLS.MasterPlaylist hlsMasterPlaylist, bool proxyMedia)
+        public static HLS.MasterPlaylist ProxyHLSMasterPlaylist(string baseUri, HLS.MasterPlaylist hlsMasterPlaylist, bool proxyMedia, string? modifierId = null)
         {
             foreach (var vp in hlsMasterPlaylist.MediaRenditions)
-                vp.Uri = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Uri)}&proxyMedia={proxyMedia}";
+                vp.Uri = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Uri)}&proxyMedia={proxyMedia}" + (modifierId != null ? "&modifierId=" + modifierId : "");
             foreach (var vp in hlsMasterPlaylist.VariantPlaylistsRefs)
-                vp.Url = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Url)}&proxyMedia={proxyMedia}";
+                vp.Url = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Url)}&proxyMedia={proxyMedia}" + (modifierId != null ? "&modifierId=" + modifierId : "");
 
             return hlsMasterPlaylist;
         }
 
         private static Dictionary<string, string> ExistingHlsProxies = new Dictionary<string, string>();
 
-        public static HLS.VariantPlaylist ProxyHLSPlaylist(string baseUri, HLS.VariantPlaylist hlsMediaPlaylist, bool proxyMedia)
+        public static HLS.VariantPlaylist ProxyHLSPlaylist(string baseUri, HLS.VariantPlaylist hlsMediaPlaylist, bool proxyMedia, IRequestModifier? modifier = null)
         {
             if (!proxyMedia)
                 return hlsMediaPlaylist;
@@ -129,7 +151,20 @@ namespace Grayjay.ClientServer.Controllers
                             ResponseHeaderOptions = new ResponseHeaderOptions()
                             {
                                 InjectPermissiveCORS = true
+                            },
+                            RequestModifier = (modifier != null) ? (string url, HttpProxyRequest req) =>
+                            {
+                                var modified = modifier.ModifyRequest(url, req.Headers);
+                                return (modified?.Url ?? url, new HttpProxyRequest()
+                                {
+                                    Method = req.Method,
+                                    Path = req.Path,
+                                    QueryString = req.QueryString,
+                                    Version = req.Version,
+                                    Headers = modified?.Headers ?? req.Headers
+                                });
                             }
+                            : null
                         }, ip);
 
                         ExistingHlsProxies[ms.Uri] = proxiedUri;
@@ -160,7 +195,19 @@ namespace Grayjay.ClientServer.Controllers
                             ResponseHeaderOptions = new ResponseHeaderOptions()
                             {
                                 InjectPermissiveCORS = true
-                            }
+                            },
+                            RequestModifier = (modifier != null) ? (string url, HttpProxyRequest req) =>
+                            {
+                                var modified = modifier.ModifyRequest(url, req.Headers);
+                                return (modified?.Url ?? url, new HttpProxyRequest()
+                                {
+                                    Method = req.Method,
+                                    Path = req.Path,
+                                    QueryString = req.QueryString,
+                                    Version = req.Version,
+                                    Headers = modified?.Headers ?? req.Headers
+                                });
+                            } : null
                         });
 
                         ExistingHlsProxies[hlsMediaPlaylist.MapUrl] = proxiedUri;

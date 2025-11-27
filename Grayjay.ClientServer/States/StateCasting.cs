@@ -155,6 +155,7 @@ abstract public class StateCasting : IDisposable
         castingDevice.PlaybackState.TimeChanged += HandleTimeChanged;
         castingDevice.PlaybackState.VolumeChanged += HandleVolumeChanged;
         castingDevice.PlaybackState.SpeedChanged += HandleSpeedChanged;
+        castingDevice.PlaybackState.MediaItemEnded += HandleMediaItemEnded;
         castingDevice.ConnectionState.StateChanged += HandleStateChanged;
     }
 
@@ -165,6 +166,7 @@ abstract public class StateCasting : IDisposable
         castingDevice.PlaybackState.TimeChanged -= HandleTimeChanged;
         castingDevice.PlaybackState.VolumeChanged -= HandleVolumeChanged;
         castingDevice.PlaybackState.SpeedChanged -= HandleSpeedChanged;
+        castingDevice.PlaybackState.MediaItemEnded -= HandleMediaItemEnded;
         castingDevice.ConnectionState.StateChanged -= HandleStateChanged;
     }
 
@@ -247,9 +249,25 @@ abstract public class StateCasting : IDisposable
         }
     }
 
+    private async void HandleMediaItemEnded()
+    {
+        try
+        {
+            await GrayjayServer.Instance.WebSocket.Broadcast(null, "activeDeviceMediaItemEnded");
+        }
+        catch (Exception e)
+        {
+            Logger.e(nameof(StateCasting), "Failed to notify active device MediaItemEnded.", e);
+        }
+    }
+
     private async void HandleStateChanged(CastConnectionState state)
     {
         StateChanged?.Invoke(state);
+
+        if (state == CastConnectionState.Connected) {
+            ActiveDevice?.DidConnect();
+        }
 
         try
         {

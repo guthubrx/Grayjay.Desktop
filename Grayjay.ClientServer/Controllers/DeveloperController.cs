@@ -44,6 +44,30 @@ namespace Grayjay.ClientServer.Controllers
         private static StringStore lastDevUrl = new StringStore("lastDevUrl", null).Load();
 
         [HttpGet]
+        public async Task<IActionResult> LoginCloneTestPlugin()
+        {
+            if (!IsDeveloperMode())
+                return NotFound();
+            try
+            {
+                var plugin = TestPluginOrThrow;
+
+                var existing = StatePlugins.GetPlugin(plugin.ID);
+                if (existing != null && existing.HasLoggedIn)
+                {
+                    _testPluginAuth = (plugin.Config.ID, existing.GetAuth());
+                }
+                else
+                    return Ok(false);
+                return Ok(true);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.GetType().Name + ":" + ex.Message);
+            }
+        }
+
+        [HttpGet]
         public async Task<IActionResult> LoginTestPlugin()
         {
             if (!IsDeveloperMode())
@@ -368,6 +392,20 @@ namespace Grayjay.ClientServer.Controllers
             if (!IsDeveloperMode())
                 return NotFound();
             return Ok(_testPluginAuth.Item2 != null && _testPluginAuth.Item1 == _testPlugin?.ID);
+        }
+        [HttpGet]
+        public IActionResult StateInfo()
+        {
+            if (!IsDeveloperMode())
+                return NotFound();
+
+            var isLoggedIn = _testPluginAuth.Item2 != null && _testPluginAuth.Item1 == _testPlugin?.ID;
+
+            return Ok(new
+            {
+                IsLoggedIn = isLoggedIn,
+                CanCloneLogin = StatePlugins.GetPlugin(_testPlugin.ID)?.HasLoggedIn
+            });
         }
 
         [HttpPost]

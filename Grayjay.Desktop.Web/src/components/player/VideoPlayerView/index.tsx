@@ -100,7 +100,6 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const [loaderGameVisible$, setLoaderGameVisible] = createSignal<number>();
     let frameRate: number | undefined = undefined; //TODO: Framerate is currently not accurate, not properly exposed by video,hlsjs,dashjs, would need to feed it in from sources
     let currentUrl: string | undefined;
-    let castingEndedEmitted = false;
     let loader: LoaderGameHandle | undefined;
     let currentTag = uuidv4();
 
@@ -391,6 +390,15 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         startHideControls();
     };
 
+    createEffect(on(casting.activeDevice.mediaItemEnd, () => {
+        if (!casting) {
+            return;
+        }
+
+        props.onEnded?.();
+        console.info("casting video ended");
+    }));
+
     createEffect(() => {
         if (!casting) {
             return;
@@ -404,18 +412,8 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         setPosition(time);
         setPositionBuffered(time);
 
-        const dur = duration();
         const timeLeft = duration().minus(time);
         console.log("Received position", {time_s: time.as('seconds'), timeLeft_s: timeLeft.as('seconds')});
-        if (dur.as('seconds') > 1 && timeLeft.as('seconds') < 1) {
-            if (!castingEndedEmitted) {
-                props.onEnded?.();
-                castingEndedEmitted = true;
-                console.info("casting video ended");
-            }
-        } else {
-            castingEndedEmitted = false;
-        }
     });
 
     createEffect(on(position, () => {
