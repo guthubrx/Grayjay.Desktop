@@ -1,7 +1,9 @@
-import { createContext, useContext, createSignal, onCleanup, createEffect, Accessor, JSX, createMemo } from "solid-js";
+import { createContext, useContext, createSignal, onCleanup, createEffect, Accessor, JSX, createMemo, onMount } from "solid-js";
 import { Direction, Press, FocusableOptions, ScopeOptions, uid, isVisible, isFocusable, InputSource } from "./nav";
 import { useLocation, useNavigate } from "@solidjs/router";
 import { useVideo, VideoState } from "./contexts/VideoProvider";
+import { createResourceDefault } from "./utility";
+import { WindowBackend } from "./backend/WindowBackend";
 
 type NodeId = string;
 
@@ -70,7 +72,18 @@ export function FocusProvider(props: { children: JSX.Element }) {
     const location = useLocation();
     const index = createIndex();
     const [activeScope, setActiveScope] = createSignal<string | null>(null);
-    const [lastInputSource, setLastInputSource] = createSignal<InputSource>("pointer");
+    const [lastInputSourceOriginal, setLastInputSource] = createSignal<InputSource>("pointer");
+    const [inputSourceOverride, setInputSourceOverride] = createSignal<InputSource>();
+    onMount(async () => {
+        const is = await WindowBackend.inputSource();
+        console.info("Retrieved input source", is);
+        setInputSourceOverride(is as InputSource);
+    });
+    const lastInputSource = createMemo(() => {
+        const is = lastInputSourceOriginal();
+        const iso = inputSourceOverride();
+        return iso ? iso : is;
+    });
     const isControllerMode = createMemo(() => lastInputSource() !== "pointer");
     createEffect(() => console.info("lastInputSource changed", lastInputSource()));
     const [focusedNode, setFocusedNode] = createSignal<NodeEntry | undefined>(undefined);

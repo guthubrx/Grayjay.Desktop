@@ -19,6 +19,7 @@ namespace Grayjay.ClientServer.States
 {
     public static class StateApp
     {
+        public static string? InputSource;
         public static string VersionName { get; } = VersionCode.ToString();
         public static int VersionCode { get; } = 1;
 

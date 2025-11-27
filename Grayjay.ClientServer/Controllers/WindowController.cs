@@ -12,6 +12,12 @@ namespace Grayjay.ClientServer.Controllers
     public class WindowController : ControllerBase
     {
         [HttpGet]
+        public async Task<string?> InputSource()
+        {
+            return StateApp.InputSource;
+        }
+
+        [HttpGet]
         public async Task StartWindow()
         {
             if (GrayjayServer.Instance.WindowProvider != null && !GrayjayServer.Instance.HeadlessMode)

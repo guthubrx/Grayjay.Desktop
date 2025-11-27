@@ -27,4 +27,12 @@ export abstract class WindowBackend {
         await Backend.GET("/window/Close");
         return true;
     }
+
+    static async inputSource(): Promise<string | undefined> {
+        const inputSource = await Backend.GET_text("/window/InputSource");
+        let s: string | undefined | null = inputSource;
+        if (s && s.length)
+            return s;
+        return undefined;
+    }
 }
