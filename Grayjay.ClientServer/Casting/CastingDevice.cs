@@ -69,6 +69,12 @@ public class CastingDevicePlaybackState
         SpeedChanged?.Invoke(speed);
     }
 
+    public event Action? MediaItemEnded;
+    public void MediaItemDidEnd()
+    {
+        MediaItemEnded?.Invoke();
+    }
+
     public bool IsSame(CastingDevicePlaybackState state)
     {
         return IsPlaying == state.IsPlaying &&
@@ -101,6 +107,7 @@ public abstract class CastingDevice
 
     public abstract void Start();
     public abstract void Stop();
+    public virtual void DidConnect() {}
 
     public abstract Task MediaSeekAsync(TimeSpan time, CancellationToken cancellationToken = default);
     public abstract Task MediaStopAsync(CancellationToken cancellationToken = default);

@@ -41,8 +41,9 @@ export interface CastingContextValue {
         duration: Accessor<Duration>,
         time: Accessor<Duration>,
         volume: Accessor<number>,
-        speed: Accessor<number>
-        state: Accessor<CastConnectionState>
+        speed: Accessor<number>,
+        state: Accessor<CastConnectionState>,
+        mediaItemEnd: Accessor<boolean>
     };
     dialogState: Accessor<CastingDialogState>;
     discoveredDevices: Accessor<CastingDeviceInfo[]>;
@@ -75,6 +76,7 @@ export const CastingProvider: ParentComponent<CastingContextProps> = (props) => 
     const [volume, setVolume] = createSignal(1);
     const [speed, setSpeed] = createSignal(1);
     const [state, setState] = createSignal(CastConnectionState.Disconnected);
+    const [mediaItemEnd, setMediaItemEnd] = createSignal(false);
 
     const open = () => {
         if (activeDevice())
@@ -125,7 +127,8 @@ export const CastingProvider: ParentComponent<CastingContextProps> = (props) => 
             time,
             volume,
             speed,
-            state
+            state,
+            mediaItemEnd
         },
         actions: {
             open,
@@ -160,6 +163,7 @@ export const CastingProvider: ParentComponent<CastingContextProps> = (props) => 
         StateWebsocket.registerHandlerNew("activeDeviceVolumeChanged", (packet) => setVolume(packet.payload), this);
         StateWebsocket.registerHandlerNew("activeDeviceSpeedChanged", (packet) => setSpeed(packet.payload), this);
         StateWebsocket.registerHandlerNew("activeDeviceStateChanged", (packet) => setState(packet.payload), this);
+        StateWebsocket.registerHandlerNew("activeDeviceMediaItemEnded", (_) => setMediaItemEnd(v => !v), this);
         StateWebsocket.registerHandlerNew("discoveredDevicesUpdated", (packet) => setDiscoveredDevices(packet.payload), this);
     });
 
@@ -171,6 +175,7 @@ export const CastingProvider: ParentComponent<CastingContextProps> = (props) => 
         StateWebsocket.unregisterHandler("activeDeviceVolumeChanged", this);
         StateWebsocket.unregisterHandler("activeDeviceSpeedChanged", this);
         StateWebsocket.unregisterHandler("activeDeviceStateChanged", this);
+        StateWebsocket.unregisterHandler("activeDeviceMediaItemEnded", this);
         StateWebsocket.unregisterHandler("discoveredDevicesUpdated", this);
     });
 
