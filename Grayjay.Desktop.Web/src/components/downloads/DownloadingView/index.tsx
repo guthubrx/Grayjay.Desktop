@@ -69,13 +69,13 @@ const DownloadingView: Component<CreatorViewProps> = (props) => {
       description: "[" + downloading$().video.name + "]?",
       buttons: [
         {
-          title: "Nevermind",
+          title: "No",
           onClick() {
             
           }
         } as DialogButton,
         {
-          title: "Cancel",
+          title: "Yes",
           style: "accent",
           onClick() {
             DownloadBackend.deleteDownload(downloading$().video.id);
