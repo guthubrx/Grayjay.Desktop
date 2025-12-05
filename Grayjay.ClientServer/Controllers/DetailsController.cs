@@ -715,6 +715,16 @@ namespace Grayjay.ClientServer.Controllers
                 state.DetailsState.SetCachedDash(videoIndex, audioIndex, subtitleIndex, proxySettings, task);
                 return (task, metadata);
             }
+            else if(sourceVideo is DashManifestRawSource videoRawSource2)
+            {
+                if (sourceSubtitle != null)
+                    sourceSubtitle = SubtitleToProxied(state, sourceSubtitle, subtitleIsLocal, subtitleIndex, proxySettings);
+
+                V8PromiseMetadata? metadata = null;
+                var task = GenerateSourceDashRaw(state, videoRawSource2, null, sourceSubtitle, proxySettings, out metadata);
+                state.DetailsState.SetCachedDash(videoIndex, audioIndex, subtitleIndex, proxySettings, task);
+                return (task, metadata);
+            }
 
 
             if (sourceVideo != null && !(sourceVideo is VideoUrlSource || sourceVideo is LocalVideoSource))
@@ -892,7 +902,7 @@ namespace Grayjay.ClientServer.Controllers
 
         public static Task<string> GenerateSourceDashRaw(WindowState state, DashManifestRawSource videoSource, DashManifestRawAudioSource audioSource, ISubtitleSource subtitleSource, ProxySettings? proxySettings, out V8PromiseMetadata promiseMeta)
         {
-            var merging = new DashManifestMergingRawSource(videoSource, audioSource, subtitleSource);
+            var merging = (audioSource == null) ? videoSource : new DashManifestMergingRawSource(videoSource, audioSource, subtitleSource);
 
             var dashTask = merging.GenerateAsync(out promiseMeta);
 
@@ -909,14 +919,22 @@ namespace Grayjay.ClientServer.Controllers
                 string videoUrl = null;
                 string audioUrl = null;
 
-                if (merging.Video.HasRequestExecutor)
-                    videoUrl = getRequestExecutorProxy("https://grayjay.app/internal/video", merging.Video.GetRequestExecutor(), proxySettings);
+                if (merging is DashManifestMergingRawSource mergingM)
+                {
+                    if (mergingM.Video.HasRequestExecutor)
+                        videoUrl = getRequestExecutorProxy("https://grayjay.app/internal/video", mergingM.Video.GetRequestExecutor(), proxySettings);
+                    else
+                        throw new NotImplementedException();
+                    if (mergingM.Audio.HasRequestExecutor)
+                        audioUrl = getRequestExecutorProxy("https://grayjay.app/internal/audio", mergingM.Audio.GetRequestExecutor(), proxySettings);
+                    else
+                        throw new NotImplementedException();
+                }
                 else
-                    throw new NotImplementedException();
-                if (merging.Audio.HasRequestExecutor)
-                    audioUrl = getRequestExecutorProxy("https://grayjay.app/internal/audio", merging.Audio.GetRequestExecutor(), proxySettings);
-                else
-                    throw new NotImplementedException();
+                {
+                    if(merging.HasRequestExecutor)
+                        videoUrl = getRequestExecutorProxy("https://grayjay.app/internal/video", merging.GetRequestExecutor(), proxySettings);
+                }
 
 
                 foreach (Match representation in DashBuilder.REGEX_REPRESENTATION.Matches(dash))
@@ -1125,6 +1143,25 @@ namespace Grayjay.ClientServer.Controllers
                     return DirectHLSUrlSource(state, videoIndex, -1, new ProxySettings(true));
                 else if (sourceVideo is LocalVideoSource lvs)
                     return LocalVideoSource(state, lvs);
+                else if (sourceVideo is DashManifestRawSource das)
+                {
+                    if (!(sourceVideo is IStreamMetaDataSource))
+                        throw DialogException.FromException("Source doesn't provide enough playback info for unmuxed playback (IStreamMetaData)",
+                            new Exception("Unmuxed sources require IStreamMetaDataSource info to translate to dash"));
+
+                    if (forceReady)
+                    {
+                        //Preload the DASH
+                        (var taskGenerateSourceDash, var promiseMetadata) = GenerateSourceDash(state, videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal, proxySettings);
+                        if (!taskGenerateSourceDash.IsCompleted && promiseMetadata != null)
+                            StateWebsocket.VideoLoader("", promiseMetadata.EstimateDuration, state.WindowID, tag);
+                        await taskGenerateSourceDash;
+                        StateWebsocket.VideoLoaderFinish(state.WindowID, tag);
+                    }
+
+                    return new SourceDescriptor($"/details/SourceDash?videoIndex={videoIndex}&audioIndex={audioIndex}&subtitleIndex={subtitleIndex}&videoIsLocal={videoIsLocal}&audioIsLocal={audioIsLocal}&subtitleIsLocal={subtitleIsLocal}&isLoopback={proxySettings?.IsLoopback ?? true}&windowId={state.WindowID}&tag={tag}", "application/dash+xml", videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal);
+
+                }
                 else
                     throw new Exception($"Not implemented type {sourceVideo.GetType().Name}");
             }

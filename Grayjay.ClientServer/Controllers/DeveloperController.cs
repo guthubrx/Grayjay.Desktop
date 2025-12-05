@@ -434,7 +434,7 @@ namespace Grayjay.ClientServer.Controllers
                     script = resp.Body.AsString();
                 }
                 string devId = StatePlatform.InjectDevPlugin(config, script);
-                return Ok(devId);
+                return Ok("\"" + devId + "\"");
             }
             catch(Exception ex)
             {
