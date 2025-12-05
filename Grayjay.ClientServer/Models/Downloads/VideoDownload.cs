@@ -832,21 +832,22 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
 
         }
-        
+
         private static void CombineHLSSegments(List<FileInfo> segmentFiles, string targetPath)
         {
-            var fileList = StateApp.GetTemporaryFile(".txt", "filelist-");
-            File.WriteAllText(fileList.FullName, string.Join("\n", segmentFiles.Select(x => $"file '{x.FullName}'")));
+            if (segmentFiles == null || segmentFiles.Count == 0)
+                throw new ArgumentException("segmentFiles must not be empty", nameof(segmentFiles));
 
-            //var cmd = $"-f concat -safe 0 -i \"{fileList.FullName}\" -c copy \"{targetPath}\"";
-            string[] args = new string[]{
-                "-f", "concat", "-safe", "0", "-i", fileList.FullName, "-c", "copy", targetPath
-            };
-            if (FFMPEG.ExecuteSafe(args, true) == 0)
+            var concatInput = "concat:" + string.Join("|", segmentFiles.Select(x => x.FullName));
+
+            var args = new string[]
             {
+                "-i", concatInput,
+                "-c", "copy",
+                targetPath
+            };
 
-            }
-            else
+            if (FFMPEG.ExecuteSafe(args, true) != 0)
                 throw new InvalidDataException("Transcoding failed");
         }
 
