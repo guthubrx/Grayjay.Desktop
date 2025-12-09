@@ -559,7 +559,8 @@ namespace Grayjay.ClientServer.Models.Downloads
                 using (FileStream stream = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
                 {
                     var head = client.TryHead(url);
-                    if (allowByteRangeDownload && GrayjaySettings.Instance.Downloads.ByteRangeDownload && head?.Headers?.ContainsKey("accept-ranges") == true && head?.Headers?.ContainsKey("content-length") == true)
+                    //GrayjaySettings.Instance.Downloads.ByteRangeDownload
+                    if (allowByteRangeDownload && true && head?.Headers?.ContainsKey("accept-ranges") == true && head?.Headers?.ContainsKey("content-length") == true)
                     {
                         var concurrency = Math.Min(2, GrayjaySettings.Instance.Downloads.GetByteRangeThreadCount()); //TODO: Temporary limit to 2 to prevent ratelimits
                         Logger.i(nameof(VideoDownload), $"Download {Video.Name} ByteRange Parallel ({concurrency})");
