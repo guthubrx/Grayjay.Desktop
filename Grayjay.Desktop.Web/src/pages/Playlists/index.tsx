@@ -265,9 +265,6 @@ const PlaylistsPage: Component = () => {
                 icon={icon_add}
                 color='#019BE7'
                 small={true}
-                style={{
-                  "margin-right": "48px"
-                }}
                 onClick={() =>createPlaylist()}
                 focusableOpts={{
                   onPress: () => createPlaylist()
