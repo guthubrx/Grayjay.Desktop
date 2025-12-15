@@ -3,6 +3,7 @@
   <id>app.grayjay.Grayjay</id>
   <url type="bugtracker">https://github.com/futo-org/Grayjay.Desktop/issues</url>
   <url type="homepage">https://grayjay.app/</url>
+  <url type="vcs-browser">https://gitlab.futo.org/videostreaming/Grayjay.Desktop</url>
   <name>Grayjay</name>
   <summary>Universal media aggregator</summary>
 
