@@ -331,8 +331,8 @@ namespace Grayjay.ClientServer.Controllers
             }
             catch(Exception ex)
             {
-                if(local != null)
-                    StateUI.Toast("Failed to get live video:\n" + ex.Message);
+                if (local != null)
+                    ;// StateUI.Toast("Failed to get live video:\n" + ex.Message);
                 contentDetailsException = ex;
             }
             if (local != null)
@@ -1300,7 +1300,7 @@ namespace Grayjay.ClientServer.Controllers
                     Logger.v(nameof(DetailsController), $"Progress {url} - {position} - {delta} (PlaybackTracker: " + (state.VideoPlaybackTracker != null).ToString() + ")");
 
                     StateHistory.UpdateHistory(video, history, position / 1000, delta);
-                    if (state.VideoSubscription != null && GrayjaySettings.Instance.Subscriptions.AllowPlaytimeTracking)
+                    if (state.VideoSubscription != null)// && GrayjaySettings.Instance.Subscriptions.AllowPlaytimeTracking)
                         state.VideoSubscription.UpdateWatchTime((int)(delta / 1000));
                     return true;
                 }

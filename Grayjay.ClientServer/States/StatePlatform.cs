@@ -47,7 +47,7 @@ namespace Grayjay.Desktop.POC.Port.States
         private static PlatformMultiClientPool _mainClientPool = new PlatformMultiClientPool("Main", 2); //Used for all main user events, generally user critical
         private static PlatformMultiClientPool _utilityClientPool = new PlatformMultiClientPool("Utility", 2); //Used for all main user events, generally user critical
         private static PlatformMultiClientPool _pagerClientPool = new PlatformMultiClientPool("Pagers", 2); //Used primarily for calls that result in front-end pagers, preventing them from blocking other calls.
-        private static PlatformMultiClientPool _channelClientPool = new PlatformMultiClientPool("Channels", GrayjaySettings.Instance.Subscriptions.SubscriptionConcurrency); //Used primarily for subscription/background channel fetches
+        private static PlatformMultiClientPool _channelClientPool = new PlatformMultiClientPool("Channels", 6);// GrayjaySettings.Instance.Subscriptions.SubscriptionConcurrency); //Used primarily for subscription/background channel fetches
         private static PlatformMultiClientPool _trackerClientPool = new PlatformMultiClientPool("Trackers", 1); //Used exclusively for playback trackers
         private static PlatformMultiClientPool _liveEventClientPool = new PlatformMultiClientPool("LiveEvents", 1); //Used exclusively for live events
 
@@ -79,12 +79,12 @@ namespace Grayjay.Desktop.POC.Port.States
             OnSourceEnabled += (client) =>
             {
                 GrayjayServer.Instance?.WebSocket?.Broadcast(client.ID, "PluginEnabled", client.ID);
-                StateUI.Toast($"Source [{client.Config.Name}] enabled");
+                //StateUI.Toast($"Source [{client.Config.Name}] enabled");
             };
             OnSourceDisabled += (client) =>
             {
                 GrayjayServer.Instance?.WebSocket?.Broadcast(client.ID, "PluginDisabled", client.ID);
-                StateUI.Toast($"Source [{client.Config.Name}] disabled");
+                //StateUI.Toast($"Source [{client.Config.Name}] disabled");
             };
             StatePlugins.OnPluginSettingsChanged += async (plugin, needReload) =>
             {
@@ -208,7 +208,7 @@ namespace Grayjay.Desktop.POC.Port.States
                 return null;
 
             //TODO: Remove when compatibility is solved.
-            if (GrayjaySettings.Instance.Playback.HideBrokenLivechats)
+            if (true)//GrayjaySettings.Instance.Playback.HideBrokenLivechats)
             {
                 switch (baseClient.ID)
                 {

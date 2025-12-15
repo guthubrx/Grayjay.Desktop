@@ -55,7 +55,8 @@ namespace Grayjay.Desktop.POC.Port.States
         private static ChannelFeed _global = new ChannelFeed();
         private static Dictionary<string, ChannelFeed> _feeds = new Dictionary<string, ChannelFeed>();
 
-        private static ManagedThreadPool _threadPool = new ManagedThreadPool(GrayjaySettings.Instance.Subscriptions.SubscriptionConcurrency, "Subscriptions");
+        //
+        private static ManagedThreadPool _threadPool = new ManagedThreadPool(6, "Subscriptions"); //GrayjaySettings.Instance.Subscriptions.SubscriptionConcurrency
 
         public static event Action<List<Subscription>, bool> OnSubscriptionsChanged;
 
