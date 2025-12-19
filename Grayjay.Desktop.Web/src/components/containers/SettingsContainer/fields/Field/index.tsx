@@ -46,7 +46,8 @@ const Field: Component<FieldProps> = (props) => {
                             style: "none",
                             onClick: ()=>{
                                 props.parentObject[props.field.property] = oldValBool;
-                                onCancel();
+                                if(onCancel)
+                                    onCancel();
                             }
                         },
                         {
