@@ -933,7 +933,10 @@ namespace Grayjay.ClientServer.Controllers
                 else
                 {
                     if(merging.HasRequestExecutor)
+                    {
                         videoUrl = getRequestExecutorProxy("https://grayjay.app/internal/video", merging.GetRequestExecutor(), proxySettings);
+                        audioUrl = videoUrl;
+                    }
                 }
 
 
