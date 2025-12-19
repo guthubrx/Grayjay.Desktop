@@ -66,11 +66,21 @@ namespace Grayjay.ClientServer.Controllers
             public ProxySettings? CachedDashProxySettings = null;
             public Task<string>? CachedDashTask = null;
 
+            //TODO: Either remove static or include window id somehow for cleanup.
+            public static ConcurrentDictionary<string, IRequestModifier> Modifiers = new ConcurrentDictionary<string, IRequestModifier>();
+
             public RefPager<PlatformComment> CommentPager { get; set; }
             public ConcurrentDictionary<string, RefPager<PlatformComment>> RepliesPagers { get; set; } = new ConcurrentDictionary<string, RefPager<PlatformComment>>();
 
 
             public IPager<PlatformContent> RecommendationPager { get; set; }
+
+            public string RegisterModifier(IRequestModifier modifier)
+            {
+                var id = Guid.NewGuid().ToString();
+                Modifiers.AddOrUpdate(id, modifier, (a,b)=>modifier);
+                return id;
+            }
 
             public void ClearCachedDash()
             {
@@ -321,8 +331,8 @@ namespace Grayjay.ClientServer.Controllers
             }
             catch(Exception ex)
             {
-                if(local != null)
-                    StateUI.Toast("Failed to get live video:\n" + ex.Message);
+                if (local != null)
+                    ;// StateUI.Toast("Failed to get live video:\n" + ex.Message);
                 contentDetailsException = ex;
             }
             if (local != null)
@@ -987,17 +997,21 @@ namespace Grayjay.ClientServer.Controllers
             
             if(sourceVideo is HLSManifestSource hlsVideoSource)
             {
+                var requestModifier = hlsVideoSource?.GetRequestModifier();
+
                 if (proxySettings != null && proxySettings.Value.ProxyAddress != null && !proxySettings.Value.IsLoopback)
-                    playlist = await ProxyController.GenerateProxiedHLS(hlsVideoSource.Url, true, $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}");
+                    playlist = await ProxyController.GenerateProxiedHLS(hlsVideoSource.Url, true, $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}", state, requestModifier);
                 else
-                    playlist = await ProxyController.GenerateProxiedHLS(hlsVideoSource.Url, true, $"{GrayjayServer.Instance.BaseUrl}");            
+                    playlist = await ProxyController.GenerateProxiedHLS(hlsVideoSource.Url, true, $"{GrayjayServer.Instance.BaseUrl}", state, requestModifier);            
             }
             else if(sourceAudio is HLSManifestAudioSource hlsAudioSource)
             {
+                var requestModifier = hlsAudioSource?.GetRequestModifier();
+
                 if (proxySettings != null && proxySettings.Value.ProxyAddress != null && !proxySettings.Value.IsLoopback)
-                    playlist = await ProxyController.GenerateProxiedHLS(hlsAudioSource.Url, true, $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}");
+                    playlist = await ProxyController.GenerateProxiedHLS(hlsAudioSource.Url, true, $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}", state, requestModifier);
                 else
-                    playlist = await ProxyController.GenerateProxiedHLS(hlsAudioSource.Url, true, $"{GrayjayServer.Instance.BaseUrl}");
+                    playlist = await ProxyController.GenerateProxiedHLS(hlsAudioSource.Url, true, $"{GrayjayServer.Instance.BaseUrl}", state, requestModifier);
             }
 
             if (playlist == null)
@@ -1286,7 +1300,7 @@ namespace Grayjay.ClientServer.Controllers
                     Logger.v(nameof(DetailsController), $"Progress {url} - {position} - {delta} (PlaybackTracker: " + (state.VideoPlaybackTracker != null).ToString() + ")");
 
                     StateHistory.UpdateHistory(video, history, position / 1000, delta);
-                    if (state.VideoSubscription != null && GrayjaySettings.Instance.Subscriptions.AllowPlaytimeTracking)
+                    if (state.VideoSubscription != null)// && GrayjaySettings.Instance.Subscriptions.AllowPlaytimeTracking)
                         state.VideoSubscription.UpdateWatchTime((int)(delta / 1000));
                     return true;
                 }

@@ -1,21 +1,40 @@
 namespace Grayjay.ClientServer.Parsers;
 
-using Grayjay.ClientServer.Proxy;
+using Grayjay.Engine.Models.Video.Additions;
 using Grayjay.Engine.Models.Video.Sources;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Web;
 
 public static class HLS
 {
-    private static Regex REGEX_BYTERANGE_PARAM = new Regex("BYTERANGE=\"(.+)@(.+)\"");
+    public class DecryptionInfo
+    {
+        public string Method { get; }
+        public string? KeyUrl { get; }
+        public string? IV { get; }
+        public string? KeyFormat { get; }
+        public string? KeyFormatVersions { get; }
+        public bool IsEncrypted => !string.Equals(Method, "NONE", StringComparison.OrdinalIgnoreCase);
+
+        public DecryptionInfo(string keyUrl, string? iv)
+            : this("AES-128", keyUrl, iv, null, null)
+        {
+            
+        }
+
+        public DecryptionInfo(string method, string? keyUrl, string? iv, string? keyFormat, string? keyFormatVersions)
+        {
+            Method = method;
+            KeyUrl = keyUrl;
+            IV = iv;
+            KeyFormat = keyFormat;
+            KeyFormatVersions = keyFormatVersions;
+        }
+    }
 
     public static MasterPlaylist ParseMasterPlaylist(string masterPlaylistContent, string sourceUrl)
     {
@@ -69,23 +88,46 @@ public static class HLS
         var programDateTime = GetValueDateTime(lines, "#EXT-X-PROGRAM-DATE-TIME:");
         var playlistType = GetValue(lines, "#EXT-X-PLAYLIST-TYPE:");
         var streamInfo = lines.FirstOrDefault(l => l.StartsWith("#EXT-X-STREAM-INF:"))?.Trim();
-        var mapUrl = lines.FirstOrDefault(x => x.StartsWith("#EXT-X-MAP:URI="))?.Trim();
-        int mapBytesStart = -1;
-        int mapBytesLength = -1;
-        if (!string.IsNullOrEmpty(mapUrl))
+        string? mapUrl = null;
+        long mapBytesStart = -1;
+        long mapBytesLength = -1;
+        var mapLine = lines.FirstOrDefault(x => x.StartsWith("#EXT-X-MAP:"));
+        if (!string.IsNullOrEmpty(mapLine))
         {
-            Match m = REGEX_BYTERANGE_PARAM.Match(mapUrl);
-            if (m.Success)
+            var mapAttrs = ParseAttributes(mapLine.Trim());
+
+            if (mapAttrs.TryGetValue("URI", out var uriValue))
+                mapUrl = uriValue.EnsureAbsoluteUrl(baseUrl);
+
+            if (mapAttrs.TryGetValue("BYTERANGE", out var byterangeValue))
+                ParseByteRange(byterangeValue, out mapBytesLength, out mapBytesStart);
+        }
+                
+        DecryptionInfo? decryptionInfo = null;
+        var keyLine = lines.LastOrDefault(l => l.StartsWith("#EXT-X-KEY:"));
+        if (!string.IsNullOrEmpty(keyLine))
+        {
+            var keyAttrs = ParseAttributes(keyLine.Trim());
+            var method = keyAttrs.TryGetValue("METHOD", out var methodRaw) && !string.IsNullOrWhiteSpace(methodRaw)
+                ? methodRaw
+                : "AES-128";
+
+            string? keyUrl = null;
+            if (keyAttrs.TryGetValue("URI", out var keyUriRaw) && !string.IsNullOrWhiteSpace(keyUriRaw))
+                keyUrl = keyUriRaw.EnsureAbsoluteUrl(baseUrl);
+
+            string? iv = null;
+            if (keyAttrs.TryGetValue("IV", out var ivRaw) && !string.IsNullOrWhiteSpace(ivRaw))
             {
-                mapBytesStart = int.Parse(m.Groups[2].Value);
-                mapBytesLength = int.Parse(m.Groups[1].Value);
+                iv = ivRaw;
+                if (iv.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                    iv = iv.Substring(2);
             }
 
-            mapUrl = mapUrl.Substring(mapUrl.IndexOf("=") + 1).Trim('"').EnsureAbsoluteUrl(baseUrl);
-            if (mapUrl.Contains("\""))
-                mapUrl = mapUrl.Substring(0, mapUrl.IndexOf("\""));
+            keyAttrs.TryGetValue("KEYFORMAT", out var keyFormat);
+            keyAttrs.TryGetValue("KEYFORMATVERSIONS", out var keyFormatVersions);
+            decryptionInfo = new DecryptionInfo(method, keyUrl, iv, keyFormat, keyFormatVersions);
         }
-
 
         var segments = new List<Segment>();
         MediaSegment? currentSegment = null;
@@ -104,11 +146,12 @@ public static class HLS
                 segments.Add(new DiscontinuitySegment());
             else if (line == "#EXT-X-ENDLIST")
                 segments.Add(new EndListSegment());
-            else if (currentSegment != null && line.StartsWith("#EXT-X-BYTERANGE:") && line.Contains("@"))
+            else if (currentSegment != null && line.StartsWith("#EXT-X-BYTERANGE:"))
             {
-                string[] parts = line.Substring("#EXT-X-BYTERANGE:".Length).Split("@");
-                currentSegment.BytesStart = long.Parse(parts[1]);
-                currentSegment.BytesLength = long.Parse(parts[0]);
+                var value = line.Substring("#EXT-X-BYTERANGE:".Length).Trim();
+                ParseByteRange(value, out var length, out var start);
+                currentSegment.BytesLength = length;
+                currentSegment.BytesStart = start;
             }
             else if(currentSegment != null && line.StartsWith("#"))
                 currentSegment.Unhandled.Add(line);
@@ -135,7 +178,8 @@ public static class HLS
             streamInfo != null ? ParseStreamInfo(streamInfo) : null,
             segments,
             mapUrl,
-            unhandled
+            unhandled,
+            decryptionInfo
         )
         {
             MapBytesStart = mapBytesStart,
@@ -143,10 +187,21 @@ public static class HLS
         };
     }
 
-    public static async Task<IHLSPlaylist> DownloadAndParsePlaylist(string url)
+    public static async Task<IHLSPlaylist> DownloadAndParsePlaylist(string url, IRequestModifier? modifier = null)
     {
         using (HttpClient client = new HttpClient())
         {
+            var modified = modifier?.ModifyRequest(url, new Dictionary<string, string>());
+            if (modified != null)
+            {
+                url = modified.Url ?? url;
+                if (modified.Headers != null)
+                    foreach (var header in modified.Headers)
+                    {
+                        client.DefaultRequestHeaders.Add(header.Key, header.Value);
+                    }
+            }
+
             var result = await client.GetAsync(url);
             if (result.StatusCode != HttpStatusCode.OK)
                 throw new InvalidDataException($"Failed to fetch manifest [" + result.StatusCode + "]");
@@ -170,9 +225,9 @@ public static class HLS
             MasterPlaylist playlist = ParseMasterPlaylist(content, url);
             return playlist.GetVideoSources();
         }
-        catch(Exception ex)
+        catch
         {
-            if (content.Split('\n').Any(x => x.Trim().StartsWith("#EXINF:")))
+            if (content.Split('\n').Any(x => x.Trim().StartsWith("#EXTINF:")))
             {
                 if (parentSource is HLSManifestSource)
                 {
@@ -186,12 +241,31 @@ public static class HLS
                     throw new NotImplementedException();
             }
             else
-                throw ex;
+                throw;
         }
         
 
     }
 
+    private static void ParseByteRange(string value, out long length, out long start)
+    {
+        length = -1;
+        start = -1;
+
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidDataException("Empty BYTERANGE value.");
+
+        var parts = value.Trim().Split('@');
+
+        if (!long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out length) || length < 0)
+            throw new InvalidDataException($"Invalid BYTERANGE length '{value}'.");
+
+        if (parts.Length > 1)
+        {
+            if (!long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out start) || start < 0)
+                throw new InvalidDataException($"Invalid BYTERANGE offset '{value}'.");
+        }
+    }
 
     private static readonly List<string> _quoteList = new List<string> { "GROUP-ID", "NAME", "URI", "CODECS", "AUDIO", "VIDEO" };
 
@@ -337,9 +411,9 @@ public static class HLS
         public List<SessionData> SessionDataList;
         public bool IndependentSegments;
 
-        public List<string> UnHandled { get; } = new List<string>();
+        public List<string> Unhandled { get; } = new List<string>();
 
-        public MasterPlaylist(int? version, List<VariantPlaylistReference> variantPlaylistsRefs, List<MediaRendition> mediaRenditions, List<SessionData> sessionDataList, bool independentSegments, int? mediaSequence = null, List<string> unhandled = null)
+        public MasterPlaylist(int? version, List<VariantPlaylistReference> variantPlaylistsRefs, List<MediaRendition> mediaRenditions, List<SessionData> sessionDataList, bool independentSegments, int? mediaSequence = null, List<string>? unhandled = null)
         {
             Version = version;
             VariantPlaylistsRefs = variantPlaylistsRefs;
@@ -349,7 +423,7 @@ public static class HLS
             MediaSequence = mediaSequence;
 
             if (unhandled != null)
-                UnHandled.AddRange(unhandled);
+                Unhandled.AddRange(unhandled);
         }
 
         public string GenerateM3U8()
@@ -384,7 +458,7 @@ public static class HLS
                 int width = 0;
                 int height = 0;
                 var resolutionTokens = x.StreamInfo?.Resolution?.Split("x");
-                if((resolutionTokens?.Length ?? 0) > 0)
+                if(resolutionTokens != null && resolutionTokens.Length >= 2)
                 {
                     int.TryParse(resolutionTokens[0], out width);
                     int.TryParse(resolutionTokens[1], out height);
@@ -392,8 +466,8 @@ public static class HLS
 
                 var suffix = string.Join(", ", new string[]
                 {
-                    x.StreamInfo.Video,
-                    x.StreamInfo.Codecs
+                    x.StreamInfo?.Video ?? "",
+                    x.StreamInfo?.Codecs ?? ""
                 }.Where(x => x != null));
 
                 return new HLSVariantVideoUrlSource()
@@ -421,14 +495,13 @@ public static class HLS
         public string? PlaylistType;
         public StreamInfo? StreamInfo;
         public List<Segment> Segments;
-
         public string? MapUrl;
-        public int MapBytesStart = -1;
-        public int MapBytesLength = -1;
-
+        public long MapBytesStart = -1;
+        public long MapBytesLength = -1;
+        public DecryptionInfo? Decryption;
         public List<string> UnHandled { get; } = new List<string>();
 
-        public VariantPlaylist(int? version, int? targetDuration, long? mediaSequence, int? discontinuitySequence, DateTime? programDateTime, string? playlistType, StreamInfo? streamInfo, List<Segment> segments, string mapUrl = null, List<string> unhandled = null)
+        public VariantPlaylist(int? version, int? targetDuration, long? mediaSequence, int? discontinuitySequence, DateTime? programDateTime, string? playlistType, StreamInfo? streamInfo, List<Segment> segments, string? mapUrl = null, List<string>? unhandled = null, DecryptionInfo? decryption = null)
         {
             Version = version;
             TargetDuration = targetDuration;
@@ -439,6 +512,7 @@ public static class HLS
             StreamInfo = streamInfo;
             Segments = segments;
             MapUrl = mapUrl;
+            Decryption = decryption;
 
             if(unhandled != null)
                 UnHandled.AddRange(unhandled);
@@ -469,8 +543,58 @@ public static class HLS
             if (StreamInfo != null)
                 builder.Append(StreamInfo.ToM3U8Line());
 
+            if (Decryption != null)
+            {
+                var keyBuilder = new StringBuilder();
+                keyBuilder.Append("#EXT-X-KEY:METHOD=");
+                keyBuilder.Append(Decryption.Method);
+                if (!string.Equals(Decryption.Method, "NONE", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrEmpty(Decryption.KeyUrl))
+                    {
+                        keyBuilder.Append(",URI=\"");
+                        keyBuilder.Append(Decryption.KeyUrl);
+                        keyBuilder.Append("\"");
+                    }
+
+                    if (!string.IsNullOrEmpty(Decryption.IV))
+                        keyBuilder.Append($",IV=0x{Decryption.IV}");
+
+                    if (!string.IsNullOrEmpty(Decryption.KeyFormat))
+                    {
+                        keyBuilder.Append(",KEYFORMAT=\"");
+                        keyBuilder.Append(Decryption.KeyFormat);
+                        keyBuilder.Append("\"");
+                    }
+
+                    if (!string.IsNullOrEmpty(Decryption.KeyFormatVersions))
+                    {
+                        keyBuilder.Append(",KEYFORMATVERSIONS=\"");
+                        keyBuilder.Append(Decryption.KeyFormatVersions);
+                        keyBuilder.Append("\"");
+                    }
+                }
+
+                builder.AppendLine(keyBuilder.ToString());
+            }
+
             if (!string.IsNullOrEmpty(MapUrl))
-                builder.AppendLine("#EXT-X-MAP:URI=\"" + MapUrl + "\"" + ((MapBytesStart >= 0 && MapBytesLength > 0) ? $",BYTERANGE=\"{MapBytesLength}@{MapBytesStart}\"" : ""));
+            {
+                var mapBuilder = new StringBuilder();
+                mapBuilder.Append("#EXT-X-MAP:URI=\"");
+                mapBuilder.Append(MapUrl);
+                mapBuilder.Append("\"");
+
+                if (MapBytesLength > 0)
+                {
+                    if (MapBytesStart >= 0)
+                        mapBuilder.Append($",BYTERANGE=\"{MapBytesLength}@{MapBytesStart}\"");
+                    else
+                        mapBuilder.Append($",BYTERANGE=\"{MapBytesLength}\"");
+                }
+
+                builder.AppendLine(mapBuilder.ToString());
+            }
 
             foreach (var segment in Segments)
                 builder.Append(segment.ToM3U8Line());
@@ -485,7 +609,7 @@ public static class HLS
             int width = 0;
             int height = 0;
             var resolutionTokens = x.StreamInfo?.Resolution?.Split("x");
-            if ((resolutionTokens?.Length ?? 0) > 0)
+            if (resolutionTokens != null && resolutionTokens.Length >= 2)
             {
                 int.TryParse(resolutionTokens[0], out width);
                 int.TryParse(resolutionTokens[1], out height);
@@ -493,26 +617,29 @@ public static class HLS
 
             var suffix = string.Join(", ", new string[]
             {
-                    x.StreamInfo.Video,
-                    x.StreamInfo.Codecs
+                    x.StreamInfo?.Video ?? "",
+                    x.StreamInfo?.Codecs ?? ""
             }.Where(x => x != null));
 
-
-            var segment = x.Segments.FirstOrDefault(x => x is MediaSegment) as MediaSegment;
-            return new List<HLSVariantVideoUrlSource>()
+            var mediaSegment = x.Segments.OfType<MediaSegment>().FirstOrDefault();
+            var url = mediaSegment?.Uri ?? string.Empty;
+            if (mediaSegment != null)
             {
-                new HLSVariantVideoUrlSource()
+                return new List<HLSVariantVideoUrlSource>()
                 {
-                    Width = width,
-                    Height = height,
-                    Container = "application/vnd.apple.mpegurl",
-                    Codec = x.StreamInfo?.Codecs ?? "",
-                    Bitrate = x.StreamInfo?.Bandwidth ?? 0,
-                    Duration = 0,
-                    Name = suffix,
-                    Url = segment.Uri
-                }
-            };
+                    new HLSVariantVideoUrlSource()
+                    {
+                        Width = width,
+                        Height = height,
+                        Container = "application/vnd.apple.mpegurl",
+                        Codec = x.StreamInfo?.Codecs ?? "",
+                        Bitrate = x.StreamInfo?.Bandwidth ?? 0,
+                        Duration = 0,
+                        Name = suffix,
+                        Url = mediaSegment.Uri
+                    }
+                };
+            }
 
             throw new NotImplementedException();
         }
@@ -643,8 +770,8 @@ public static class HLS
     {
         public double Duration;
         public string Uri = "";
-        public long BytesStart;
-        public long BytesLength;
+        public long BytesStart = -1;
+        public long BytesLength = -1;
 
         public List<string> Unhandled = new List<string>();
 
@@ -655,10 +782,17 @@ public static class HLS
 
         public override string ToM3U8Line()
         {
-            StringBuilder builder = new StringBuilder();
+            var builder = new StringBuilder();
             builder.AppendLine($"#EXTINF:{Duration},");
-            if (BytesStart >= 0 && BytesLength > 0)
-                builder.AppendLine($"#EXT-X-BYTERANGE:{BytesLength}@{BytesStart}");
+            
+            if (BytesLength > 0)
+            {
+                if (BytesStart >= 0)
+                    builder.AppendLine($"#EXT-X-BYTERANGE:{BytesLength}@{BytesStart}");
+                else
+                    builder.AppendLine($"#EXT-X-BYTERANGE:{BytesLength}");
+            }
+
             builder.AppendLine(Uri);
             return builder.ToString();
         }

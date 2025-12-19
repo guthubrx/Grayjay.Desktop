@@ -215,6 +215,9 @@ function httpGETBypass(url, headers, ct) {
 function pluginUpdateTestPlugin(config) {
     return JSON.parse(syncPOST("/Developer/updateTestPlugin", {"Content-Type": "application/json"}, JSON.stringify(config)));
 }
+function pluginLoginCloneTestPlugin() {
+    return syncGET("/Developer/loginCloneTestPlugin", {});
+}//captchaLoginTestPlugin
 function pluginLoginTestPlugin() {
     return syncGET("/Developer/loginTestPlugin", {});
 }//captchaLoginTestPlugin
@@ -245,7 +248,14 @@ function pluginIsLoggedIn(cb, err) {
         .then(x => cb(x))
         .catch(y => err && err(y));
 }
-
+function pluginStateInfo(cb, err) {
+    fetch("/Developer/StateInfo", {
+        timeout: 1000
+    })
+        .then(x => x.json())
+        .then(x => cb(x))
+        .catch(y => err && err(y));
+}
 function pluginGetWarnings(config) {
     return JSON.parse(syncPOST("/Developer/getWarnings", {"Content-Type": "application/json"}, JSON.stringify(config)));
 }

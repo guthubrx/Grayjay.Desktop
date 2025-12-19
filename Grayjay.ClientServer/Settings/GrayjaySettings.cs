@@ -1,4 +1,4 @@
-﻿using Grayjay.ClientServer.States;
+using Grayjay.ClientServer.States;
 using Grayjay.Desktop.POC;
 using Grayjay.Engine;
 using Grayjay.Engine.Setting;
@@ -102,19 +102,20 @@ namespace Grayjay.ClientServer.Settings
             }
             */
 
-            [SettingsField("Subscription concurrency", SettingsField.DROPDOWN, "Specify how many threads are used to fetch channels", 11)]
-            [SettingsDropdownOptions("2", "4", "8", "12", "16", "20", "30")]
-            public int SubscriptionConcurrency { get; set; } = 6;
+            //[SettingsField("Subscription concurrency", SettingsField.DROPDOWN, "Specify how many threads are used to fetch channels", 11)]
+            //[SettingsDropdownOptions("2", "4", "8", "12", "16", "20", "30")]
+            //public int SubscriptionConcurrency { get; set; } = 6;
             public int GetSubscriptionConcurrency()
             {
+                var SubscriptionConcurrency = 6;
                 return ThreadIndexToCount(SubscriptionConcurrency) * 2;
             }
 
             [SettingsField("Show Watch Metrics", SettingsField.TOGGLE, "Shows the watch time and views of each creator in the creators tab", 12)]
             public bool ShowWatchMetrics { get; set; } = false;
 
-            [SettingsField("Track Playtime Locally", SettingsField.TOGGLE, "Locally track playtime of subscriptions, used for subscriptions.", 13)]
-            public bool AllowPlaytimeTracking { get; set; } = true;
+            //[SettingsField("Track Playtime Locally", SettingsField.TOGGLE, "Locally track playtime of subscriptions, used for subscriptions.", 13)]
+            //public bool AllowPlaytimeTracking { get; set; } = true;
 
             //[SettingsField("Always Reload From Cache", SettingsField.TOGGLE, "This is not recommended, but possible workaround for subscription issues", 14)]
             //public bool AlwaysReloadFromCache { get; set; } = false;
@@ -214,8 +215,8 @@ namespace Grayjay.ClientServer.Settings
             public bool UseLiveChatWindow { get; set; } = true;
             */
 
-            [SettingsField("Hide Known Broken Livechats", SettingsField.TOGGLE, "Some live chats are known to have compatibility issues with desktop, this setting disables those (Recommended)", 7)]
-            public bool HideBrokenLivechats { get; set; } = true;
+            //[SettingsField("Hide Known Broken Livechats", SettingsField.TOGGLE, "Some live chats are known to have compatibility issues with desktop, this setting disables those (Recommended)", 7)]
+            //public bool HideBrokenLivechats { get; set; } = true;
         }
 
         /*
@@ -246,19 +247,19 @@ namespace Grayjay.ClientServer.Settings
             [SettingsDropdownOptions("Low Bitrate", "High Bitrate")]
             public int PreferredAudioQuality { get; set; } = 1;
 
-            public bool IsHighBitrateDefault() => PreferredAudioQuality > 0;
+            //public bool IsHighBitrateDefault() => PreferredAudioQuality > 0;
 
             [SettingsField("Byte Range Download", SettingsField.TOGGLE, "Attempt to utilize byte ranges", 4)]
-            public bool ByteRangeDownload { get; set; } = true;
+            //public bool ByteRangeDownload { get; set; } = true;
 
-            [SettingsField("ByteRange Concurrency", SettingsField.DROPDOWN, "Number of concurrent threads to multiple download speed", 5)]
-            [SettingsDropdownOptions("1", "2", "4", "6", "8", "10", "15")]
-            public int ByteRangeConcurrency { get; set; } = 3;
+            //[SettingsField("ByteRange Concurrency", SettingsField.DROPDOWN, "Number of concurrent threads to multiple download speed", 5)]
+            //[SettingsDropdownOptions("1", "2", "4", "6", "8", "10", "15")]
+            //public int ByteRangeConcurrency { get; set; } = 3;
 
 
             public int GetByteRangeThreadCount()
             {
-                return ThreadIndexToCount(ByteRangeConcurrency);
+                return ThreadIndexToCount(3);//ByteRangeConcurrency);
             }
         }
 
@@ -278,7 +279,7 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Enabled", SettingsField.TOGGLE, "Enable casting", 0)]
             public bool Enabled { get; set; } = true;
             [SettingsField("Experimental", SettingsField.TOGGLE, "Enable experimental casting backend. Requires restart", 0)]
-            public bool Experimental { get; set; } = false;
+            public bool Experimental { get; set; } = true;
         }
         
 

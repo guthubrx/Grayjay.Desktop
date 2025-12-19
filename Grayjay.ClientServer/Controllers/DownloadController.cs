@@ -51,7 +51,9 @@ namespace Grayjay.ClientServer.Controllers
                             var hlsSource = y as HLSManifestSource;
                             try
                             {
-                                var manifest = Parsers.HLS.DownloadAndParsePlaylist(hlsSource.Url).Result;
+                                var modifier = hlsSource?.GetRequestModifier();
+
+                                var manifest = Parsers.HLS.DownloadAndParsePlaylist(hlsSource.Url, modifier).Result;
                                 return manifest.GetVideoSources();
                             }
                             catch (Exception ex)

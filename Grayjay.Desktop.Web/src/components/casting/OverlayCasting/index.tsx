@@ -1,4 +1,4 @@
-import { Component, For, Match, Show, Switch, createEffect, createMemo, createSignal } from 'solid-js'
+import { Component, For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from 'solid-js'
 
 import styles from './index.module.css';
 import { CastConnectionState, CastProtocolType, CastingDeviceInfo, CastingDialogState, useCasting } from '../../../contexts/Casting';
@@ -26,6 +26,7 @@ import { focusScope } from '../../../focusScope'; void focusScope;
 import { focusable } from "../../../focusable"; void focusable;
 import Button from '../../buttons/Button';
 import StateGlobal from '../../../state/StateGlobal';
+import { useFocus } from '../../../FocusProvider';
 
 const getDeviceIcon = (device?: CastingDeviceInfo, active?: boolean) => {
     if (!device) {
@@ -358,8 +359,15 @@ const ActiveDeviceView: Component = () => {
 };
 
 const OverlayCasting: Component = () => {
+    const focus = useFocus();
     const casting = useCasting();
     const globalBack = () => (casting?.actions.close(), true);
+
+    createEffect(on(casting!.dialogState, () => {
+        requestAnimationFrame(() => {
+            focus?.focusFirstInActiveScope();
+        });
+    }));
     return (
         <>
             <Show when={casting?.dialogState() !== CastingDialogState.Closed}>

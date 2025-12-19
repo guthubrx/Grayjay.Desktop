@@ -157,8 +157,9 @@ namespace Grayjay.Desktop
                 bool isServer = arg == "--server";
                 bool isFullscreen = arg == "--fullscreen";
                 bool isScaleFactor = arg.StartsWith("--scale-factor=");
+                bool isInputSource = arg.StartsWith("--input-source=");
 
-                if (isHeadless || isServer || isFullscreen || isScaleFactor)
+                if (isHeadless || isServer || isFullscreen || isScaleFactor || isInputSource)
                     continue;
 
                 if (builder.Length > 0)
@@ -247,6 +248,7 @@ namespace Grayjay.Desktop
             bool isServer = args?.Contains("--server") ?? false;
             bool isFullscreen = args?.Contains("--fullscreen") ?? false;
             double? scaleFactor = args?.FirstOrDefault(a => a.StartsWith("--scale-factor=")) is string s && double.TryParse(s["--scale-factor=".Length..], out var v) ? v : null;
+            StateApp.InputSource = args?.FirstOrDefault(a => a.StartsWith("--input-source="))?["--input-source=".Length..];
 
 #if DEBUG
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

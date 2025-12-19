@@ -375,6 +375,9 @@
 					  Settings
 				  </div>
 				  <div style="right: 370px; top: 15px; position: absolute" v-if="Plugin?.currentPlugin?.authentication">
+					  <v-btn @click="loginCloneTestPlugin()" v-if="!Plugin.isLoggedIn && Plugin.canCloneLogin">
+						  Login (Clone)
+					  </v-btn>
 					  <v-btn @click="loginTestPlugin()" v-if="!Plugin.isLoggedIn">
 						  Login
 					  </v-btn>
@@ -1130,7 +1133,10 @@
 		  			if(shouldLoginCheck)
 						this.isTestLoggedIn();
 				}catch(ex){}
-		  	}, 2500);
+				}, 2500);
+              setInterval(() => {
+                  this.updateStateInfo();
+			  }, 5000)
 		  },
 		  methods: {
 		  	loadOverrides() {
@@ -1166,7 +1172,17 @@
 				currentPastPlugins = currentPastPlugins.filter(x=>x.toLowerCase() != url.toLowerCase());
 				this.pastPluginUrls = currentPastPlugins;
 				localStorage.setItem("pastPlugins", JSON.stringify(currentPastPlugins));
-			},
+              },
+              loginCloneTestPlugin() {
+                  pluginLoginCloneTestPlugin();
+                  setTimeout(() => {
+                      reloadPackages();
+                      this.isTestLoggedIn((loggedIn) => {
+                          if (loggedIn && this.settings.enableOnReload)
+                              this.testSource(this.Testing.requests.find(x => x.title == 'enable'));
+                      });
+                  }, 1000);
+              },
 			loginTestPlugin() {
 				pluginLoginTestPlugin();
 				setTimeout(()=>{
@@ -1312,7 +1328,18 @@
 					if(cb)
 						cb(false);
 				});
-			},
+			  },
+			  updateStateInfo(cb) {
+                  pluginStateInfo((info) => {
+					  Vue.nextTick(() => {
+						  this.Plugin.canCloneLogin = info.canCloneLogin;
+						  if (cb)
+							  cb(info);
+					  });
+				  }, (ex) => {
+
+				  });
+			  },
 			injectDevPlugin() {
 				this.Integration.lastLogDevID = uploadDevPlugin(this.Plugin.currentPlugin);
 				this.Integration.logs = [

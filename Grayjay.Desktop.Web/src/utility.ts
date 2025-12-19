@@ -214,8 +214,8 @@ export function dateFromAny(value?: any, def?: DateTime): DateTime | undefined {
   
   if(!isNaN(value)) {
     //TODO: Alt solution
-    const wrongOffset = ((new Date()).getTimezoneOffset()/60);
-    return DateTime.fromSeconds(value).plus({hours: wrongOffset});
+    //const wrongOffset = ((new Date()).getTimezoneOffset()/60);
+    return DateTime.fromSeconds(value);//.plus({hours: wrongOffset});
   }
   if(typeof value == "string")
     return DateTime.fromISO(value);
@@ -223,7 +223,7 @@ export function dateFromAny(value?: any, def?: DateTime): DateTime | undefined {
 }
 
 export function toHumanNowDiffString(value?: any, abs: boolean = false): string | undefined {
-  if (!value) {
+  if (!value || value <= 0) {
     return undefined;
   }
 

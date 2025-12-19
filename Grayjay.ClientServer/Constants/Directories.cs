@@ -56,7 +56,7 @@ public static class Directories
             }
             else if (OperatingSystem.IsMacOS())
             {
-                if (Directory.Exists(Path.Combine(userDir, "Library/Application Support")))
+                if (DirectoryIsWriteableReadable(Path.Combine(userDir, "Library/Application Support")))
                     dir = Path.Combine(userDir, "Library/Application Support", "Grayjay");
                 else
                     dir = Path.Combine(userDir, "Containers", "com.futo.grayjay.desktop", "Data", "Library", "Application Support");
@@ -73,6 +73,36 @@ public static class Directories
 
         EnsureDirectoryExists(dir);
         return dir;
+    }
+
+    public static bool DirectoryIsWriteableReadable(string dirPath)
+    {
+        if (!Directory.Exists(dirPath))
+            return false;
+
+        string testFile = Path.Combine(dirPath, Path.GetRandomFileName());
+        try
+        {
+            File.WriteAllText(testFile, "ping");
+            _ = File.ReadAllText(testFile);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }        
+        finally
+        {
+            try
+            {
+                if (File.Exists(testFile))
+                    File.Delete(testFile);
+            }
+            catch
+            {
+                // Ignored
+            }
+        }
     }
 
     private static string ComputeTemporaryDirectory()
