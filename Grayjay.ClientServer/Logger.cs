@@ -200,7 +200,7 @@ namespace Grayjay.Desktop.POC
             FileLogLevel = (LogLevel)LogLevel.Verbose,
             ConsoleLogLevel = LogLevel.Verbose,
 //#if DEBUG
-//            DebugLogLevel = (LogLevel)LogLevel.Verbose,
+//          DebugLogLevel = (LogLevel)LogLevel.Verbose,
 //#else
             DebugLogLevel = LogLevel.None
 //#endif
