@@ -229,12 +229,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   const navigateTo = (to: string, options: Partial<NavigateOptions>) => {
     props.onNavigate?.(to); 
     navigate(to, options);
-  }
-
-  const rowFocus = (order: number, onPress: () => void, onBack?: () => boolean): FocusableOptions => ({
-    onPress: () => onPress(),
-    onBack
-  });
+  };
 
   const globalFocus = () => {
     console.info("sidebar globalFocus");
@@ -255,7 +250,13 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
               class={styles.collapse}
               alt=""
               role="button"
-              use:focusable={{ onPress: handleCollapse }}
+              use:focusable={{ 
+                groupId: 'sidebar',
+                groupIndices: [0],
+                groupType: 'vertical',
+                groupEscapeDirs: ['right'],
+                onPress: handleCollapse 
+              }}
               onClick={handleCollapse}
             />
           </div>
@@ -289,7 +290,13 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                 selected={btn.getSelected()}
                 onClick={press}
                 onRightClick={btn.onRightClick}
-                focusableOpts={rowFocus(i(), press)}
+                focusableOpts={{
+                  groupId: 'sidebar',
+                  groupType: 'vertical',
+                  groupIndices: [i() + 1],
+                  groupEscapeDirs: ['right'],
+                  onPress: () => press()
+                }}
                 onFocus={globalFocus}
                 onBlur={globalBlur}
               />
@@ -303,7 +310,16 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
             name={"More"}
             selected={false}
             onClick={() => { props?.onMoreOpened?.(); setMoreOverlayVisible(true); }}
-            focusableOpts={rowFocus(9999, () => { props?.onMoreOpened?.(); setMoreOverlayVisible(true); })}
+            focusableOpts={{
+              groupId: 'sidebar',
+              groupType: 'vertical',
+              groupIndices: [visibleTopButtonCount$() + 1],
+              groupEscapeDirs: ['right'],
+              onPress: () => {
+                props?.onMoreOpened?.(); 
+                setMoreOverlayVisible(true);
+              }
+            }}
             onFocus={globalFocus}
             onBlur={globalBlur}
           />
@@ -311,8 +327,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
       </div>
       <Show when={!isCollapsed() && subscriptions$()?.length && remainingSpace$() > 200 && focus?.isControllerMode() !== true} fallback={<div style="flex-grow:1"></div>}>
         <div class={styles.buttonListFill}>
-          <div classList={{[styles.expandHeader]: true, [styles.expanded]: expand$()}} onClick={()=>setExpand(!expand$())} 
-            use:focusable={{ onPress: () => setExpand(!expand$()) }}>
+          <div classList={{[styles.expandHeader]: true, [styles.expanded]: expand$()}} onClick={()=>setExpand(!expand$())}>
               Subscriptions
               <div class={styles.toggle}>
                   <img src={iconChevronDown} />
@@ -352,7 +367,13 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                 name={btn.name}
                 selected={btn.getSelected()}
                 onClick={press}
-                focusableOpts={rowFocus(30000 + i(), press)}
+                focusableOpts={{
+                  groupId: 'sidebar',
+                  groupType: 'vertical',
+                  groupEscapeDirs: ['right'],
+                  groupIndices: [visibleTopButtonCount$() + 1 + (moreTopButtonCount$() > 0 ? 1 : 0) + i()],
+                  onPress: press
+                }}
                 onFocus={globalFocus}
                 onBlur={globalBlur}
               />
@@ -390,6 +411,10 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                       onClick={press}
                       onRightClick={btn.onRightClick}
                       focusableOpts={{
+                        groupId: 'sidebar-overlay',
+                        groupType: 'vertical',
+                        groupIndices: [i()],
+                        groupEscapeDirs: ['right'],
                         onPress: press,
                         onBack: () => {
                           if (moreOverlayVisible$()) {

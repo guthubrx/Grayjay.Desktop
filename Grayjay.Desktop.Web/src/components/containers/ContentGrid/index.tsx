@@ -28,7 +28,7 @@ import { useNavigate } from "@solidjs/router";
 import CreatorView from "../../content/CreatorView";
 import { IPlatformAuthorLink } from "../../../backend/models/IPlatformAuthorLink";
 import StateGlobal from "../../../state/StateGlobal";
-import { toHumanNumber } from "../../../utility";
+import { toHumanNumber, uuidv4 } from "../../../utility";
 import PostThumbnailView from "../../content/PostThumbnailView";
 import { IPlatformPost } from "../../../backend/models/content/IPlatformPost";
 import NestedMediaThumbnailView from "../../content/NestedMediaThumbnailView";
@@ -38,7 +38,7 @@ import LockedContentThumbnailView from "../../content/LockedContentThumbnailView
 import { IPlatformLockedContent } from "../../../backend/models/content/IPlatformLockedContent";
 import { LocalBackend } from "../../../backend/LocalBackend";
 import { Event0, Event1 } from "../../../utility/Event";
-import { focusable } from "../../../focusable";import { InputSource } from "../../../nav";
+import { focusable } from "../../../focusable";import { FocusableOptions, InputSource } from "../../../nav";
 import { useFocus } from "../../../FocusProvider";
  void focusable;
 
@@ -53,6 +53,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
     const video = useVideo();
     const focus = useFocus();
     const navigate = useNavigate();
+    const groupId = uuidv4();
 
     let isLoading = false;
     let loadNextPageWhenFinishedLoading = false;
@@ -192,7 +193,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
         }
     };
 
-    const renderCreator = (index: Accessor<number | undefined>, creator: Accessor<IPlatformAuthorLink>) => {
+    const renderCreator = (index: Accessor<number | undefined>, creator: Accessor<IPlatformAuthorLink>, row: Accessor<number | undefined>, col: Accessor<number | undefined>) => {
         return (
             <CreatorView id={creator().id}
                 name={creator().name}
@@ -201,13 +202,16 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                 metadata={((creator().subscribers && creator().subscribers > 0) ? (toHumanNumber(creator().subscribers) + " subscribers") : "")}
                 url={creator().url}
                 focusableOpts={creator() ? {
+                    groupId: groupId,
+                    groupType: 'grid',
+                    groupIndices: [row(), col()],
                     onPress: () => navigate("/web/channel?url=" + encodeURIComponent(creator().url), { state: { author: creator() } }),
                     onBack: () => onBackContentGrid()
-                } : undefined} />
+                } as FocusableOptions : undefined} />
         );
     };
 
-    const renderPlaylist = (index: Accessor<number | undefined>, item: Accessor<IPlatformPlaylist>) => {
+    const renderPlaylist = (index: Accessor<number | undefined>, item: Accessor<IPlatformPlaylist>, row: Accessor<number | undefined>, col: Accessor<number | undefined>) => {
         const pluginIconUrl$ = createMemo(() => {
             const plugin = StateGlobal.getSourceConfig(item()?.id?.pluginID);
             return plugin?.absoluteIconUrl;
@@ -220,10 +224,13 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                 platformIconUrl={pluginIconUrl$()}
                 onClick={() => navigate("/web/remotePlaylist?url=" + encodeURIComponent(item().url))}
                 focusableOpts={item() ? {
+                    groupId: groupId,
+                    groupType: 'grid',
+                    groupIndices: [row(), col()],
                     onPress: () => navigate("/web/remotePlaylist?url=" + encodeURIComponent(item().url)),
                     onOptions: (e, inputSource) => onSettingsClicked(e, item(), inputSource),
                     onBack: () => onBackContentGrid()
-                } : undefined} />
+                } as FocusableOptions : undefined} />
         );
         //onSettings={(e) => onSettingsClicked(e, playlist)}
     };
@@ -262,7 +269,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                     elementStyle={{
                         "margin-left": "0px"
                     }}
-                    builder={(index, item) => 
+                    builder={(index, item, row, col) => 
                         <>
                             <Show when={item()?.contentType == ContentType.MEDIA}>
                                 <VideoThumbnailView video={item() as IPlatformVideo}
@@ -270,6 +277,9 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                     onSettings={(e, content)=> onSettingsClicked(e, content, "pointer")}
                                     onAddtoQueue={(e, content)=>video?.actions.addToQueue(content as IPlatformVideo)}
                                     focusableOpts={item() ? {
+                                        groupId: groupId,
+                                        groupType: 'grid',
+                                        groupIndices: [row(), col()],
                                         onPress: () => {
                                             const url = item().backendUrl ?? item().url;
                                             if (url)
@@ -279,7 +289,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                             onSettingsClicked(e, item(), inputSource);
                                         },
                                         onBack: () => onBackContentGrid()
-                                    } : undefined}
+                                    } as FocusableOptions : undefined}
                                     onClick={() => {
                                         const url = item().backendUrl ?? item().url;
                                         if (url)
@@ -295,6 +305,9 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                             navigate("/web/details/post?url=" + encodeURIComponent(url));
                                     }}
                                     focusableOpts={item() ? {
+                                        groupId: groupId,
+                                        groupType: 'grid',
+                                        groupIndices: [row(), col()],
                                         onPress: () => {
                                             const url = item().backendUrl ?? item().url;
                                             if(url)
@@ -302,7 +315,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         },
                                         onOptions: (e, inputSource) => onSettingsClicked(e, item(), inputSource),
                                         onBack: () => onBackContentGrid()
-                                    } : undefined} />
+                                    } as FocusableOptions : undefined} />
                             </Show>
                             <Show when={item()?.contentType == ContentType.NESTED_VIDEO}>
                                 <NestedMediaThumbnailView video={item() as IPlatformNestedMedia}
@@ -314,6 +327,9 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         }
                                     }}
                                     focusableOpts={item() ? {
+                                        groupId: groupId,
+                                        groupType: 'grid',
+                                        groupIndices: [row(), col()],
                                         onPress: () => {
                                             const url = item().backendUrl ?? item().contentUrl;
                                             if(url) {
@@ -322,7 +338,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         },
                                         onOptions: (e, inputSource) => onSettingsClicked(e, item(), inputSource),
                                         onBack: () => onBackContentGrid()
-                                    } : undefined} />
+                                    } as FocusableOptions : undefined} />
                             </Show>
                             <Show when={item()?.contentType == ContentType.LOCKED}>
                                 <LockedContentThumbnailView content={item() as IPlatformLockedContent}
@@ -334,6 +350,9 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         }
                                     }}
                                     focusableOpts={item() ? {
+                                        groupId: groupId,
+                                        groupType: 'grid',
+                                        groupIndices: [row(), col()],
                                         onPress: () => {
                                             const url = item().backendUrl ?? item().contentUrl;
                                             if(url) {
@@ -342,13 +361,13 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         },
                                         onOptions: (e, inputSource) => onSettingsClicked(e, item(), inputSource),
                                         onBack: () => onBackContentGrid()
-                                    } : undefined} />
+                                    } as FocusableOptions : undefined} />
                             </Show>
                             <Show when={item()?.contentType == ContentType.PLAYLIST}>
-                                {renderPlaylist(index, createMemo(() => item() as IPlatformPlaylist))}
+                                {renderPlaylist(index, createMemo(() => item() as IPlatformPlaylist), row, col)}
                             </Show>
                             <Show when={item()?.contentType == ContentType.CHANNEL}>
-                                {renderCreator(index, createMemo(() => item() as IPlatformAuthorLink))}
+                                {renderCreator(index, createMemo(() => item() as IPlatformAuthorLink), row, col)}
                             </Show>
                             <Show when={item()?.contentType == ContentType.PLACEHOLDER}>
                                 <PlaceholderThumbnailView placeholder={item() as IPlatformContentPlaceholder} />

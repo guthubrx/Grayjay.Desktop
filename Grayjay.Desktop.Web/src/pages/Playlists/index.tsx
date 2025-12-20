@@ -229,7 +229,7 @@ const PlaylistsPage: Component = () => {
                   "margin-top": "15px",
                   "margin-bottom": "10px"
                 }}
-                builder={(index, item) =>
+                builder={(index, item, row, col) =>
                   <VideoThumbnailView video={item() as IPlatformVideo}
                     onClick={() => {
                       const queue = video?.watchLater();
@@ -241,6 +241,9 @@ const PlaylistsPage: Component = () => {
                     }}
                     onSettings={(e, content) => onSettingsClicked(e, content, "pointer")}
                     focusableOpts={{
+                      groupId: 'playlists',
+                      groupType: 'grid',
+                      groupIndices: [row(), col()],
                       onPress: (el, inputSource) => {
                         const queue = video?.watchLater();
                         if (!queue) {
@@ -260,15 +263,6 @@ const PlaylistsPage: Component = () => {
             <div class={styles.containerPlaylistsHeader}>
               <div class={styles.textHeader}>Playlists</div>
               <div style="flex-grow: 1;"></div>
-
-              <ButtonFlex text='New playlist'
-                icon={icon_add}
-                color='#019BE7'
-                small={true}
-                onClick={() =>createPlaylist()}
-                focusableOpts={{
-                  onPress: () => createPlaylist()
-                }} />
             </div>
 
             <div class={styles.containerFilters}>
@@ -284,6 +278,19 @@ const PlaylistsPage: Component = () => {
                 }}
                 focusable={true} />
               <Dropdown label="Sort by" onSelectedChanged={(v) => setSortBy(v)} value={sortBy()} options={sortOptions} anchorStyle={AnchorStyle.BottomLeft} style={{"width": "280px"}} />
+              <ButtonFlex text='New playlist'
+                icon={icon_add}
+                color='#019BE7'
+                small={true}
+                style={{
+                  width: '170px',
+                  height: '70px',
+                  'flex-shrink': 0
+                }}
+                onClick={() =>createPlaylist()}
+                focusableOpts={{
+                  onPress: () => createPlaylist()
+                }} />
             </div>
             
             <Show when={(filteredPlaylists$()?.length ?? 0) > 0}>
@@ -301,7 +308,7 @@ const PlaylistsPage: Component = () => {
                   "margin-top": "24px",
                   "margin-bottom": "24px"
                 }}
-                builder={(index, item) => {
+                builder={(index, item, row, col) => {
                   const bestThumbnail$ = createMemo(()=>{
                     const playlist = item();
                     const video = (playlist?.videos?.length ?? 0 > 0) ? playlist?.videos[0] : null;
@@ -325,6 +332,9 @@ const PlaylistsPage: Component = () => {
                         }
                       }}
                       focusableOpts={item() ? {
+                        groupId: 'playlists-filtered',
+                        groupType: 'grid',
+                        groupIndices: [row(), col()],
                         onPress: () => {
                           const playlist = item();
                           if (item()) {

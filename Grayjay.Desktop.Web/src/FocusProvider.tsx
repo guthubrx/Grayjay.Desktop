@@ -32,12 +32,12 @@ type Idx = {
 };
 
 function createIndex(): Idx {
-    return {
-        nodes: new Map(),
-        scopes: new Map(),
-        nodeByEl: new WeakMap(),
-        scopeByEl: new WeakMap(),
-    };
+  return {
+    nodes: new Map(),
+    scopes: new Map(),
+    nodeByEl: new WeakMap(),
+    scopeByEl: new WeakMap()
+  };
 }
 
 export interface FocusAPI {
@@ -182,6 +182,31 @@ export function FocusProvider(props: { children: JSX.Element }) {
         if (wasActive && next) queueMicrotask(() => focusFirstInScope(next, true));
     }
 
+    function isGroupSelectable(n: NodeEntry): boolean {
+        if (n.opts.disabled) return false;
+        if (n.opts.focusInert?.()) return false;
+        if (!n.el.isConnected) return false;
+
+        if (n.el.hidden) return false;
+        const style = getComputedStyle(n.el);
+        if (style.display === "none" || style.visibility === "hidden") return false;
+
+        if (!isFocusable(n.el)) return false;
+
+        return true;
+    }
+
+    function focusCandidate(node: NodeEntry, dir?: Direction) {
+        try {
+            node.el.scrollIntoView({ block: "nearest", inline: "nearest" });
+        } catch {}
+
+        const cont = nearestScrollContainer(node.el);
+        if (!isPartiallyVisibleInContainer(node.el, cont)) scrollIntoViewWithin(cont, node.el, dir);
+        focusNode(node);
+    }
+
+
     function setScopeMode(id: string, mode: 'off' | 'on' | 'trap') {
         console.info("setScopeMode", {id, mode});
         const s = index.scopes.get(id);
@@ -241,8 +266,10 @@ export function FocusProvider(props: { children: JSX.Element }) {
     function unregisterNode(id: string) {
         const rec = index.nodes.get(id);
         if (!rec) return;
+
         index.nodeByEl.delete(rec.el);
         index.nodes.delete(id);
+
         const scope = index.scopes.get(rec.scope);
         scope?.nodes.delete(id);
         if (scope?.activeNode === id) scope.activeNode = undefined;
@@ -389,12 +416,34 @@ export function FocusProvider(props: { children: JSX.Element }) {
         return candCont === parent || parent.contains(candCont);
     }
 
-    function spatialNext(from: HTMLElement, dir: Direction, scopeId: string): NodeEntry | undefined {
-        const all = candidatesInScope(scopeId).filter(n => n.el !== from);
+    function intervalOverlap(a1: number, a2: number, b1: number, b2: number) {
+        return Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+    }
+
+    function spatialNext(from: HTMLElement, dir: Direction, scopeId: string, fromNode?: NodeEntry): NodeEntry | undefined {
+        let all = candidatesInScope(scopeId).filter(n => n.el !== from);
         if (!all.length) return;
         if (dir === 'next' || dir === 'prev') return;
 
+        const fromGroupId = (fromNode?.opts as any)?.groupId as string | undefined;
+        const escapeOk = groupEscapeAllowed(fromNode, dir);
+        if (fromGroupId && !escapeOk) {
+            all = all.filter(n => ((n.opts as any)?.groupId as string | undefined) === fromGroupId);
+            if (!all.length) return;
+        }
+
         const fromRect = from.getBoundingClientRect();
+        const FRONT_EPS = 4;
+        function inFrontOfDirection(r: DOMRect, dir: Direction) {
+            switch (dir) {
+                case "left": return r.right <= fromRect.left + FRONT_EPS;
+                case "right": return r.left >= fromRect.right - FRONT_EPS;
+                case "up": return r.bottom <= fromRect.top + FRONT_EPS;
+                case "down": return r.top >= fromRect.bottom - FRONT_EPS;
+                default: return true;
+            }
+        }
+
         const cx0 = fromRect.left + fromRect.width / 2;
         const cy0 = fromRect.top + fromRect.height / 2;
 
@@ -408,28 +457,44 @@ export function FocusProvider(props: { children: JSX.Element }) {
         const isVertical = (dir === 'up' || dir === 'down');
 
         const EDGE_PX = 8;
-        const atTop = navContainer.scrollTop <= 1 || fromRect.top    <= navContRect.top    + EDGE_PX;
+        const atTop = navContainer.scrollTop <= 1 || fromRect.top <= navContRect.top + EDGE_PX;
         const atBottom = (navContainer.scrollHeight - navContainer.clientHeight - navContainer.scrollTop) <= 1 || fromRect.bottom >= navContRect.bottom - EDGE_PX;
-        const atLeft = navContainer.scrollLeft <= 1 || fromRect.left  <= navContRect.left   + EDGE_PX;
-        const atRight = (navContainer.scrollWidth - navContainer.clientWidth - navContainer.scrollLeft) <= 1 || fromRect.right  >= navContRect.right - EDGE_PX;
+        const atLeft = navContainer.scrollLeft <= 1 || fromRect.left <= navContRect.left + EDGE_PX;
+        const atRight = (navContainer.scrollWidth - navContainer.clientWidth - navContainer.scrollLeft) <= 1 || fromRect.right >= navContRect.right - EDGE_PX;
 
-        const wantEscape = (dir === 'up' && atTop) || (dir === 'down' && atBottom) || (dir === 'left' && atLeft) || (dir === 'right' && atRight);
+        const contCanScroll = canScroll(navContainer, dir);
+        const wantEscape =
+            !contCanScroll && (
+                (dir === "up" && atTop) ||
+                (dir === "down" && atBottom) ||
+                (dir === "left" && atLeft) ||
+                (dir === "right" && atRight)
+            );
+
+        const intervalOverlap = (a1: number, a2: number, b1: number, b2: number) => Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+        const pointIntervalDist = (p: number, a: number, b: number) => (p < a ? a - p : (p > b ? p - b : 0));
+
+        const COLUMN_OVERLAP_PX = 12;
+        const overlapsNavColumn = (r: DOMRect) => {
+            return (dir === "up" || dir === "down")
+                ? intervalOverlap(r.left, r.right, navContRect.left, navContRect.right) >= COLUMN_OVERLAP_PX
+                : intervalOverlap(r.top, r.bottom, navContRect.top, navContRect.bottom) >= COLUMN_OVERLAP_PX;
+        };
+
         const BEAM_MIN = 44;
         const BEAM_PAD = 12;
         const BEAM_SCALE = 1.0;
 
         const beam = isVertical
             ? {
-                left: cx0 - Math.max(BEAM_MIN / 2, fromRect.width  * BEAM_SCALE / 2) - BEAM_PAD,
-                right: cx0 + Math.max(BEAM_MIN / 2, fromRect.width  * BEAM_SCALE / 2) + BEAM_PAD,
+                left: cx0 - Math.max(BEAM_MIN / 2, fromRect.width * BEAM_SCALE / 2) - BEAM_PAD,
+                right: cx0 + Math.max(BEAM_MIN / 2, fromRect.width * BEAM_SCALE / 2) + BEAM_PAD,
             }
             : {
                 top: cy0 - Math.max(BEAM_MIN / 2, fromRect.height * BEAM_SCALE / 2) - BEAM_PAD,
                 bottom: cy0 + Math.max(BEAM_MIN / 2, fromRect.height * BEAM_SCALE / 2) + BEAM_PAD,
             };
 
-        const intervalOverlap = (a1: number, a2: number, b1: number, b2: number) => Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
-        const pointIntervalDist = (p: number, a: number, b: number) => (p < a ? a - p : (p > b ? p - b : 0));
         const hitsBeam = (r: DOMRect) => {
             return isVertical
                 ? intervalOverlap(r.left, r.right, (beam as any).left, (beam as any).right) > 0
@@ -439,15 +504,22 @@ export function FocusProvider(props: { children: JSX.Element }) {
         const forward: { n: NodeEntry; r: DOMRect; cx: number; cy: number; }[] = [];
         for (const n of all) {
             const r = rectOf(n);
+            if (dir === "left" || dir === "right" || dir === "up" || dir === "down") {
+                if (!inFrontOfDirection(r, dir)) continue;
+            }
+
             const cx = (r.left + r.width / 2) - cx0;
-            const cy = (r.top  + r.height / 2) - cy0;
+            const cy = (r.top + r.height / 2) - cy0;
             const dot = cx * vx + cy * vy;
             if (dot > 0) forward.push({ n, r, cx, cy });
         }
         if (!forward.length) return;
 
         const sameOrDesc = forward.filter(c => sameOrDescendantContainer(navContainer, c.n.el));
-        const unrelated  = forward.filter(c => !sameOrDescendantContainer(navContainer, c.n.el));
+        const unrelated = forward
+            .filter(c => !sameOrDescendantContainer(navContainer, c.n.el))
+            .filter(c => overlapsNavColumn(c.r));
+
         const STRICT_OVERLAP = 0.45;
         const RELAX_OVERLAP = 0.20;
         const MAX_ANGLE_TAN = Math.tan(65 * Math.PI / 180);
@@ -478,18 +550,36 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
         let axisPool = chooseAxisPool(sameOrDesc);
         if (!axisPool.length) {
-            axisPool = wantEscape ? chooseAxisPool(unrelated)
-                                : chooseAxisPool(unrelated).filter(c => isPartiallyVisibleInContainer(c.n.el, nearestScrollContainer(c.n.el)));
+            if (!wantEscape || (fromGroupId && !escapeOk)) return;
+            axisPool = chooseAxisPool(unrelated);
             if (!axisPool.length) return;
         }
 
+        const primaryGap = (r: DOMRect): number => {
+            if (dir === 'down') return Math.max(0, r.top - fromRect.bottom);
+            if (dir === 'up') return Math.max(0, fromRect.top - r.bottom);
+            if (dir === 'right') return Math.max(0, r.left - fromRect.right);
+            return Math.max(0, fromRect.left - r.right);
+        };
+
+        const minPrim = axisPool.reduce((m, c) => Math.min(m, primaryGap(c.r)), Infinity);
+        const PRIMARY_BAND_PX = isVertical
+            ? Math.max(48, Math.min(220, fromRect.height * 2.25))
+            : Math.max(48, Math.min(220, fromRect.width * 2.25));
+
+        const nearBand = axisPool.filter(c => primaryGap(c.r) <= minPrim + PRIMARY_BAND_PX);
+        const navPool = nearBand.length ? nearBand : axisPool;
+
         const PERP_COEF = 0.35;
         const DIST_COEF = 0.015;
+
         const ALIGN_BONUS = -120;
         const SAME_CONT_BIAS = -200;
         const CROSS_VISIBLE_BIAS = -150;
+
         const SMALL_TARGET_PX = 28;
         const SMALL_BONUS = -100;
+        const SKIP_COEF = 2.2;
 
         type Scored = {
             n: NodeEntry;
@@ -502,14 +592,10 @@ export function FocusProvider(props: { children: JSX.Element }) {
         };
 
         const scored: Scored[] = [];
-        for (const c of axisPool) {
+        for (const c of navPool) {
             const r = c.r;
 
-            let prim: number;
-            if (dir === 'down') prim = Math.max(0, r.top    - fromRect.bottom);
-            else if (dir === 'up') prim = Math.max(0, fromRect.top - r.bottom);
-            else if (dir === 'right') prim = Math.max(0, r.left  - fromRect.right);
-            else /* left */ prim = Math.max(0, fromRect.left - r.right);
+            const prim = primaryGap(r);
 
             const perp = isVertical
                 ? pointIntervalDist(cx0, r.left, r.right)
@@ -529,18 +615,23 @@ export function FocusProvider(props: { children: JSX.Element }) {
             s += prim * 1.0;
             s += perp * PERP_COEF;
             s += centerHyp * DIST_COEF;
+            s += Math.max(0, prim - minPrim) * SKIP_COEF;
 
             if (perp === 0) s += ALIGN_BONUS;
             if (sameContainer) s += SAME_CONT_BIAS;
             else if (isPartiallyVisibleInContainer(c.n.el, candCont)) s += CROSS_VISIBLE_BIAS;
 
             s += -80 * beamOverlapRatio;
+
             const smallDim = isVertical ? r.width : r.height;
             if (smallDim <= SMALL_TARGET_PX) s += SMALL_BONUS;
 
             s -= (c.n.opts.priority ?? 0) * 1000;
+
             scored.push({ n: c.n, prim, perp, centerHyp, beamOverlapRatio, sameContainer, score: s });
         }
+
+        console.info("scored", scored);
 
         if (!scored.length) return;
 
@@ -554,6 +645,189 @@ export function FocusProvider(props: { children: JSX.Element }) {
         return scored[0]?.n;
     }
 
+    function groupEscapeAllowed(node: NodeEntry | undefined, dir: Direction): boolean {
+        if (!node) return true;
+        const o: any = node.opts;
+        if (!o?.groupId) return true;
+        const dirs: any = o.groupEscapeDirs;
+        if (!Array.isArray(dirs)) return true;
+        return dirs.includes(dir);
+    }
+
+    function neighborInGroup(scopeId: string, focused: NodeEntry, dir: Direction): NodeEntry | undefined {
+        const scope = index.scopes.get(scopeId);
+        if (!scope || !isActiveMode(scope)) return;
+
+        const o0: any = focused.opts;
+        const groupId: string | undefined = o0.groupId;
+        const gi0: any[] | undefined = o0.groupIndices;
+
+        if (!groupId || !Array.isArray(gi0)) return;
+
+        const cont0 = nearestScrollContainer(focused.el);
+        if (gi0.length === 1) {
+            const i0 = gi0[0];
+            if (!Number.isInteger(i0)) return;
+
+            const axis: "horizontal" | "vertical" | undefined = o0.groupType;
+            if (axis !== "horizontal" && axis !== "vertical") return;
+
+            const step =
+                dir === "next" ? 1 :
+                dir === "prev" ? -1 :
+                axis === "horizontal" ? (dir === "right" ? 1 : dir === "left" ? -1 : 0) :
+                axis === "vertical" ? (dir === "down" ? 1 : dir === "up" ? -1 : 0) :
+                0;
+
+            if (step === 0) return;
+
+            let best: NodeEntry | undefined;
+            let bestI = step > 0 ? Infinity : -Infinity;
+
+            for (const nid of scope.nodes) {
+                if (nid === focused.id) continue;
+                const n = index.nodes.get(nid);
+                if (!n) continue;
+
+                const o: any = n.opts;
+                if (o.groupId !== groupId) continue;
+
+                const gi: any[] | undefined = o.groupIndices;
+                if (!Array.isArray(gi) || gi.length !== 1) continue;
+                if (o.groupType !== axis) continue;
+
+                const i = gi[0];
+                if (!Number.isInteger(i)) continue;
+
+                if (nearestScrollContainer(n.el) !== cont0) continue;
+                if (!isGroupSelectable(n)) continue;
+
+                if (step > 0) {
+                    if (i > i0 && i < bestI) { best = n; bestI = i; }
+                } else {
+                    if (i < i0 && i > bestI) { best = n; bestI = i; }
+                }
+            }
+
+            return best;
+        }
+
+        if (gi0.length === 2) {
+            const r0 = gi0[0];
+            const c0 = gi0[1];
+            if (!Number.isInteger(r0) || !Number.isInteger(c0)) return;
+            if (dir === "left" || dir === "right") {
+                let best: NodeEntry | undefined;
+                let bestC = dir === "right" ? Infinity : -Infinity;
+
+                for (const nid of scope.nodes) {
+                    if (nid === focused.id) continue;
+                    const n = index.nodes.get(nid);
+                    if (!n) continue;
+
+                    const o: any = n.opts;
+                    if (o.groupId !== groupId) continue;
+
+                    const gi: any[] | undefined = o.groupIndices;
+                    if (!Array.isArray(gi) || gi.length !== 2) continue;
+
+                    const r = gi[0], c = gi[1];
+                    if (!Number.isInteger(r) || !Number.isInteger(c)) continue;
+                    if (r !== r0) continue;
+
+                    if (nearestScrollContainer(n.el) !== cont0) continue;
+                    if (!isGroupSelectable(n)) continue;
+
+                    if (dir === "right") {
+                        if (c > c0 && c < bestC) { best = n; bestC = c; }
+                    } else {
+                        if (c < c0 && c > bestC) { best = n; bestC = c; }
+                    }
+                }
+
+                return best;
+            }
+
+            if (dir === "up" || dir === "down") {
+                let best: NodeEntry | undefined;
+                let bestRowDelta = Infinity;
+                let bestColDist = Infinity;
+                let bestC = -Infinity;
+
+                for (const nid of scope.nodes) {
+                    if (nid === focused.id) continue;
+                    const n = index.nodes.get(nid);
+                    if (!n) continue;
+
+                    const o: any = n.opts;
+                    if (o.groupId !== groupId) continue;
+
+                    const gi: any[] | undefined = o.groupIndices;
+                    if (!Array.isArray(gi) || gi.length !== 2) continue;
+
+                    const r = gi[0], c = gi[1];
+                    if (!Number.isInteger(r) || !Number.isInteger(c)) continue;
+
+                    const rowDelta = dir === "down" ? (r - r0) : (r0 - r);
+                    if (rowDelta <= 0) continue;
+
+                    if (nearestScrollContainer(n.el) !== cont0) continue;
+                    if (!isGroupSelectable(n)) continue;
+
+                    const colDist = Math.abs(c - c0);
+                    if (rowDelta < bestRowDelta || (rowDelta === bestRowDelta && (colDist < bestColDist || (colDist === bestColDist && c > bestC)))) {
+                        best = n;
+                        bestRowDelta = rowDelta;
+                        bestColDist = colDist;
+                        bestC = c;
+                    }
+                }
+
+                return best;
+            }
+
+            if (dir === "next" || dir === "prev") {
+                let best: NodeEntry | undefined;
+                let bestR = dir === "next" ? Infinity : -Infinity;
+                let bestC = dir === "next" ? Infinity : -Infinity;
+
+                for (const nid of scope.nodes) {
+                    if (nid === focused.id) continue;
+                    const n = index.nodes.get(nid);
+                    if (!n) continue;
+
+                    const o: any = n.opts;
+                    if (o.groupId !== groupId) continue;
+
+                    const gi: any[] | undefined = o.groupIndices;
+                    if (!Array.isArray(gi) || gi.length !== 2) continue;
+
+                    const r = gi[0], c = gi[1];
+                    if (!Number.isInteger(r) || !Number.isInteger(c)) continue;
+
+                    const isAfter = (r > r0) || (r === r0 && c > c0);
+                    const isBefore = (r < r0) || (r === r0 && c < c0);
+                    if (dir === "next" ? !isAfter : !isBefore) continue;
+
+                    if (nearestScrollContainer(n.el) !== cont0) continue;
+                    if (!isGroupSelectable(n)) continue;
+
+                    if (dir === "next") {
+                        if (r < bestR || (r === bestR && c < bestC)) { best = n; bestR = r; bestC = c; }
+                    } else {
+                        if (r > bestR || (r === bestR && c > bestC)) { best = n; bestR = r; bestC = c; }
+                    }
+                }
+
+                return best;
+            }
+
+            return;
+        }
+
+        return;
+    }
+
     function adoptActiveNode(scope: ScopeEntry, nodeId: NodeId) {
         if (scope.activeNode === nodeId) return;
         scope.activeNode = nodeId;
@@ -562,10 +836,12 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
     function focusNode(node?: NodeEntry) {
         if (!node) return;
+
+        console.info("focusNode", node);
+
         const scope = index.scopes.get(node.scope);
-        if (scope) {
-            adoptActiveNode(scope, node.id);
-        }
+        if (scope) adoptActiveNode(scope, node.id);
+
         node.el.focus();
         setFocusedNode(node);
     }
@@ -594,38 +870,44 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
         const trappingId = topTrap();
         const trapActive = !!trappingId;
-        
+
         setLastInputSource(inputSource);
+
         if (!focused) {
             focusFirstInScope(scope.id, false);
             return;
         }
 
-        if ((focused.opts.onDirection?.(focused.el, dir, inputSource) ?? false) === true) {
-            return;
-        }
+        if ((focused.opts.onDirection?.(focused.el, dir, inputSource) ?? false) === true) return;
 
+        if (focused.scope === scope.id) {
+            const gnext = neighborInGroup(scope.id, focused, dir);
+            if (gnext) {
+                focusCandidate(gnext, dir);
+                return;
+            }
+        }
+        
         if (dir === 'left' || dir === 'right' || dir === 'up' || dir === 'down') {
-            let next = spatialNext(focused.el, dir, scope.id);
+            let next = spatialNext(focused.el, dir, scope.id, focused);
+
             if (!next) {
                 const cont = nearestScrollContainer(focused.el);
                 if (canScroll(cont, dir)) {
                     const r = focused.el.getBoundingClientRect();
                     const step = (dir === 'up' || dir === 'down')
                         ? Math.max(24, r.height * 0.9)
-                        : Math.max(24, r.width    * 0.9);
+                        : Math.max(24, r.width * 0.9);
                     nudgeScroll(cont, dir, step);
-                    next = spatialNext(focused.el, dir, scope.id);
+                    next = spatialNext(focused.el, dir, scope.id, focused);
                 }
             }
+
             if (next) {
-                const cont = nearestScrollContainer(next.el);
-                if (!isPartiallyVisibleInContainer(next.el, cont)) {
-                    scrollIntoViewWithin(cont, next.el, dir);
-                }
-                focusNode(next);
+                focusCandidate(next, dir);
                 return;
             }
+
             if (trapActive) return;
         }
 
@@ -639,39 +921,45 @@ export function FocusProvider(props: { children: JSX.Element }) {
             if (idx >= 0) {
                 const step = dir === 'next' ? 1 : -1;
                 const nextIdx = idx + step;
-                if (nextIdx >= 0 && nextIdx < list.length) {
-                    target = list[nextIdx];
-                }
+                if (nextIdx >= 0 && nextIdx < list.length) target = list[nextIdx];
             } else {
                 target = (dir === 'next') ? list[0] : list[list.length - 1];
             }
 
-            if (target) { focusNode(target); return; }
+            if (target) {
+                focusCandidate(target);
+                return;
+            }
+
             if (trapActive) return;
         }
 
         let parentId = scope.parent;
         while (parentId) {
-            if (trapActive && trappingId && !isWithinScope(parentId, trappingId)) {
-                return;
-            }
+            if (trapActive && trappingId && !isWithinScope(parentId, trappingId)) return;
 
             const parent = index.scopes.get(parentId);
             if (!parent) break;
 
             if (dir === 'left' || dir === 'right' || dir === 'up' || dir === 'down') {
-                const cand = spatialNext(focused.el, dir, parent.id);
-                if (cand) { focusNode(cand); return; }
+                let cand = spatialNext(focused.el, dir, parent.id, focused);
+                if (cand) {
+                    focusCandidate(cand, dir);
+                    return;
+                }
             } else {
                 const list = sweepCandidates(parent.id, focused.el);
                 if (list.length) {
-                    focusNode(dir === 'next' ? list[0] : list[list.length - 1]);
+                    let cand = dir === 'next' ? list[0] : list[list.length - 1];
+                    focusCandidate(cand);
                     return;
                 }
             }
+
             parentId = parent.parent;
         }
     }
+
 
     function back(): boolean {
         const state = video?.state();
@@ -748,13 +1036,13 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
     function focusFirstInScope(scopeId: string, isAutoFocus: boolean) {
         const s = index.scopes.get(scopeId);
-        console.info("focusFirstInScope", {scopeId, isAutoFocus, s});
+        console.info("focusFirstInScope", { scopeId, isAutoFocus, s });
 
         if (!s || !isActiveMode(s)) return;
         if (s.hadFocus && s.activeNode) {
             const last = index.nodes.get(s.activeNode);
-            if (last && !last.opts.disabled && isVisible(last.el) && !last.opts.focusInert?.() && isFocusable(last.el)) {
-                focusNode(last);
+            if (last && isGroupSelectable(last)) {
+                focusCandidate(last);
                 return;
             }
         }
@@ -762,12 +1050,19 @@ export function FocusProvider(props: { children: JSX.Element }) {
         const el = s.opts.defaultFocus?.();
         if (el && isFocusable(el)) {
             const n = findNodeFromElement(el);
-            if (n && n.scope === scopeId) { focusNode(n); return; }
+            if (n && n.scope === scopeId) {
+                focusNode(n);
+                return;
+            }
         }
 
         const first = sweepCandidates(scopeId)[0];
-        if (first) focusNode(first);
+        if (first && isGroupSelectable(first)) {
+            focusCandidate(first);
+            return;
+        }
     }
+
 
     function resolveScopeId(el: HTMLElement): string | null {
         let cur: HTMLElement | null = el;

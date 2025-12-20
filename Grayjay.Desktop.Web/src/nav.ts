@@ -9,6 +9,10 @@ export type ScopeId = string;
 export interface FocusableOptions {
     disabled?: boolean;
     priority?: number;
+    groupId?: string;
+    groupType?: "grid" | "horizontal" | "vertical"; // required for 1D, inferred for 2D
+    groupIndices?: (number | undefined)[]; // 1D: [i], grid: [r,c]
+    groupEscapeDirs?: Direction[];
     onPress?: (el: HTMLElement, inputSource: InputSource) => void;
     onPressLabel?: string;
     onOptions?: (el: HTMLElement, inputSource: InputSource) => void;

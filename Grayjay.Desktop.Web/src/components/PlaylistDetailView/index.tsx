@@ -131,13 +131,20 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
             <div class={styles.metadata}>{props.videos?.length} {props.videos?.length === 1 ? "item" : "items"}</div>
           </div>
           <div style="flex-grow: 1"></div>
-          <Show when={props.id}>
-            <img src={iconSettings} style="width: 24px; height: 100%; margin-left: 16px; margin-right: 16px; padding-left: 16px; padding-right: 16px; cursor: pointer;" onClick={(ev) => {
-              onSettingsClicked(ev.target as HTMLElement, "pointer", undefined);
-            }}  use:focusable={{
-              onPress: (el, inputSource) => onSettingsClicked(el, inputSource, undefined)
-            }} />
-          </Show>
+        </div>
+        <ScrollContainer ref={scrollContainerRef}>
+          <div class={styles.containerFilters}>
+            <InputText icon={ic_search} placeholder={"Search playlists"}
+              value={filterText$()}
+              showClearButton={true}
+              inputContainerStyle={{
+                "height": "70px", 
+                "background": "#141414"
+              }}
+              onTextChanged={(v) => {
+                setFilterText(v);
+              }}
+              focusable={true} />
           <CustomButton
             text="Play all"
             icon={iconPlay}
@@ -162,20 +169,13 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
             focusableOpts={{
               onPress: () => props.onShuffleAll()
             }} />
-        </div>
-        <ScrollContainer ref={scrollContainerRef}>
-          <div class={styles.containerFilters}>
-            <InputText icon={ic_search} placeholder={"Search playlists"}
-              value={filterText$()}
-              showClearButton={true}
-              inputContainerStyle={{
-                "height": "70px", 
-                "background": "#141414"
-              }}
-              onTextChanged={(v) => {
-                setFilterText(v);
-              }}
-              focusable={true} />
+            <Show when={props.id}>
+              <img src={iconSettings} style="width: 24px; height: 100%; margin-left: 16px; margin-right: 16px; padding-left: 16px; padding-right: 16px; cursor: pointer;" onClick={(ev) => {
+                onSettingsClicked(ev.target as HTMLElement, "pointer", undefined);
+              }}  use:focusable={{
+                onPress: (el, inputSource) => onSettingsClicked(el, inputSource, undefined)
+              }} />
+            </Show>
           </div>
 
           <VirtualDragDropList outerContainerRef={scrollContainerRef}
