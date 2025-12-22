@@ -49,7 +49,7 @@ const NavigationBar: Component<NavigationBarProps> = (props) => {
 
       <img src={cast} style={{"margin-left": "24px", "cursor": "pointer" }} onClick={() => casting?.actions.open()} use:focusable={{
         groupId: 'nav-bar',
-        groupIndices: [1],
+        groupIndices: [props.childrenAfter ? 2 : 1],
         groupType: 'horizontal',
         onPress: () => casting?.actions.open()
       }} />

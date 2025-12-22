@@ -104,6 +104,8 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
               <div onClick={()=>uploadImage()}
                   style="width: 100%; height: 100%; display: grid; align-items: center; justify-items: center; cursor: pointer"
                   use:focusable={{
+                    onActionLabel: 'Finish',
+                    onAction: () => submit(),
                     onPress: uploadImage,
                     onBack: globalBack
                   }}>
@@ -115,6 +117,8 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
                 style={{"background-image": "url(" + imageUrl$() + ")"}}
                 classList={{[styles.enabled]: isSelectedUrl(imageUrl$() ?? "nothing")}}
                 use:focusable={{
+                  onActionLabel: 'Finish',
+                  onAction: () => submit(),
                   onPress: () => selectUrl(imageUrl$()),
                   onBack: globalBack
                 }}>
@@ -126,6 +130,8 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
                 classList={{[styles.enabled]: isSelectedUrl(img)}}
                 onClick={()=>selectUrl(img)}
                 use:focusable={{
+                  onActionLabel: 'Finish',
+                  onAction: () => submit(),
                   onPress: () => selectUrl(img),
                   onBack: globalBack
                 }} />
@@ -143,6 +149,8 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
             <div class={styles.subscriptionsContainer}>
               <For each={subscriptions$()}>{ sub =>
                 <div class={styles.subscription} classList={{[styles.enabled]: isSelectedSubscription(sub.channel.url)}} onClick={()=>selectSubscription(sub.channel.url, sub.channel.thumbnail)} use:focusable={{
+                    onActionLabel: 'Finish',
+                    onAction: () => submit(),  
                     onPress: () => selectSubscription(sub.channel.url, sub.channel.thumbnail),
                     onBack: globalBack
                   }}>

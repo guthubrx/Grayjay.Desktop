@@ -96,6 +96,9 @@ const OverlaySubscriptionsSelector: Component<OverlaySubscsriptionsSelectorDialo
                   classList={{[styles.enabled]: selected$().indexOf(sub.channel.url) >= 0}} 
                   onClick={()=>select(sub)}
                   use:focusable={{
+                    onActionLabel: 'Finish',
+                    onAction: () => submit(),
+                    onPressLabel: 'Select',
                     onPress: () => select(sub),
                     onBack: dialogBack,
                   }}

@@ -1,4 +1,4 @@
-import { createResource, type Component, Switch, Match, createSignal, batch, createMemo, Show, onMount } from 'solid-js';
+import { createResource, type Component, Switch, Match, createSignal, batch, createMemo, Show, onMount, For } from 'solid-js';
 import NavigationBar from '../../components/topbars/NavigationBar';
 import styles from './index.module.css';
 import { WatchLaterBackend } from '../../backend/WatchLaterBackend';
@@ -32,13 +32,17 @@ import { createResourceDefault } from '../../utility';
 import LoaderGrid from '../../components/basics/loaders/LoaderGrid';
 import InputText from '../../components/basics/inputs/InputText';
 import Dropdown from '../../components/basics/inputs/Dropdown';
+import { focusable } from '../../focusable'; void focusable;
 import ic_search from '../../assets/icons/search.svg';
 import { InputSource } from '../../nav';
+import HorizontalFlexibleArrayList from '../../components/containers/HorizontalFlexibleArrayList';
+import { useFocus } from '../../FocusProvider';
 
 const PlaylistsPage: Component = () => {
   let scrollContainerRef: HTMLDivElement | undefined;
 
   const navigate = useNavigate();
+  const focus = useFocus();
   const video = useVideo();
   const [playlists$, playlistsResource] = createResourceDefault(async () => [], async () => {
     return await PlaylistsBackend.getAll();
@@ -194,71 +198,85 @@ const PlaylistsPage: Component = () => {
     "Play Date (Newest)"
   ];
 
+  const MAX_WATCH_LATER_PREVIEW = 10;
+
+  const watchLaterPreview$ = createMemo(() => {
+    const list = video?.watchLater() ?? [];
+    return list.slice(0, 10);
+  });
+
   return (
     <div class={styles.container}>
       <NavigationBar isRoot={true} defaultSearchType={ContentType.PLAYLIST} />
         <ScrollContainer ref={scrollContainerRef}>
-          <Show when={video?.watchLater()?.length ?? 0 > 0}>
+          <Show when={(video?.watchLater()?.length ?? 0) > 0}>
             <div class={styles.containerWatchLater}>
               <div class={styles.containerWatchLaterHeader}>
                 <div class={styles.textHeader} style={{"margin-left": "24px"}}>Watch Later</div>
                 <div style="flex-grow: 1;"></div>
-                <div class={styles.containerSeeAll} onClick={() => navigate("/web/watchLater")}>
-                  <div>See all</div>
-                  <img style="width: 14px; height: 14px; margin-left: 6px;" src={chevron_right} />
-                </div>
+                <Show when={focus?.isControllerMode() !== true}>
+                  <div class={styles.containerSeeAll} onClick={() => navigate("/web/watchLater")} use:focusable={{
+                    onPress: () => navigate("/web/watchLater")
+                  }}>
+                    <div>See all</div>
+                    <img style="width: 14px; height: 14px; margin-left: 6px;" src={chevron_right} />
+                  </div>
+                </Show>
               </div>
-              <VirtualGrid outerContainerRef={scrollContainerRef}
-                items={video?.watchLater()}
-                calculateHeight={(width) => {
-                  const aspectRatio = 16 / 9;
-                  const thumbnailHeight = width / aspectRatio;
-                  const margin1 = 16;
-                  const fontSize = 18;
-                  const textHeight = 2.4 * fontSize;
-                  const margin2 = 16;
-                  const dataHeight = 32;
-                  const totalHeight = thumbnailHeight + margin1 + textHeight + margin2 + dataHeight;
-                  return totalHeight;                        
-                }}
-                itemWidth={320}
-                autosizeWidth={true}
-                maximumRowsVisible={1}
-                style={{
-                  "margin-left": "15px",
-                  "margin-top": "15px",
-                  "margin-bottom": "10px"
-                }}
-                builder={(index, item, row, col) =>
-                  <VideoThumbnailView video={item() as IPlatformVideo}
-                    onClick={() => {
-                      const queue = video?.watchLater();
-                      if (!queue) {
-                        return;
-                      }
 
-                      video?.actions?.setQueue(index()!, queue, false, false);
+              <div class={styles.watchLaterRow}>
+                <For each={watchLaterPreview$()}>
+                  {(item, i) => (
+                    <div class={styles.watchLaterItem}>
+                      <VideoThumbnailView
+                        video={item as IPlatformVideo}
+                        onClick={() => {
+                          const queue = video?.watchLater();
+                          if (!queue) return;
+                          video?.actions?.setQueue(i(), queue, false, false);
+                        }}
+                        onSettings={(e, content) => onSettingsClicked(e, content, "pointer")}
+                        focusableOpts={{
+                          groupId: "watchlater",
+                          groupType: "horizontal",
+                          groupIndices: [i()],
+                          onPress: () => {
+                            const queue = video?.watchLater();
+                            if (!queue) return;
+                            video?.actions?.setQueue(i(), queue, false, false);
+                          },
+                          onOptions: (el, inputSource) => {
+                            onSettingsClicked(el, item as any, inputSource);
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                </For>
+                <Show when={focus?.isControllerMode() === true}>
+                  <div
+                    class={styles.watchLaterSeeAll}
+                    onClick={() => navigate("/web/watchLater")}
+                    use:focusable={{
+                      groupId: "watchlater",
+                      groupType: "horizontal",
+                      groupIndices: [watchLaterPreview$().length],
+                      onPress: () => navigate("/web/watchLater")
                     }}
-                    onSettings={(e, content) => onSettingsClicked(e, content, "pointer")}
-                    focusableOpts={{
-                      groupId: 'playlists',
-                      groupType: 'grid',
-                      groupIndices: [row(), col()],
-                      onPress: (el, inputSource) => {
-                        const queue = video?.watchLater();
-                        if (!queue) {
-                          return;
-                        }
-
-                        video?.actions?.setQueue(index()!, queue, false, false);
-                      },
-                      onOptions: (el, inputSource) => {
-                        onSettingsClicked(el, item(), inputSource)
-                      }
-                    }} />
-                } />
+                  >
+                    <div class={styles.containerSeeAll} style={{ "margin-right": "0" }}>
+                      <div>See all</div>
+                      <img
+                        style="width: 14px; height: 14px; margin-left: 6px;"
+                        src={chevron_right}
+                      />
+                    </div>
+                  </div>
+                </Show>
+              </div>
             </div>
           </Show>
+
           <div class={styles.containerPlaylists}>
             <div class={styles.containerPlaylistsHeader}>
               <div class={styles.textHeader}>Playlists</div>
