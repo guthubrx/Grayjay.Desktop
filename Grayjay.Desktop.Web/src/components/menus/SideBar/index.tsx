@@ -255,7 +255,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                 groupIndices: [0],
                 groupType: 'vertical',
                 groupEscapeDirs: ['right'],
-                onPress: handleCollapse 
+                groupRememberLast: true,
+                onPress: handleCollapse,
               }}
               onClick={handleCollapse}
             />
@@ -295,7 +296,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                   groupType: 'vertical',
                   groupIndices: [i() + 1],
                   groupEscapeDirs: ['right'],
-                  onPress: () => press()
+                  groupRememberLast: true,
+                  onPress: () => press(),
                 }}
                 onFocus={globalFocus}
                 onBlur={globalBlur}
@@ -315,6 +317,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
               groupType: 'vertical',
               groupIndices: [visibleTopButtonCount$() + 1],
               groupEscapeDirs: ['right'],
+              groupRememberLast: true,
               onPress: () => {
                 props?.onMoreOpened?.(); 
                 setMoreOverlayVisible(true);
@@ -372,6 +375,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                   groupType: 'vertical',
                   groupEscapeDirs: ['right'],
                   groupIndices: [visibleTopButtonCount$() + 1 + (moreTopButtonCount$() > 0 ? 1 : 0) + i()],
+                  groupRememberLast: true,
                   onPress: press
                 }}
                 onFocus={globalFocus}

@@ -22,6 +22,7 @@ interface ScopeEntry {
     activeNode?: NodeId;
     hadFocus?: boolean;
     mode: 'off' | 'on' | 'trap';
+    groupLast?: Map<string, NodeId>;
 }
 
 type Idx = {
@@ -147,6 +148,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
             opts: { ...opts },
             nodes: new Set(),
             mode: initialMode,
+            groupLast: new Map(),
         };
         index.scopes.set(id, rec);
         index.scopeByEl.set(el, id);
@@ -426,6 +428,97 @@ export function FocusProvider(props: { children: JSX.Element }) {
         const out = arr.filter((x): x is string => typeof x === "string" && x.length > 0);
         return out.length ? out : undefined;
     }
+
+    function rememberGroupLast(node: NodeEntry) {
+        const o: any = node.opts;
+        const gid: string | undefined = o?.groupId;
+        if (!gid) return;
+        if (o?.groupRememberLast !== true) return;
+
+        const s = index.scopes.get(node.scope);
+        if (!s) return;
+        if (!s.groupLast) s.groupLast = new Map();
+        s.groupLast.set(gid, node.id);
+    }
+
+    function firstInGroup(scopeId: string, groupId: string, refEl?: HTMLElement): NodeEntry | undefined {
+        const s = index.scopes.get(scopeId);
+        if (!s || !isActiveMode(s)) return;
+
+        const refCont = refEl ? nearestScrollContainer(refEl) : undefined;
+
+        let best: NodeEntry | undefined;
+        let bestKey: number[] | undefined;
+
+        function lexLess(a: number[], b: number[]) {
+            const n = Math.max(a.length, b.length);
+            for (let i = 0; i < n; i++) {
+                const av = a[i] ?? 0;
+                const bv = b[i] ?? 0;
+                if (av !== bv) return av < bv;
+            }
+            return false;
+        }
+
+        for (const nid of s.nodes) {
+            const n = index.nodes.get(nid);
+            if (!n) continue;
+
+            const o: any = n.opts;
+            if (o?.groupId !== groupId) continue;
+            if (refCont && nearestScrollContainer(n.el) !== refCont) continue;
+            if (!isGroupSelectable(n)) continue;
+
+            const gi: any[] | undefined = o?.groupIndices;
+            if (Array.isArray(gi) && gi.every(Number.isInteger)) {
+                const key = gi.map(v => v as number);
+                if (!best || !bestKey || lexLess(key, bestKey)) {
+                    best = n;
+                    bestKey = key;
+                }
+                continue;
+            }
+
+            const r = rectOf(n);
+            const axis: "horizontal" | "vertical" | undefined = o?.groupType;
+            const key =
+                axis === "vertical" ? [r.top, r.left] :
+                axis === "horizontal" ? [r.left, r.top] :
+                [r.left, r.top];
+
+            if (!best || !bestKey || lexLess(key, bestKey)) {
+                best = n;
+                bestKey = key;
+            }
+        }
+
+        return best;
+    }
+
+    function maybeEnterRememberedGroup(fromNode: NodeEntry | undefined, candidate: NodeEntry): NodeEntry {
+        const toO: any = candidate.opts;
+        const toGroup: string | undefined = toO?.groupId;
+        if (!toGroup) return candidate;
+
+        if (toO?.groupRememberLast !== true) return candidate;
+
+        const fromGroup: string | undefined = (fromNode?.opts as any)?.groupId;
+        if (fromGroup && fromGroup === toGroup) return candidate;
+
+        const s = index.scopes.get(candidate.scope);
+        const lastId = s?.groupLast?.get(toGroup);
+
+        if (lastId) {
+            const last = index.nodes.get(lastId);
+            if (last && last.scope === candidate.scope && isGroupSelectable(last)) {
+                const entryCont = nearestScrollContainer(candidate.el);
+                if (nearestScrollContainer(last.el) === entryCont) return last;
+            }
+        }
+
+        return firstInGroup(candidate.scope, toGroup, candidate.el) ?? candidate;
+    }
+
 
     function spatialNext(from: HTMLElement, dir: Direction, scopeId: string, fromNode?: NodeEntry): NodeEntry | undefined {
         const baseAll = candidatesInScope(scopeId).filter(n => n.el !== from);
@@ -962,6 +1055,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
         node.el.focus();
         setFocusedNode(node);
+        rememberGroupLast(node);
     }
 
     function findScopeForNavigation(): ScopeEntry | undefined {
@@ -1022,6 +1116,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
             }
 
             if (next) {
+                next = maybeEnterRememberedGroup(focused, next);
                 focusCandidate(next, dir);
                 return;
             }
@@ -1045,6 +1140,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
             }
 
             if (target) {
+                target = maybeEnterRememberedGroup(focused, target);
                 focusCandidate(target);
                 return;
             }
@@ -1062,6 +1158,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
             if (dir === 'left' || dir === 'right' || dir === 'up' || dir === 'down') {
                 let cand = spatialNext(focused.el, dir, parent.id, focused);
                 if (cand) {
+                    cand = maybeEnterRememberedGroup(focused, cand);
                     focusCandidate(cand, dir);
                     return;
                 }
@@ -1069,6 +1166,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
                 const list = sweepCandidates(parent.id, focused.el);
                 if (list.length) {
                     let cand = dir === 'next' ? list[0] : list[list.length - 1];
+                    cand = maybeEnterRememberedGroup(focused, cand);
                     focusCandidate(cand);
                     return;
                 }
@@ -1176,7 +1274,8 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
         const first = sweepCandidates(scopeId)[0];
         if (first && isGroupSelectable(first)) {
-            focusCandidate(first);
+            const chosen = maybeEnterRememberedGroup(undefined, first);
+            focusCandidate(chosen);
             return;
         }
     }
@@ -1487,6 +1586,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
         adoptActiveNode(scope, node.id);
         setFocusedNode(node);
+        rememberGroupLast(node);
     }
 
     function ensureFocusInActiveScope() {

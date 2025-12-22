@@ -110,7 +110,13 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                     new MenuItemButton("Download video", iconDownload, undefined, ()=>{
                         UIOverlay.overlayDownload(content.url);
                     }),
-                ] : []),
+                ] : [
+                    new MenuItemButton("Open channel", iconCreator, undefined, ()=>{
+                        const author = content?.author;
+                        if(author)
+                            navigate("/web/channel?url=" + encodeURIComponent(author.url), { state: { author } });
+                    }),
+                ]),
                 /*
                 new MenuSeperator(),
                 new MenuItemButton("Hide creator from feed", iconHide, undefined, ()=>{
