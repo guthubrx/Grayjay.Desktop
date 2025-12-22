@@ -416,23 +416,28 @@ export function FocusProvider(props: { children: JSX.Element }) {
         return candCont === parent || parent.contains(candCont);
     }
 
-    function intervalOverlap(a1: number, a2: number, b1: number, b2: number) {
-        return Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+    function groupEscapeTargets(node: NodeEntry | undefined, dir: Direction): string[] | undefined {
+        const o: any = node?.opts;
+        const map = o?.groupEscapeTo as Partial<Record<Direction, unknown>> | undefined;
+        const arr = map?.[dir];
+
+        if (!Array.isArray(arr) || arr.length === 0) return undefined;
+
+        const out = arr.filter((x): x is string => typeof x === "string" && x.length > 0);
+        return out.length ? out : undefined;
     }
 
     function spatialNext(from: HTMLElement, dir: Direction, scopeId: string, fromNode?: NodeEntry): NodeEntry | undefined {
-        let all = candidatesInScope(scopeId).filter(n => n.el !== from);
-        if (!all.length) return;
-        if (dir === 'next' || dir === 'prev') return;
+        const baseAll = candidatesInScope(scopeId).filter(n => n.el !== from);
+        if (!baseAll.length) return;
+        if (dir === "next" || dir === "prev") return;
 
         const fromGroupId = (fromNode?.opts as any)?.groupId as string | undefined;
         const escapeOk = groupEscapeAllowed(fromNode, dir);
-        if (fromGroupId && !escapeOk) {
-            all = all.filter(n => ((n.opts as any)?.groupId as string | undefined) === fromGroupId);
-            if (!all.length) return;
-        }
+        const targets = groupEscapeTargets(fromNode, dir);
 
         const fromRect = from.getBoundingClientRect();
+
         const FRONT_EPS = 4;
         function inFrontOfDirection(r: DOMRect, dir: Direction) {
             switch (dir) {
@@ -444,8 +449,10 @@ export function FocusProvider(props: { children: JSX.Element }) {
             }
         }
 
-        const cx0 = fromRect.left + fromRect.width / 2;
-        const cy0 = fromRect.top + fromRect.height / 2;
+        const anchor = (fromNode?.opts as any)?.navAnchor;
+        const a0 = navAnchorPoint(fromRect, dir, anchor);
+        const cx0 = a0.x;
+        const cy0 = a0.y;
 
         const navContainer = nearestScrollContainer(from);
         const navContRect = containerViewportRect(navContainer);
@@ -454,7 +461,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
             left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1], next: [1, 0], prev: [-1, 0],
         };
         const [vx, vy] = vec[dir];
-        const isVertical = (dir === 'up' || dir === 'down');
+        const isVertical = (dir === "up" || dir === "down");
 
         const EDGE_PX = 8;
         const atTop = navContainer.scrollTop <= 1 || fromRect.top <= navContRect.top + EDGE_PX;
@@ -471,7 +478,8 @@ export function FocusProvider(props: { children: JSX.Element }) {
                 (dir === "right" && atRight)
             );
 
-        const intervalOverlap = (a1: number, a2: number, b1: number, b2: number) => Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+        const intervalOverlap = (a1: number, a2: number, b1: number, b2: number) =>
+            Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
         const pointIntervalDist = (p: number, a: number, b: number) => (p < a ? a - p : (p > b ? p - b : 0));
 
         const COLUMN_OVERLAP_PX = 12;
@@ -501,150 +509,260 @@ export function FocusProvider(props: { children: JSX.Element }) {
                 : intervalOverlap(r.top, r.bottom, (beam as any).top, (beam as any).bottom) > 0;
         };
 
-        const forward: { n: NodeEntry; r: DOMRect; cx: number; cy: number; }[] = [];
-        for (const n of all) {
-            const r = rectOf(n);
-            if (dir === "left" || dir === "right" || dir === "up" || dir === "down") {
-                if (!inFrontOfDirection(r, dir)) continue;
-            }
-
-            const cx = (r.left + r.width / 2) - cx0;
-            const cy = (r.top + r.height / 2) - cy0;
-            const dot = cx * vx + cy * vy;
-            if (dot > 0) forward.push({ n, r, cx, cy });
-        }
-        if (!forward.length) return;
-
-        const sameOrDesc = forward.filter(c => sameOrDescendantContainer(navContainer, c.n.el));
-        const unrelated = forward
-            .filter(c => !sameOrDescendantContainer(navContainer, c.n.el))
-            .filter(c => overlapsNavColumn(c.r));
-
-        const STRICT_OVERLAP = 0.45;
-        const RELAX_OVERLAP = 0.20;
-        const MAX_ANGLE_TAN = Math.tan(65 * Math.PI / 180);
-
-        function verticalPool(cands: typeof forward) {
-            const strict = cands.filter(c => (intervalOverlap(fromRect.left, fromRect.right, c.r.left, c.r.right) / Math.min(fromRect.width, c.r.width || 1)) >= STRICT_OVERLAP);
-            if (strict.length) return strict;
-            const relaxed = cands.filter(c => (intervalOverlap(fromRect.left, fromRect.right, c.r.left, c.r.right) / Math.min(fromRect.width, c.r.width || 1)) >= RELAX_OVERLAP);
-            if (relaxed.length) return relaxed;
-            const beamHits = cands.filter(c => hitsBeam(c.r));
-            if (beamHits.length) return beamHits;
-            return cands.filter(c => Math.abs(c.cx) <= Math.abs(c.cy) * MAX_ANGLE_TAN);
-        }
-
-        function horizontalPool(cands: typeof forward) {
-            const strict = cands.filter(c => (intervalOverlap(fromRect.top, fromRect.bottom, c.r.top, c.r.bottom) / Math.min(fromRect.height, c.r.height || 1)) >= STRICT_OVERLAP);
-            if (strict.length) return strict;
-            const relaxed = cands.filter(c => (intervalOverlap(fromRect.top, fromRect.bottom, c.r.top, c.r.bottom) / Math.min(fromRect.height, c.r.height || 1)) >= RELAX_OVERLAP);
-            if (relaxed.length) return relaxed;
-            const beamHits = cands.filter(c => hitsBeam(c.r));
-            if (beamHits.length) return beamHits;
-            return cands.filter(c => Math.abs(c.cy) <= Math.abs(c.cx) * MAX_ANGLE_TAN);
-        }
-
-        function chooseAxisPool(cands: typeof forward) {
-            return isVertical ? verticalPool(cands) : horizontalPool(cands);
-        }
-
-        let axisPool = chooseAxisPool(sameOrDesc);
-        if (!axisPool.length) {
-            if (!wantEscape || (fromGroupId && !escapeOk)) return;
-            axisPool = chooseAxisPool(unrelated);
-            if (!axisPool.length) return;
-        }
-
         const primaryGap = (r: DOMRect): number => {
-            if (dir === 'down') return Math.max(0, r.top - fromRect.bottom);
-            if (dir === 'up') return Math.max(0, fromRect.top - r.bottom);
-            if (dir === 'right') return Math.max(0, r.left - fromRect.right);
+            if (dir === "down") return Math.max(0, r.top - fromRect.bottom);
+            if (dir === "up") return Math.max(0, fromRect.top - r.bottom);
+            if (dir === "right") return Math.max(0, r.left - fromRect.right);
             return Math.max(0, fromRect.left - r.right);
         };
 
-        const minPrim = axisPool.reduce((m, c) => Math.min(m, primaryGap(c.r)), Infinity);
-        const PRIMARY_BAND_PX = isVertical
-            ? Math.max(48, Math.min(220, fromRect.height * 2.25))
-            : Math.max(48, Math.min(220, fromRect.width * 2.25));
+        const pickFrom = (pool: NodeEntry[], force = false): NodeEntry | undefined => {
+            if (!pool.length) return;
 
-        const nearBand = axisPool.filter(c => primaryGap(c.r) <= minPrim + PRIMARY_BAND_PX);
-        const navPool = nearBand.length ? nearBand : axisPool;
+            const PERP_COEF = 0.35;
+            const DIST_COEF = 0.015;
 
-        const PERP_COEF = 0.35;
-        const DIST_COEF = 0.015;
+            const ALIGN_BONUS = -120;
+            const SAME_CONT_BIAS = -200;
+            const CROSS_VISIBLE_BIAS = -150;
 
-        const ALIGN_BONUS = -120;
-        const SAME_CONT_BIAS = -200;
-        const CROSS_VISIBLE_BIAS = -150;
+            const SMALL_TARGET_PX = 28;
+            const SMALL_BONUS = -100;
+            const SKIP_COEF = 2.2;
 
-        const SMALL_TARGET_PX = 28;
-        const SMALL_BONUS = -100;
-        const SKIP_COEF = 2.2;
+            type Cand = { n: NodeEntry; r: DOMRect; cx: number; cy: number; };
+            type Scored = {
+                n: NodeEntry;
+                prim: number;
+                perp: number;
+                centerHyp: number;
+                beamOverlapRatio: number;
+                sameContainer: boolean;
+                score: number;
+            };
 
-        type Scored = {
-            n: NodeEntry;
-            prim: number;
-            perp: number;
-            centerHyp: number;
-            beamOverlapRatio: number;
-            sameContainer: boolean;
-            score: number;
+            if (force) {
+                const cands: Cand[] = pool.map(n => {
+                    const r = rectOf(n);
+                    const cx = (r.left + r.width / 2) - cx0;
+                    const cy = (r.top + r.height / 2) - cy0;
+                    return { n, r, cx, cy };
+                });
+
+                const minPrim = cands.reduce((m, c) => Math.min(m, primaryGap(c.r)), Infinity);
+
+                const scored: Scored[] = [];
+                for (const c of cands) {
+                    const r = c.r;
+
+                    const prim = primaryGap(r);
+                    const perp = isVertical ? pointIntervalDist(cx0, r.left, r.right) : pointIntervalDist(cy0, r.top, r.bottom);
+                    const centerHyp = Math.hypot(c.cx, c.cy);
+
+                    const candCont = nearestScrollContainer(c.n.el);
+                    const sameContainer = (candCont === navContainer);
+
+                    const beamOverlap = isVertical
+                        ? intervalOverlap(r.left, r.right, (beam as any).left, (beam as any).right)
+                        : intervalOverlap(r.top, r.bottom, (beam as any).top, (beam as any).bottom);
+                    const span = isVertical ? r.width : r.height;
+                    const beamOverlapRatio = span > 0 ? (beamOverlap / span) : 0;
+
+                    let s = 0;
+                    s += prim * 1.0;
+                    s += perp * PERP_COEF;
+                    s += centerHyp * DIST_COEF;
+                    s += Math.max(0, prim - minPrim) * SKIP_COEF;
+
+                    if (perp === 0) s += ALIGN_BONUS;
+                    if (sameContainer) s += SAME_CONT_BIAS;
+                    else if (isPartiallyVisibleInContainer(c.n.el, candCont)) s += CROSS_VISIBLE_BIAS;
+
+                    s += -80 * beamOverlapRatio;
+
+                    const smallDim = isVertical ? r.width : r.height;
+                    if (smallDim <= SMALL_TARGET_PX) s += SMALL_BONUS;
+
+                    s -= (c.n.opts.priority ?? 0) * 1000;
+
+                    scored.push({ n: c.n, prim, perp, centerHyp, beamOverlapRatio, sameContainer, score: s });
+                }
+
+                scored.sort((a, b) =>
+                    a.score - b.score
+                    || a.prim - b.prim
+                    || a.perp - b.perp
+                    || a.centerHyp - b.centerHyp
+                );
+
+                return scored[0]?.n;
+            }
+
+            const forward: Cand[] = [];
+            for (const n of pool) {
+                const r = rectOf(n);
+                if (!inFrontOfDirection(r, dir)) continue;
+
+                const cx = (r.left + r.width / 2) - cx0;
+                const cy = (r.top + r.height / 2) - cy0;
+                const dot = cx * vx + cy * vy;
+                if (dot > 0) forward.push({ n, r, cx, cy });
+            }
+            if (!forward.length) return;
+
+            const sameOrDesc = forward.filter(c => sameOrDescendantContainer(navContainer, c.n.el));
+            const unrelated = forward
+                .filter(c => !sameOrDescendantContainer(navContainer, c.n.el))
+                .filter(c => overlapsNavColumn(c.r));
+
+            const STRICT_OVERLAP = 0.45;
+            const RELAX_OVERLAP = 0.20;
+            const MAX_ANGLE_TAN = Math.tan(65 * Math.PI / 180);
+
+            function verticalPool(cands: Cand[]) {
+                const strict = cands.filter(c => (intervalOverlap(fromRect.left, fromRect.right, c.r.left, c.r.right) / Math.min(fromRect.width, c.r.width || 1)) >= STRICT_OVERLAP);
+                if (strict.length) return strict;
+                const relaxed = cands.filter(c => (intervalOverlap(fromRect.left, fromRect.right, c.r.left, c.r.right) / Math.min(fromRect.width, c.r.width || 1)) >= RELAX_OVERLAP);
+                if (relaxed.length) return relaxed;
+                const beamHits = cands.filter(c => hitsBeam(c.r));
+                if (beamHits.length) return beamHits;
+                return cands.filter(c => Math.abs(c.cx) <= Math.abs(c.cy) * MAX_ANGLE_TAN);
+            }
+
+            function horizontalPool(cands: Cand[]) {
+                const strict = cands.filter(c => (intervalOverlap(fromRect.top, fromRect.bottom, c.r.top, c.r.bottom) / Math.min(fromRect.height, c.r.height || 1)) >= STRICT_OVERLAP);
+                if (strict.length) return strict;
+                const relaxed = cands.filter(c => (intervalOverlap(fromRect.top, fromRect.bottom, c.r.top, c.r.bottom) / Math.min(fromRect.height, c.r.height || 1)) >= RELAX_OVERLAP);
+                if (relaxed.length) return relaxed;
+                const beamHits = cands.filter(c => hitsBeam(c.r));
+                if (beamHits.length) return beamHits;
+                return cands.filter(c => Math.abs(c.cy) <= Math.abs(c.cx) * MAX_ANGLE_TAN);
+            }
+
+            function chooseAxisPool(cands: Cand[]) {
+                return isVertical ? verticalPool(cands) : horizontalPool(cands);
+            }
+
+            let axisPool = chooseAxisPool(sameOrDesc);
+            if (!axisPool.length) {
+                if (!wantEscape) return;
+                axisPool = chooseAxisPool(unrelated);
+                if (!axisPool.length) return;
+            }
+
+            const minPrim = axisPool.reduce((m, c) => Math.min(m, primaryGap(c.r)), Infinity);
+            const PRIMARY_BAND_PX = isVertical
+                ? Math.max(48, Math.min(220, fromRect.height * 2.25))
+                : Math.max(48, Math.min(220, fromRect.width * 2.25));
+
+            const nearBand = axisPool.filter(c => primaryGap(c.r) <= minPrim + PRIMARY_BAND_PX);
+            const navPool = nearBand.length ? nearBand : axisPool;
+
+            const scored: Scored[] = [];
+            for (const c of navPool) {
+                const r = c.r;
+
+                const prim = primaryGap(r);
+                const perp = isVertical ? pointIntervalDist(cx0, r.left, r.right) : pointIntervalDist(cy0, r.top, r.bottom);
+                const centerHyp = Math.hypot(c.cx, c.cy);
+
+                const candCont = nearestScrollContainer(c.n.el);
+                const sameContainer = (candCont === navContainer);
+
+                const beamOverlap = isVertical
+                    ? intervalOverlap(r.left, r.right, (beam as any).left, (beam as any).right)
+                    : intervalOverlap(r.top, r.bottom, (beam as any).top, (beam as any).bottom);
+                const span = isVertical ? r.width : r.height;
+                const beamOverlapRatio = span > 0 ? (beamOverlap / span) : 0;
+
+                let s = 0;
+                s += prim * 1.0;
+                s += perp * PERP_COEF;
+                s += centerHyp * DIST_COEF;
+                s += Math.max(0, prim - minPrim) * SKIP_COEF;
+
+                if (perp === 0) s += ALIGN_BONUS;
+                if (sameContainer) s += SAME_CONT_BIAS;
+                else if (isPartiallyVisibleInContainer(c.n.el, candCont)) s += CROSS_VISIBLE_BIAS;
+
+                s += -80 * beamOverlapRatio;
+
+                const smallDim = isVertical ? r.width : r.height;
+                if (smallDim <= SMALL_TARGET_PX) s += SMALL_BONUS;
+
+                s -= (c.n.opts.priority ?? 0) * 1000;
+
+                scored.push({ n: c.n, prim, perp, centerHyp, beamOverlapRatio, sameContainer, score: s });
+            }
+
+            if (!scored.length) return;
+
+            scored.sort((a, b) =>
+                a.score - b.score
+                || a.prim - b.prim
+                || a.perp - b.perp
+                || a.centerHyp - b.centerHyp
+            );
+
+            return scored[0]?.n;
         };
 
-        const scored: Scored[] = [];
-        for (const c of navPool) {
-            const r = c.r;
-
-            const prim = primaryGap(r);
-
-            const perp = isVertical
-                ? pointIntervalDist(cx0, r.left, r.right)
-                : pointIntervalDist(cy0, r.top, r.bottom);
-
-            const centerHyp = Math.hypot(c.cx, c.cy);
-            const candCont = nearestScrollContainer(c.n.el);
-            const sameContainer = (candCont === navContainer);
-
-            const beamOverlap = isVertical
-                ? intervalOverlap(r.left, r.right, (beam as any).left, (beam as any).right)
-                : intervalOverlap(r.top, r.bottom, (beam as any).top, (beam as any).bottom);
-            const span = isVertical ? r.width : r.height;
-            const beamOverlapRatio = span > 0 ? (beamOverlap / span) : 0;
-
-            let s = 0;
-            s += prim * 1.0;
-            s += perp * PERP_COEF;
-            s += centerHyp * DIST_COEF;
-            s += Math.max(0, prim - minPrim) * SKIP_COEF;
-
-            if (perp === 0) s += ALIGN_BONUS;
-            if (sameContainer) s += SAME_CONT_BIAS;
-            else if (isPartiallyVisibleInContainer(c.n.el, candCont)) s += CROSS_VISIBLE_BIAS;
-
-            s += -80 * beamOverlapRatio;
-
-            const smallDim = isVertical ? r.width : r.height;
-            if (smallDim <= SMALL_TARGET_PX) s += SMALL_BONUS;
-
-            s -= (c.n.opts.priority ?? 0) * 1000;
-
-            scored.push({ n: c.n, prim, perp, centerHyp, beamOverlapRatio, sameContainer, score: s });
+        if (fromGroupId && !escapeOk) {
+            return pickFrom(baseAll.filter(n => ((n.opts as any)?.groupId as string | undefined) === fromGroupId));
         }
 
-        console.info("scored", scored);
 
-        if (!scored.length) return;
+        if (targets && escapeOk) {
+            const byGroup = new Map<string, NodeEntry[]>();
 
-        scored.sort((a, b) =>
-            a.score - b.score
-            || a.prim - b.prim
-            || a.perp - b.perp
-            || a.centerHyp - b.centerHyp
-        );
+            for (const n of baseAll) {
+                const gid = ((n.opts as any)?.groupId as string | undefined);
+                if (!gid) continue;
+                let arr = byGroup.get(gid);
+                if (!arr) byGroup.set(gid, (arr = []));
+                arr.push(n);
+            }
 
-        return scored[0]?.n;
+            for (const gid of targets) {
+                if (fromGroupId && gid === fromGroupId) continue;
+
+                const pool = byGroup.get(gid);
+                if (pool?.length) return pickFrom(pool, true);
+            }
+        }
+
+        return pickFrom(baseAll);
     }
 
+    function navAnchorPoint(rect: DOMRect, dir: Direction, anchor: any): { x: number; y: number } {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+
+        if (!anchor || anchor === "center") return { x: cx, y: cy };
+
+        if (anchor === "edges") {
+            const x = dir === "left" ? rect.left : dir === "right" ? rect.right : cx;
+            const y = dir === "up" ? rect.top : dir === "down" ? rect.bottom : cy;
+            return { x, y };
+        }
+
+        const ax = anchor?.x;
+        const ay = anchor?.y;
+
+        const x =
+            ax === "left" ? rect.left :
+            ax === "right" ? rect.right :
+            cx;
+
+        const y =
+            ay === "top" ? rect.top :
+            ay === "bottom" ? rect.bottom :
+            cy;
+
+        return { x, y };
+    }
+
+    
     function groupEscapeAllowed(node: NodeEntry | undefined, dir: Direction): boolean {
         if (!node) return true;
         const o: any = node.opts;

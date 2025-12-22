@@ -296,6 +296,9 @@ const SubscriptionsPage: Component = () => {
                   onClick={() => toggleCreator(sub.channel.url)} 
                   classList={{[styles.active]: selectedCreators$().indexOf(sub.channel.url) >= 0}} 
                   use:focusable={{
+                    groupEscapeTo: {
+                      down: ['subgroups', 'filters']
+                    },
                     groupId: 'creators',
                     groupIndices: [i()],
                     groupType: 'horizontal',
@@ -341,6 +344,10 @@ const SubscriptionsPage: Component = () => {
                     classList={{ [styles.active]: subGroup.id === selectedGroup$() }}
                     onClick={() => (subGroup.id === selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id)}
                     use:focusable={{
+                      groupEscapeTo: {
+                        down: ['filters'],
+                        up: ['creators']
+                      },
                       groupId: 'subgroups',
                       groupType: 'horizontal',
                       groupIndices: [i()],
@@ -366,6 +373,10 @@ const SubscriptionsPage: Component = () => {
                   style="cursor: pointer"
                   onClick={() => newSubscriptionGroup()}
                   use:focusable={{ 
+                    groupEscapeTo: {
+                      down: ['filters'],
+                      up: ['creators']
+                    },
                     groupId: 'subgroups',
                     groupType: 'horizontal',
                     groupIndices: [subGroups$()?.length ?? 0],
@@ -384,7 +395,15 @@ const SubscriptionsPage: Component = () => {
                     class={styles.filter}
                     classList={{[styles.active]: filter.active[0]()}}
                     onClick={()=>toggleFilter(i())}
-                    use:focusable={{ onPress: () => toggleFilter(i()) }}
+                    use:focusable={{
+                      groupEscapeTo: {
+                        up: ['subgroups', 'creators']
+                      },
+                      groupId: 'filters',
+                      groupType: 'horizontal',
+                      groupIndices: [i()],
+                      onPress: () => toggleFilter(i()) 
+                    }}
                   >
                     <div class={styles.name}>
                       {filter.name}

@@ -85,6 +85,7 @@ const InputText: Component<InputTextProps> = (props) => {
             ... merged.style
         }} use:focusable={props.focusable ? {
             ... (props.focusableGroupOpts ?? {}),
+            navAnchor: {x: 'left'},
             onPress: () => {
                 if (document.activeElement === inputElement) {
                     merged.onSubmit?.(text());
