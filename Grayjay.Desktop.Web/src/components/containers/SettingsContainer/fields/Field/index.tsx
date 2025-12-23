@@ -22,6 +22,7 @@ interface FieldProps {
     onFieldChanged?: (field: ISettingsField, newVal: any)=>void,
     parentObject: any,
     isSubField?: boolean,
+    showAdvanced?: boolean,
     onBack?: () => boolean,
     focusableGroupOpts?: {
         groupId?: string;
@@ -91,12 +92,13 @@ const Field: Component<FieldProps> = (props) => {
 
     return (
         <div class={styles.container}>
-            <Show when={isVisible$()}>
+            <Show when={isVisible$() && (!props.field.advanced || !!props.showAdvanced) && (props.field.type != "group" || !!props.showAdvanced ||  (props.field as ISettingsFieldGroup).fields.find(x=>!x.advanced))}>
                 <Switch>
                     <Match when={props.field.type == "group"}>
                         <FieldGroup field={props.field as ISettingsFieldGroup} value={props.parentObject[props.field.property]}
                             container={props.container}
                             onFieldChanged={onChanged}
+                            showAdvanced={props.showAdvanced}
                             onBack={props.onBack} />
                     </Match>
                     <Match when={props.field.type == "group_flat"}>

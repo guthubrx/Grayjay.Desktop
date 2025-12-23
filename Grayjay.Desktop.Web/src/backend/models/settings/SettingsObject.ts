@@ -9,7 +9,8 @@ export interface ISettingsField {
     dependency?: string,
     warningDialog?: string,
     id?: string,
-    visible?: boolean
+    visible?: boolean,
+    advanced?: boolean
 }
 
 export interface ISettingsObject {
