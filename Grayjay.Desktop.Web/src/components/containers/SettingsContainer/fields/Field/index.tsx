@@ -14,6 +14,7 @@ import { parseBool } from '../../../../../utility';
 import { SettingsContainerParent } from '../..';
 import UIOverlay from '../../../../../state/UIOverlay';
 import warning from '../../../../../assets/icons/icon_warning.svg';
+import { Direction } from '../../../../../nav';
 
 interface FieldProps {
     container?: SettingsContainerParent,
@@ -21,7 +22,12 @@ interface FieldProps {
     onFieldChanged?: (field: ISettingsField, newVal: any)=>void,
     parentObject: any,
     isSubField?: boolean,
-    onBack?: () => boolean
+    onBack?: () => boolean,
+    focusableGroupOpts?: {
+        groupId?: string;
+        groupType?: "grid" | "horizontal" | "vertical";
+        groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    }
 }
 
 const Field: Component<FieldProps> = (props) => {
@@ -101,7 +107,7 @@ const Field: Component<FieldProps> = (props) => {
                     </Match>
                     <Match when={props.field.type == "toggle"}>
                         <FieldToggle field={props.field as ISettingsFieldToggle} value={parseBool(props.parentObject[props.field.property])} 
-                            onFieldChanged={onChangedDirect} isSubField={props.isSubField} onBack={props.onBack} />
+                            onFieldChanged={onChangedDirect} isSubField={props.isSubField} onBack={props.onBack} focusableGroupOpts={props.focusableGroupOpts} />
                     </Match>
                     <Match when={props.field.type == "readonly"}>
                         <FieldReadOnly field={props.field as ISettingsFieldReadOnly} value={props.parentObject[props.field.property]}
@@ -109,7 +115,7 @@ const Field: Component<FieldProps> = (props) => {
                     </Match>
                     <Match when={props.field.type == "dropdown"}>
                         <FieldDropDown field={props.field as ISettingsFieldDropDown} value={props.parentObject[props.field.property]}
-                            onFieldChanged={onChangedDirect} isSubField={props.isSubField} onBack={props.onBack} />
+                            onFieldChanged={onChangedDirect} isSubField={props.isSubField} onBack={props.onBack} focusableGroupOpts={props.focusableGroupOpts} />
                     </Match>
                 </Switch>
             </Show>

@@ -217,6 +217,9 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
                     props.onPlay(v);
                   }}
                   focusableOpts={{
+                    groupId: 'playlist',
+                    groupType: 'vertical',
+                    groupIndices: [index()],
                     onPress: () => {
                       const v = video();
                       if (!v) return;

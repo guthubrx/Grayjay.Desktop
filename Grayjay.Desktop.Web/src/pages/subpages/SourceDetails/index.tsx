@@ -19,10 +19,12 @@ import StateWebsocket from '../../../state/StateWebsocket';
 import ScrollContainer from '../../../components/containers/ScrollContainer';
 import { LocalBackend } from '../../../backend/LocalBackend';
 import { createResourceDefault } from '../../../utility';
-import { focusable } from '../../../focusable'; void focusable;
+import { focusable } from '../../../focusable';import { Direction } from '../../../nav';
+ void focusable;
 
 export interface SourceDetailsProps {
-  configId: string
+  configId: string;
+  groupEscapeTo?: Partial<Record<Direction, string[]>>;
 };
 const SourceDetails: Component<SourceDetailsProps> = (props: SourceDetailsProps) => {
     let containerRef: HTMLDivElement;
@@ -195,6 +197,11 @@ const SourceDetails: Component<SourceDetailsProps> = (props: SourceDetailsProps)
           <div class={styles.settings}>
             <Show when={sourceResource$()?.hasUpdate}>
               <Button style={{width: "calc(100% - 30px)", "margin-bottom": "10px"}} text='Update' onClick={()=>reinstallFromRemote()} focusableOpts={{
+                groupId: 'plugin-settings',
+                groupEscapeTo: {
+                  left: ['sources']
+                },
+                groupType: 'vertical',
                 onPress: reinstallFromRemote
               }}></Button>
             </Show>
@@ -205,42 +212,89 @@ const SourceDetails: Component<SourceDetailsProps> = (props: SourceDetailsProps)
                 </Show>
                 <Show when={StateGlobal.settings$()?.object?.info?.mode != "Server"}>
                   <Button style={{width: "calc(100% - 30px)", "margin-bottom": "10px"}} text='Login' onClick={()=>login(sourceResource$()!.config.id)} focusableOpts={{
+                    groupId: 'plugin-settings',
+                    groupEscapeTo: {
+                      left: ['sources']
+                    },
+                    groupType: 'vertical',
                     onPress: () => login(sourceResource$()!.config.id)
                   }}></Button>
                 </Show>
                 <Show when={StateGlobal.settings$()?.object?.info?.mode != "Server" && sourceResource$()?.config?.id == "DEV"}>
                   <Button style={{width: "calc(100% - 30px)", "margin-bottom": "10px"}} text='Login (Clone From Real)' onClick={()=>loginDevClone()} focusableOpts={{
+                    groupId: 'plugin-settings',
+                    groupEscapeTo: {
+                      left: ['sources']
+                    },
+                    groupType: 'vertical',
                     onPress: loginDevClone
                   }}></Button>
                 </Show>
               </Show>
               <Show when={!!sourceResource$()?.hasLoggedIn}>
                 <Button style={{width: "calc(100% - 30px)", "margin-bottom": "10px"}} text='Logout' onClick={()=>logout(sourceResource$()!.config.id)} focusableOpts={{
+                    groupId: 'plugin-settings',
+                    groupEscapeTo: {
+                      left: ['sources']
+                    },
+                    groupType: 'vertical',
                     onPress: ()=>logout(sourceResource$()!.config.id)
                   }}></Button>
               </Show>
               <Show when={!!sourceResource$()?.state?.capabilities?.hasGetUserSubscriptions && !!sourceResource$()?.hasLoggedIn}>
                 <Button style={{width: "calc(100% - 30px)", "margin-bottom": "10px"}} text='Import Subscriptions' onClick={()=>importSubscriptions(sourceResource$()!.config.id)} focusableOpts={{
+                    groupId: 'plugin-settings',
+                    groupEscapeTo: {
+                      left: ['sources']
+                    },
+                    groupType: 'vertical',
                     onPress: ()=>importSubscriptions(sourceResource$()!.config.id)
                   }}></Button>
               </Show>
               <Show when={!!sourceResource$()?.state?.capabilities?.hasGetUserPlaylists && !!sourceResource$()?.hasLoggedIn}>
                 <Button style={{width: "calc(100% - 30px)", "margin-bottom": "10px"}} text='Import Playlists' onClick={()=>importPlaylists(sourceResource$()!.config.id)} focusableOpts={{
+                    groupId: 'plugin-settings',
+                    groupEscapeTo: {
+                      left: ['sources']
+                    },
+                    groupType: 'vertical',
                     onPress: ()=>importPlaylists(sourceResource$()!.config.id)
                   }}></Button>
               </Show>
             </Show>
             <ScrollContainer ref={scrollContainerRef} wrapperStyle={{"flex-grow": 1, "width": "100%"}}>
-              <SettingsContainer settings={sourceAppSettings$()} onFieldChanged={onSourceAppSettingsChanged} />
+              <SettingsContainer settings={sourceAppSettings$()} onFieldChanged={onSourceAppSettingsChanged} focusableGroupOpts={{
+                groupId: 'plugin-settings',
+                groupEscapeTo: {
+                  left: ['sources']
+                },
+                groupType: 'vertical'
+              }} />
               <Show when={sourceSettings$() && (sourceSettings$()?.fields?.length ?? 0) > 0}>
                 <h2 style="margin-top: 56px;">Plugin Settings</h2>
-                <SettingsContainer settings={sourceSettings$()} onFieldChanged={onSourceSettingsChanged} />
+                <SettingsContainer settings={sourceSettings$()} onFieldChanged={onSourceSettingsChanged} focusableGroupOpts={{
+                  groupId: 'plugin-settings',
+                  groupEscapeTo: {
+                    left: ['sources']
+                  },
+                  groupType: 'vertical'
+                }} />
               </Show>
               
               <Button style={{width: "calc(100% - 54px)", "margin-bottom": "10px", "margin-left": "24px"}} text='Uninstall' color='#550000' onClick={()=>uninstall()} focusableOpts={{
+                groupId: 'plugin-settings',
+                groupEscapeTo: {
+                  left: ['sources']
+                },
+                groupType: 'vertical',
                 onPress: uninstall
               }}></Button>
               <Button style={{width: "calc(100% - 54px)", "margin-bottom": "10px", "margin-left": "24px"}} text='Copy Settings to Clipboard' color='#019BE7' onClick={()=>copySettingsToClipboard()} focusableOpts={{
+                groupId: 'plugin-settings',
+                groupEscapeTo: {
+                  left: ['sources']
+                },
+                groupType: 'vertical',
                 onPress: copySettingsToClipboard
               }}></Button>
             </ScrollContainer>
