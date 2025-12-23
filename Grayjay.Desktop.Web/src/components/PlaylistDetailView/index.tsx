@@ -27,6 +27,7 @@ import Dropdown from '../basics/inputs/Dropdown';
 import ic_search from '../../assets/icons/search.svg';
 import { focusable } from '../../focusable'; void focusable;
 import { InputSource } from '../../nav';
+import { VideoState } from '../../contexts/VideoProvider';
 
 interface PlaylistDetailViewProps {
   type: string;
@@ -34,12 +35,12 @@ interface PlaylistDetailViewProps {
   videos?: IPlatformVideo[];
   isLoading: boolean;
   id?: string;
-  onPlayAll: () => void;
-  onShuffleAll: () => void;
+  onPlayAll: (videoState?: VideoState) => void;
+  onShuffleAll: (videoState?: VideoState) => void;
   onDragEnd: () => void;
   onRemove: (video: IPlatformVideo) => void;
   onDownload: (video: IPlatformVideo) => void;
-  onPlay: (video: IPlatformVideo) => void;
+  onPlay: (video: IPlatformVideo, videoState?: VideoState) => void;
   onAddToQueue: (video: IPlatformVideo) => void;
   refetch?: () => void;
 }
@@ -154,7 +155,7 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
             }}
             onClick={() => props.onPlayAll()}
             focusableOpts={{
-              onPress: () => props.onPlayAll()
+              onPress: () => props.onPlayAll(VideoState.Fullscreen)
             }} />
           <CustomButton
             text="Shuffle"
@@ -167,7 +168,7 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
             }}
             onClick={() => props.onShuffleAll()}
             focusableOpts={{
-              onPress: () => props.onShuffleAll()
+              onPress: () => props.onShuffleAll(VideoState.Fullscreen)
             }} />
             <Show when={props.id}>
               <img src={iconSettings} style="width: 24px; height: 100%; margin-left: 16px; margin-right: 16px; padding-left: 16px; padding-right: 16px; cursor: pointer;" onClick={(ev) => {
@@ -223,7 +224,7 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
                     onPress: () => {
                       const v = video();
                       if (!v) return;
-                      props.onPlay(v);
+                      props.onPlay(v, VideoState.Fullscreen);
                     },
                     onOptions: (el, inputSource) => {
                       const v = video();

@@ -1,5 +1,5 @@
 import { createResource, type Component, createSignal, onMount, createMemo, createEffect, untrack, batch, Match, Switch, Show } from 'solid-js';
-import { useVideo } from '../../contexts/VideoProvider';
+import { useVideo, VideoState } from '../../contexts/VideoProvider';
 import LoaderContainer from '../../components/basics/loaders/LoaderContainer';
 import { HistoryBackend } from '../../backend/HistoryBackend';
 import NavigationBar from '../../components/topbars/NavigationBar';
@@ -276,10 +276,10 @@ const HistoryPage: Component = () => {
                     return tokens.join(" • ");
                   });
 
-                  const openVideo = () => {
+                  const openVideo = (fullscreen?: boolean) => {
                     const hv = historyVideo();
-                    if (hv)
-                      video?.actions.openVideo(hv.video, (hv.position > 10000) ? Duration.fromMillis(hv.position) : Duration.fromMillis(hv.position * 1000));
+                    if (!hv) return;
+                    video?.actions.openVideo(hv.video, (hv.position > 10000) ? Duration.fromMillis(hv.position) : Duration.fromMillis(hv.position * 1000), fullscreen === true ? VideoState.Fullscreen : undefined);
                   };
 
                   const openAuthor = () => {
@@ -287,7 +287,7 @@ const HistoryPage: Component = () => {
                   };
 
                   return (<div class={styles.itemContainer} use:focusable={{
-                    onPress: openVideo,
+                    onPress: () => openVideo(true),
                     onOptions: (el) => {
                         contentAnchor.setElement(el as HTMLElement);
               
@@ -297,7 +297,7 @@ const HistoryPage: Component = () => {
                         });
                     }
                   }}>
-                    <div style="height: 82px; width: 150px; position: relative; border-radius: 4.374px; overflow: hidden; cursor: pointer; flex-shrink: 0; padding: 1px;" onClick={openVideo}>
+                    <div style="height: 82px; width: 150px; position: relative; border-radius: 4.374px; overflow: hidden; cursor: pointer; flex-shrink: 0; padding: 1px;" onClick={() => openVideo()}>
                       <img src={bestThumbnail()?.url} style={{"height": "100%", "width": "100%", "object-fit": "cover"}} referrerPolicy='no-referrer' />
                       <div style={{
                         "position": "absolute",
@@ -310,7 +310,7 @@ const HistoryPage: Component = () => {
                       }} />
                     </div>
                     <div style="display: flex; flex-direction: column; height: 100%; margin-left: 20px; width: 100%;">
-                      <div class={styles.videoTitle} onClick={openVideo}>{historyVideo()?.video.name}</div>
+                      <div class={styles.videoTitle} onClick={() => openVideo()}>{historyVideo()?.video.name}</div>
                       <div style="flex-grow: 1"></div>
                       <div style="display: flex; flex-direction: row; align-items: center;">
                         <img src={historyVideo()?.video.author.thumbnail} style={{"height": "26px", "width": "26px", "object-fit": "cover", "border-radius": "50%", "cursor": "pointer"}} onClick={openAuthor} referrerPolicy='no-referrer' />

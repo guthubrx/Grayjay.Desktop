@@ -40,15 +40,15 @@ const PlaylistPage: Component = () => {
         name={playlist$()?.name}
         videos={playlist$()?.videos}
         isLoading={!playlist$()}
-        onPlayAll={() => video?.actions?.setQueue(0, playlist$()!.videos, false, false)}
-        onShuffleAll={() => video?.actions?.setQueue(0, playlist$()!.videos, false, true)}
-        onPlay={(v) => {
+        onPlayAll={(vs) => video?.actions?.setQueue(0, playlist$()!.videos, false, false, vs)}
+        onShuffleAll={(vs) => video?.actions?.setQueue(0, playlist$()!.videos, false, true, vs)}
+        onPlay={(v, vs) => {
           const videos = playlist$()?.videos;
           if (!videos) {
             return;
           }
 
-          video?.actions?.setQueue(videos.findIndex(x => x === v), videos, false, false);
+          video?.actions?.setQueue(videos.findIndex(x => x === v), videos, false, false, vs);
         }}
         onRemove={async (v) => {
             const id = playlist$()?.id;
