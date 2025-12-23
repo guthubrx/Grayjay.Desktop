@@ -5,7 +5,7 @@ import iconClose from '../../assets/icons/icon24_close.svg';
 import UIOverlay from '../../state/UIOverlay';
 
 import iconCheck from '../../assets/icons/icon_checkmark.svg'
-import { positiveOrQ, resolutionOrUnknown, toHumanBitrate } from '../../utility';
+import { positiveOrQ, resolutionOrUnknown, toHumanBitrate, uuidv4 } from '../../utility';
 import ButtonFlex from '../../components/buttons/ButtonFlex';
 import Button from '../../components/buttons/Button';
 import { DownloadBackend } from '../../backend/DownloadBackend';
@@ -164,6 +164,7 @@ const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: Ove
     });
     const [selectedLanguage$, setSelectedLanguage] = createSignal<string | undefined>(undefined);
 
+    const groupId = uuidv4();
     return (
       <div class={styles.container} use:focusScope={{
         initialMode: 'trap'
@@ -190,10 +191,16 @@ const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: Ove
               <div>
                 <div class={styles.menuItem}
                   classList={{ [styles.filterHorizontal]: true }}>
-                  <For each={availableLanguages$() ?? []}>{(option) =>
+                  <For each={availableLanguages$() ?? []}>{(option, i) =>
                     <div class={styles.filterHorizontalOption}
                       classList={{ [styles.isActive]: option == selectedLanguage$() }}
-                      onClick={() => setSelectedLanguage(option)}>
+                      onClick={() => setSelectedLanguage(option)}
+                      use:focusable={{
+                        groupId,
+                        groupType: 'horizontal',
+                        groupIndices: [i()],
+                        onPress: () => setSelectedLanguage(option)
+                      }}>
                       {(option ?? "All")}
                     </div>
                   }</For>
