@@ -156,7 +156,7 @@ namespace Grayjay.ClientServer.Settings
                 };
             }
 
-            [SettingsField("Prefer Original Audio", SettingsField.TOGGLE, "", 0)]
+            [SettingsField("Prefer Original Audio", SettingsField.TOGGLE, "Specify if original audio (eg. non-AI generated audio) is preferred over the selected language.", 0)]
             public bool PreferOriginalAudio { get; set; } = true;
 
             [SettingsField("Default Playback Speed", SettingsField.DROPDOWN, "", 1)]

@@ -4,6 +4,7 @@ using Grayjay.ClientServer.Settings;
 using Grayjay.Engine.Models.Detail;
 using Grayjay.Engine.Models.Video;
 using Grayjay.Engine.Models.Video.Sources;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Grayjay.ClientServer.Helpers
@@ -70,6 +71,29 @@ namespace Grayjay.ClientServer.Helpers
             return (bestVideoSource != null) ? sources.IndexOf(bestVideoSource) : -1;
         }
 
+        public static List<IVideoSource> ReorderVideoSources(List<IVideoSource> list, bool hasAudio)
+        {
+            if (hasAudio)
+                return list;
+
+            List<IVideoSource> newList = new List<IVideoSource>();
+            if (list.Any(x => x.Original))
+            {
+                newList.AddRange(list.Where(x => x.Original));
+                list = list.Where(x => !x.Original).ToList();
+            }
+
+            var prefLanguage = GrayjaySettings.Instance.Playback.GetPrimaryLanguage();
+            if (prefLanguage != null && list.Any(x => x.Language == prefLanguage))
+            {
+                newList.AddRange(list.Where(x => x.Language == prefLanguage));
+                list = list.Where(x => x.Language != prefLanguage).ToList();
+            }
+
+            newList.AddRange(list);
+            return newList;
+        }
+
 
         public static IAudioSource SelectBestAudioSource(List<IAudioSource> sources, List<string> prefContainers, string? prefLanguage = Language.ENGLISH, long? targetBitrate = null)
         {
@@ -115,6 +139,26 @@ namespace Grayjay.ClientServer.Helpers
             var bestAudioSource = VideoHelper.SelectBestAudioSource(sources.Cast<IAudioSource>().ToList(), new List<string>() { "audio/mp4" }, GrayjaySettings.Instance.Playback.GetPrimaryLanguage(), 9999 * 9999);
             return (bestAudioSource != null) ? sources.IndexOf(bestAudioSource) : -1;
         }
+        public static List<IAudioSource> ReorderAudioSources(List<IAudioSource> list)
+        {
+            List<IAudioSource> newList = new List<IAudioSource>();
+            if(list.Any(x=>x.Original))
+            {
+                newList.AddRange(list.Where(x => x.Original));
+                list = list.Where(x => !x.Original).ToList();
+            }
+
+            var prefLanguage = GrayjaySettings.Instance.Playback.GetPrimaryLanguage();
+            if(prefLanguage != null && list.Any(x=>x.Language == prefLanguage))
+            {
+                newList.AddRange(list.Where(x => x.Language == prefLanguage));
+                list = list.Where(x => x.Language != prefLanguage).ToList();
+            }
+
+            newList.AddRange(list);
+            return newList;
+        }
+
 
         public static string VideoContainerToExtension(string container)
         {
