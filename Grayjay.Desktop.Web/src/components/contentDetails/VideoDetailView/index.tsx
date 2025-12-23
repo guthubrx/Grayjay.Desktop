@@ -334,11 +334,24 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const nvi = nextVideoIndex();
         if (nvi === undefined) {
             console.error("Playback error: " + error, { errorCounter });
-            UIOverlay.overlayConfirm({
-                yes: () => {
-                    reloadMedia();
+            if (video?.state() === VideoState.Fullscreen || document.fullscreenElement) {
+                try {
+                    videoPlayerViewHandle$()?.toggleFullscreen?.();
+                } catch (e) {
+                    console.warn("toggleFullscreen failed:", e);
                 }
-            }, "An error occurred while playing the video, do you want to reload?");
+
+                if (document.fullscreenElement) {
+                    document.exitFullscreen?.().catch?.(() => {});
+                }
+            }
+
+            setTimeout(() => {
+                UIOverlay.overlayConfirm(
+                    { yes: () => reloadMedia() },
+                    "An error occurred while playing the video, do you want to reload?"
+                );
+            }, 0);
         } else {
             if (errorCounter < 2) {
                 const waitTime_ms = Math.max((errorCounter - 1) * 1000, 0);
