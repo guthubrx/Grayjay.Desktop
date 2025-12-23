@@ -187,7 +187,7 @@ const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: Ove
         </Show>
         <Show when={sources$()}>
           <div>
-            <Show when={availableLanguages$() && availableLanguages$().length > 1}>
+            <Show when={availableLanguages$() && availableLanguages$().length > 2}>
               <div>
                 <div class={styles.menuItem}
                   classList={{ [styles.filterHorizontal]: true }}>
