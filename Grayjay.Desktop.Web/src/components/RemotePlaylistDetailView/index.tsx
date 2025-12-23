@@ -38,7 +38,9 @@ const RemotePlaylistDetailView: Component<RemotePlaylistDetailViewProps> = (prop
   let scrollContainerRef: HTMLDivElement | undefined;
   return (
     <div class={styles.container}>
-      <NavigationBar />
+      <NavigationBar groupEscapeTo={{
+        down: ['actions']
+      }} />
       <LoaderContainer isLoading={props.isLoading} loadingText={`Loading ${props.type}`} style={{
         "flex-grow": 1,
         "display": "flex",
@@ -55,6 +57,9 @@ const RemotePlaylistDetailView: Component<RemotePlaylistDetailViewProps> = (prop
             <img src={iconSettings} style="width: 24px; height: 100%; margin-left: 16px; margin-right: 16px; padding-left: 16px; padding-right: 16px; cursor: pointer;" onClick={(ev) => {
               props?.onInteract?.();
             }} use:focusable={{
+              groupId: 'actions',
+              groupType: 'horizontal',
+              groupIndices: [0],
               onPress: () => props?.onInteract?.()
             }} />
             <CustomButton
@@ -66,6 +71,9 @@ const RemotePlaylistDetailView: Component<RemotePlaylistDetailViewProps> = (prop
             }}
             onClick={() => props?.onInteract?.()}
             focusableOpts={{
+              groupId: 'actions',
+              groupType: 'horizontal',
+              groupIndices: [1],
               onPress: () => props?.onInteract?.()
             }} />
           <CustomButton
@@ -79,6 +87,9 @@ const RemotePlaylistDetailView: Component<RemotePlaylistDetailViewProps> = (prop
             }}
             onClick={() => props?.onInteract?.()}
             focusableOpts={{
+              groupId: 'actions',
+              groupType: 'horizontal',
+              groupIndices: [2],
               onPress: () => props?.onInteract?.()
             }} />
         </div>
@@ -95,7 +106,16 @@ const RemotePlaylistDetailView: Component<RemotePlaylistDetailViewProps> = (prop
                 <PlaylistItemView item={item() as IPlatformVideo} 
                   onRemove={() => props?.onInteract?.()} 
                   onSettings={(el) => props?.onInteract?.()} 
-                  onPlay={() => props?.onInteract?.()} />
+                  onPlay={() => props?.onInteract?.()}
+                  focusableOpts={{
+                    groupId: 'playlist',
+                    groupType: 'vertical',
+                    groupIndices: [index()],
+                    groupEscapeTo: {
+                      up: ['actions']
+                    },
+                    onPress: () => props?.onInteract?.()
+                  }} />
               );
             }} />
         </ScrollContainer>

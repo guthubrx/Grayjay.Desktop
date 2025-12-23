@@ -10,6 +10,7 @@ import SearchBar from '../SearchBar';
 import { useCasting } from '../../../contexts/Casting';
 import { ContentType } from '../../../backend/models/ContentType';
 import { focusable } from '../../../focusable';import { useFocus } from '../../../FocusProvider';
+import { Direction } from '../../../nav';
  void focusable;
 
 interface NavigationBarProps {
@@ -20,6 +21,7 @@ interface NavigationBarProps {
   children?: JSX.Element | undefined;
   childrenAfter?: JSX.Element | undefined;
   suggestionsVisible?: boolean;
+  groupEscapeTo?: Partial<Record<Direction, string[]>>;
 }
 
 const NavigationBar: Component<NavigationBarProps> = (props) => {
@@ -36,7 +38,8 @@ const NavigationBar: Component<NavigationBarProps> = (props) => {
       <SearchBar id="main-search" style={{ "flex-grow": 1, "max-width": "700px" }} initialText={props.initialText} inputStyle={{ "margin-left": !canGoBack$() ? "0px" : "24px" }} overlayStyle={{ "margin-left": !canGoBack$() ? "0px" : "24px" }} defaultSearchType={props.defaultSearchType} suggestionsVisible={props.suggestionsVisible} focusableGroupOpts={{
         groupId: 'nav-bar',
         groupIndices: [0],
-        groupType: 'horizontal'
+        groupType: 'horizontal',
+        groupEscapeTo: props.groupEscapeTo
       }} />
       <Show when={props.children}>
         {props.children}
@@ -51,6 +54,7 @@ const NavigationBar: Component<NavigationBarProps> = (props) => {
         groupId: 'nav-bar',
         groupIndices: [props.childrenAfter ? 2 : 1],
         groupType: 'horizontal',
+        groupEscapeTo: props.groupEscapeTo,
         onPress: () => casting?.actions.open()
       }} />
     </div>

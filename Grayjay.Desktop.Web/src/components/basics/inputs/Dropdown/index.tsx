@@ -6,7 +6,7 @@ import check from "../../../../assets/icons/icon_checkmark.svg"
 import StateGlobal from "../../../../state/StateGlobal";
 import { focusScope } from '../../../../focusScope'; void focusScope;
 import { focusable } from '../../../../focusable'; void focusable;
-import { FocusableOptions, InputSource } from "../../../../nav";
+import { Direction, FocusableOptions, InputSource } from "../../../../nav";
 
 export interface DropdownProps {
     options: any[];
@@ -19,6 +19,12 @@ export interface DropdownProps {
     focusable?: boolean;
     onBack?: () => boolean;
     direction?: "up" | "down";
+    focusableGroupOpts?: {
+        groupId?: string;
+        groupType?: "grid" | "horizontal" | "vertical";
+        groupIndices?: (number | undefined)[];
+        groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    }
 };
 
 const Dropdown: Component<DropdownProps> = (props) => {    
@@ -58,7 +64,7 @@ const Dropdown: Component<DropdownProps> = (props) => {
     });
     
     return (
-        <div class={styles.selectContainer} onClick={() => toggleShow("pointer")} style={props.style} use:focusable={{ onPress: () => toggleShow("gamepad"), onBack: props.onBack }}>
+        <div class={styles.selectContainer} onClick={() => toggleShow("pointer")} style={props.style} use:focusable={{ ... (props.focusableGroupOpts ?? {}), onPress: () => toggleShow("gamepad"), onBack: props.onBack }}>
             <div ref={refSelectElement} class={styles.select} style={props.selectStyle}>
                 <div class={styles.selectText}>
                     <div style={{"display": "flex", "flex-direction": "column"}}>

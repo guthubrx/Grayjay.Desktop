@@ -17,6 +17,7 @@ import LoaderSmall from '../../basics/loaders/LoaderSmall';
 import { ContentType } from '../../../backend/models/ContentType';
 import ScrollContainer from '../../containers/ScrollContainer';
 import { useFocus } from '../../../FocusProvider';
+import { Direction } from '../../../nav';
 
 interface SearchBarProps {
   placeholder?: string;
@@ -32,6 +33,7 @@ interface SearchBarProps {
       groupId?: string;
       groupType?: "grid" | "horizontal" | "vertical";
       groupIndices?: (number | undefined)[];
+      groupEscapeTo?: Partial<Record<Direction, string[]>>;
   };
 }
 

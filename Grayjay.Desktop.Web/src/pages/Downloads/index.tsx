@@ -2,7 +2,7 @@ import { createResource, type Component, For, Show, createMemo, onCleanup, creat
 import { createResourceDefault, getBestThumbnail, getDummyVideo, getPlaylistThumbnail, proxyImage, toHumanBitrate, toHumanBytesSize } from '../../utility';
 import { PlatformBackend } from '../../backend/PlatformBackend';
 import { ChannelBackend } from '../../backend/ChannelBackend';
-import { useVideo } from '../../contexts/VideoProvider';
+import { useVideo, VideoState } from '../../contexts/VideoProvider';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import VirtualGrid from '../../components/containers/VirtualGrid';
 import VideoThumbnailView from '../../components/content/VideoThumbnailView';
@@ -359,9 +359,10 @@ const DownloadsPage: Component = () => {
                   groupType: 'grid',
                   groupIndices: [row(), col()],
                   onPress: () => {
+                    
                     const videoDetails = item()?.videoDetails;
                     if(videoDetails) {
-                      video?.actions.openVideo(videoDetails);
+                      video?.actions.openVideo(videoDetails, undefined, VideoState.Fullscreen);
                     }
                   },
                   onOptions: (el, inputSource) => onSettingsClicked(el, item(), inputSource)

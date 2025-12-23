@@ -5,6 +5,7 @@ import { Event1 } from "../../../utility/Event";
 import { ISettingsField, ISettingsObject } from "../../../backend/models/settings/SettingsObject";
 import { focusable } from '../../../focusable'; void focusable;
 import Field from "./fields/Field";
+import { Direction } from "../../../nav";
 
 export interface SettingsContainerProps {
     settings: ISettingsObject | undefined,
@@ -13,6 +14,11 @@ export interface SettingsContainerProps {
     onFieldChanged?: (arg0: ISettingsField, arg1: any) => void;
     style?: JSX.CSSProperties;
     onBack?: () => boolean;
+    focusableGroupOpts?: {
+        groupId?: string;
+        groupType?: "grid" | "horizontal" | "vertical";
+        groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    }
 };
 
 export class SettingsContainerParent {
@@ -66,12 +72,12 @@ const SettingsContainer: Component<SettingsContainerProps> = (props) => {
         <div class={styles.container} style={props.style}>
             <Show when={props.settings}>
                 <div style="margin: 24px">
-                    <For each={props.settings!!.fields}>{ field =>
+                    <For each={props.settings!!.fields}>{ (field, index) =>
                         <Show when={(!props.filterGroup || (field.type == 'group' && field.property == props.filterGroup)) && (!props.filterName || field.title.indexOf(props.filterName!) >= 0)}>
                             <Field container={object()} field={field} parentObject={props.settings?.object} onFieldChanged={onFieldChanged} onBack={() => {
                                 console.info("onBack");
                                 return props.onBack?.() ?? false;
-                            }} />
+                            }} focusableGroupOpts={props.focusableGroupOpts} />
                         </Show>
                     }</For>
                 </div>

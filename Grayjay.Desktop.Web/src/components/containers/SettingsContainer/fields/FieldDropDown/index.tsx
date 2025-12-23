@@ -8,13 +8,20 @@ import { ISettingsFieldDropDown } from '../../../../../backend/models/settings/f
 import FieldKey from '../FieldKey';
 import Dropdown from '../../../../basics/inputs/Dropdown';
 import { AnchorStyle } from '../../../../../utility/Anchor';
+import { Direction } from '../../../../../nav';
 
 interface FieldDropDownProps {
     field: ISettingsFieldDropDown
     onFieldChanged?: (field: ISettingsField, newVal: number)=>void,
     value: number,
     isSubField?: boolean,
-    onBack?: () => boolean
+    onBack?: () => boolean,
+    focusableGroupOpts?: {
+        groupId?: string;
+        groupType?: "grid" | "horizontal" | "vertical";
+        groupIndices?: (number | undefined)[];
+        groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    }
 }
 
 const FieldDropDown: Component<FieldDropDownProps> = (props) => {
@@ -29,7 +36,7 @@ const FieldDropDown: Component<FieldDropDownProps> = (props) => {
         <div class={styles.container}>
             <FieldKey field={props.field} isSubField={!!props.isSubField} />
             <div class={styles.value}>
-                <Dropdown options={props.field.options} value={props.value} onSelectedChanged={selectedChanged} anchorStyle={AnchorStyle.BottomRight} onBack={props.onBack} />
+                <Dropdown options={props.field.options} value={props.value} onSelectedChanged={selectedChanged} anchorStyle={AnchorStyle.BottomRight} onBack={props.onBack} focusableGroupOpts={props.focusableGroupOpts} />
             </div>
         </div>
     );
