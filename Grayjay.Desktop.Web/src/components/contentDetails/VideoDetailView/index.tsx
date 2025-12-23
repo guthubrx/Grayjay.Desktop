@@ -29,7 +29,7 @@ import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, s
 import { DetailsBackend } from "../../../backend/DetailsBackend";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
-import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton } from "../../menus/Overlays/SettingsMenu";
+import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton, IMenuFilter } from "../../menus/Overlays/SettingsMenu";
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
 import Loader from "../../basics/loaders/Loader";
@@ -732,6 +732,32 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             "Auto (" + videoSourceQualities$()[playerQuality$()].width + "x" + videoSourceQualities$()[playerQuality$()].height +")" : "Auto");
     }
 
+    const availableVideoLanguages$ = createMemo(()=>{
+        var sources = videoSources$();
+        if(!sources) {
+            console.log("No sources?")
+            return [];
+        }
+        var original = sources.find(x=>x.original)
+        var originalLanguage = original?.language;
+        var english = sources.find(x=>x.language == "en");
+        var languages = sources.map(x=>x.language);
+
+
+        const unique = [];
+        if(!!originalLanguage)
+            unique.push(originalLanguage);
+        if(!!english && unique.indexOf("en") < 0)
+            unique.push("en");
+        for(let language of languages) {
+            if(unique.indexOf(language) < 0)
+                unique.push(language);
+        }
+        console.log("Found languages", unique);
+        return unique;
+    });
+    const [selectedVideoLanguage$, setSelectedVideoLanguage] = createSignal<string | undefined>(undefined);
+
     const [videoPlayerViewHandle$, setVideoPlayerViewHandle] = createSignal<VideoPlayerViewHandle>();
     const settingsDialogMenu$ = createMemo(() => {
         return {
@@ -902,11 +928,26 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     type: "group",
                     subMenu: {
                         title: "Video sources",
-                        items: videoSources$().map(x => {
+                        items:  [
+                            {
+                                name: "Language",
+                                value: selectedVideoLanguage$() ?? videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.lowercase() == "en")?.language ?? null,
+                                type: "filter-horizontal",
+                                options: availableVideoLanguages$(),
+                                onSelected: (val: any) => {
+                                    if(!val)
+                                        setSelectedVideoLanguage(undefined);
+                                    else
+                                        setSelectedVideoLanguage(val);
+                                },
+                                isSelected: false
+                            } as IMenuFilter
+                        ].concat(videoSources$().map(x => {
                             return {
                                 name: x.name,
                                 value: x,
                                 type: "option",
+                                visible: selectedVideoLanguage$() == undefined || selectedVideoLanguage$() == x.language,
                                 onSelected: (val: any) => {
                                     const videoObj = videoLoaded$();
                                     const originalSource = videoSource$();
@@ -925,7 +966,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 },
                                 isSelected: !videoSource$()?.videoIsLocal && videoSources$().indexOf(x) == videoSource$()?.video
                             } as IMenuItemOption
-                        })
+                        }))
                     }
                 } as IMenuItemGroup : undefined,
                 (videoSourceQualities$() && videoSourceQualities$().length > 0) ? {

@@ -21,7 +21,9 @@ export interface OverlayDownloadDialogProps {
 interface SourceItem {
   name: string,
   meta?: string,
-  subSources?: SourceItem[]
+  subSources?: SourceItem[],
+  original?: boolean | undefined;
+  language?: string | undefined;
 }
 const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: OverlayDownloadDialogProps) => {
 
@@ -46,6 +48,8 @@ const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: Ove
 
     const videoSources$: Accessor<SourceItem[]> = createMemo(()=>(sources$()) ? sources$()!.videoSources?.map((x: any, index: number)=>({
       name: x.name,
+      language: x.language,
+      original: x.original,
       meta: resolutionOrUnknown(x.width, x.height),
       subSources: (x.type == "HLSSource" && sources$()?.manifestSources[index])
         ? sources$()?.manifestSources[index].map((z: any)=>({name: z.name, meta: `${resolutionOrUnknown(z.width, z.height)}`})) : []
@@ -61,6 +65,8 @@ const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: Ove
     const audioSources$: Accessor<SourceItem[]> = createMemo(()=>(sources$()?.audioSources && sources$()!.audioSources.length > 0) ? 
         sources$()!.audioSources?.map((x: any)=>({
       name: x.name,
+      language: x.language,
+      original: x.original,
       meta: toHumanBitrate(x.bitrate)
     })) ?? [] : ((sources$()?.videoSources?.length ?? 0) == 0 && (sources$()?.audioSources?.length ?? 0) > 0) ? [
       {name: "High Bitrate"},
@@ -130,6 +136,33 @@ const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: Ove
       UIOverlay.dismiss();
       return true;
     }
+    
+    const availableLanguages$ = createMemo(()=>{
+        var sources = (audioSources$() && audioSources$().length > 0) ? audioSources$() : videoSources$();
+        if(!sources) {
+            console.log("No sources?")
+            return [];
+        }
+        var original = sources.find(x=>x.original)
+        var originalLanguage = original?.language;
+        var english = sources.find(x=>x.language == "en");
+        var languages = sources.map(x=>x.language);
+
+
+        const unique = [];
+        unique.push(undefined);
+        if(!!originalLanguage)
+            unique.push(originalLanguage);
+        if(!!english && unique.indexOf("en") < 0)
+            unique.push("en");
+        for(let language of languages) {
+            if(unique.indexOf(language) < 0 && !!language)
+                unique.push(language);
+        }
+        console.log("Found languages", unique);
+        return unique;
+    });
+    const [selectedLanguage$, setSelectedLanguage] = createSignal<string | undefined>(undefined);
 
     return (
       <div class={styles.container} use:focusScope={{
@@ -153,23 +186,42 @@ const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: Ove
         </Show>
         <Show when={sources$()}>
           <div>
+            <Show when={availableLanguages$() && availableLanguages$().length > 1}>
+              <div>
+                <div class={styles.menuItem}
+                  classList={{ [styles.filterHorizontal]: true }}>
+                  <For each={availableLanguages$() ?? []}>{(option) =>
+                    <div class={styles.filterHorizontalOption}
+                      classList={{ [styles.isActive]: option == selectedLanguage$() }}
+                      onClick={() => setSelectedLanguage(option)}>
+                      {(option ?? "All")}
+                    </div>
+                  }</For>
+                </div>
+              </div>
+            </Show>
             <Show when={videoSources$() && videoSources$().length > 0}>
               <div class={styles.sources}>
                 <Show when={hasVideo$()}>
-                  <div class={styles.source} classList={{[styles.enabled]: -1 == selectedVideo$()}} onClick={()=>setVideo(-1)} use:focusable={{
-                    onPress: () => setVideo(-1),
-                    onBack: globalBack
-                  }}>
-                    <div class={styles.imgContainer}><img src={iconCheck} /></div>
-                    <div class={styles.name}>
-                      None
+                  <div>
+                    <div style="text-align: center; font-weight: bold">
+                      Video
                     </div>
-                    <div class={styles.meta}>
+                    <div class={styles.source} classList={{[styles.enabled]: -1 == selectedVideo$()}} onClick={()=>setVideo(-1)} use:focusable={{
+                      onPress: () => setVideo(-1),
+                      onBack: globalBack
+                    }}>
+                      <div class={styles.imgContainer}><img src={iconCheck} /></div>
+                      <div class={styles.name}>
+                        None
+                      </div>
+                      <div class={styles.meta}>
+                      </div>
                     </div>
                   </div>
                 </Show>
                 <Index each={videoSources$()}>{(video$, i) =>
-                  <Show when={video$()?.subSources?.length == 0}>
+                  <Show when={video$()?.subSources?.length == 0 && ((audioSources$() && audioSources$().length > 0) || (!video$().language || selectedLanguage$() == undefined || selectedLanguage$() == video$().language))}>
                     <div class={styles.source} classList={{[styles.enabled]: i == selectedVideo$()}} onClick={()=>setVideo(i)} use:focusable={{
                     onPress: () => setVideo(i),
                     onBack: globalBack
@@ -210,24 +262,34 @@ const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: Ove
             </Show>
             <Show when={audioSources$() && audioSources$().length > 0}>
               <div class={styles.sources}>
-                <Index each={audioSources$()}>{(audio$, i) =>
-                  <div class={styles.source} classList={{[styles.enabled]: i == selectedAudio$()}} onClick={()=>setSelectedAudio(i)} use:focusable={{
-                    onPress: () => setSelectedAudio(i),
-                    onBack: globalBack
-                  }}>
-                    <div class={styles.imgContainer}><img src={iconCheck} /></div>
-                    <div class={styles.name}>
-                      {audio$().name}
-                    </div>
-                    <div class={styles.meta}>
-                      {audio$()?.meta}
-                    </div>
-                  </div>
-                }</Index>
+                <div style="text-align: center; font-weight: bold">
+                  Audio
+                </div>
+                <div>
+                  <Index each={audioSources$()}>{(audio$, i) =>
+                    <Show when={(!audio$().language || selectedLanguage$() == undefined || selectedLanguage$() == audio$().language)}>
+                      <div class={styles.source} classList={{[styles.enabled]: i == selectedAudio$()}} onClick={()=>setSelectedAudio(i)} use:focusable={{
+                        onPress: () => setSelectedAudio(i),
+                        onBack: globalBack
+                      }}>
+                        <div class={styles.imgContainer}><img src={iconCheck} /></div>
+                        <div class={styles.name}>
+                          {audio$().name}
+                        </div>
+                        <div class={styles.meta}>
+                          {audio$()?.meta}
+                        </div>
+                      </div>
+                    </Show>
+                  }</Index>
+                </div>
               </div>
             </Show>
             <Show when={subtitleSources$() && subtitleSources$().length > 0}>
               <div class={styles.sources}>
+                <div style="text-align: center; font-weight: bold">
+                  Subtitles
+                </div>
                 <Index each={subtitleSources$()}>{(subtitle$, i) =>
                   <div class={styles.source} classList={{[styles.enabled]: i == selectedSubtitles$(),[styles.full]: true}} onClick={()=> (selectedSubtitles$() == i) ? setSelectedSubtitles(-1) : setSelectedSubtitles(i)} use:focusable={{
                     onPress: () => (selectedSubtitles$() == i) ? setSelectedSubtitles(-1) : setSelectedSubtitles(i),

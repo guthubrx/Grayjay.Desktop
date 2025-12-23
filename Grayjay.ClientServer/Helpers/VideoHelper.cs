@@ -25,16 +25,33 @@ namespace Grayjay.ClientServer.Helpers
         public static bool IsDownloadable(IAudioSource source) => source is AudioUrlSource videoUrlSource || source is HLSManifestAudioSource || source is DashManifestRawAudioSource;
 
 
-        public static IVideoSource SelectBestVideoSource(List<IVideoSource> sources, int desiredPixelCount, List<string> prefContainers)
+        public static IVideoSource SelectBestVideoSource(List<IVideoSource> sources, int desiredPixelCount, List<string> prefContainers, string preferredLanguage = null)
         {
+            if(preferredLanguage == null)
+                preferredLanguage = GrayjaySettings.Instance.Playback.GetPrimaryLanguage();
+
             var targetVideo = (desiredPixelCount > 0) ? sources.OrderBy(x => Math.Abs(x.Height * x.Width - desiredPixelCount)).FirstOrDefault()
                 : sources.LastOrDefault();
             var hasPriority = sources.Any(x => x.Priority);
 
             var targetPixelCount = (targetVideo != null) ? targetVideo.Width * targetVideo.Height : desiredPixelCount;
+
+            //Filter Priority & ordering
             var altSources = (hasPriority) ? sources.Where(x => x.Priority).OrderBy(x => Math.Abs(x.Height * x.Width - desiredPixelCount))
                 : sources.Where(x => x.Height == (targetVideo?.Height ?? 0));
+            
+            //Filter Original
+            var hasOriginal = altSources.Any(x => x.Original);
+            if (hasOriginal && GrayjaySettings.Instance.Playback.PreferOriginalAudio)
+                altSources = altSources.Where(x => x.Original);
 
+            //Filter Language
+            var languageToFilter = (preferredLanguage != null && altSources.Any(x => x.Language == preferredLanguage)) ?
+                preferredLanguage :
+                (altSources.Any(x => x.Language == Language.ENGLISH) ? Language.ENGLISH : Language.UNKNOWN);
+            if (altSources.Any(x => x.Language == preferredLanguage))
+                altSources = altSources.Where(x => x.Language == preferredLanguage);
+            
             var bestSource = altSources.FirstOrDefault();
             foreach(var prefContainer in prefContainers)
             {
