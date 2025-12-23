@@ -942,7 +942,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     subMenu: {
                         title: "Video sources",
                         items:  [
-                            {
+                            ((availableVideoLanguages$().length > 1) ? {
                                 name: "Language",
                                 value: selectedVideoLanguage$() ?? videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.toLowerCase() == "en")?.language ?? null,
                                 type: "filter-horizontal",
@@ -954,8 +954,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                         setSelectedVideoLanguage(val);
                                 },
                                 isSelected: false
-                            } as IMenuFilter
-                        ].concat(videoSources$().map(x => {
+                            } as IMenuFilter : null)
+                        ].filter<any>(x=>!!x).concat(videoSources$().map(x => {
                             return {
                                 name: x.name,
                                 value: x,
