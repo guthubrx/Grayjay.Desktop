@@ -944,7 +944,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         items:  [
                             ((availableVideoLanguages$().length > 1) ? {
                                 name: "Language",
-                                value: selectedVideoLanguage$() ?? videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.toLowerCase() == "en")?.language ?? null,
+                                value: untrack(selectedVideoLanguage$) ?? videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.toLowerCase() == "en")?.language ?? null,
                                 type: "filter-horizontal",
                                 options: availableVideoLanguages$(),
                                 onSelected: (val: any) => {
@@ -960,7 +960,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 name: x.name,
                                 value: x,
                                 type: "option",
-                                visible: selectedVideoLanguage$() == undefined || selectedVideoLanguage$() == x.language,
+                                visible: createMemo(()=>selectedVideoLanguage$() == undefined || selectedVideoLanguage$() == x.language),
                                 onSelected: (val: any) => {
                                     const videoObj = videoLoaded$();
                                     const originalSource = videoSource$();
