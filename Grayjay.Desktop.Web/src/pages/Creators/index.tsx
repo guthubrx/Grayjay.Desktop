@@ -159,14 +159,12 @@ const CreatorsPage: Component = () => {
             style={{
               "margin-left": "24px",
               "margin-top": "24px",
-              "margin-bottom": "24px",
-              "margin-right": "24px",
             }}
             elementStyle={{
              /* "margin-left": "7px",
               "margin-top": "7px"*/
             }}
-            builder={(index, item) =>
+            builder={(index, item, row, col) =>
               <CreatorView {... item()?.channel} 
                 metadata={((item()?.channel?.subscribers && item()?.channel?.subscribers > 0) ? (toHumanNumber(item()?.channel?.subscribers) + " subscribers") : "")}
                 onClick={() => {
@@ -180,6 +178,9 @@ const CreatorsPage: Component = () => {
                 subscription={item()}
                 isSubscribedInitialState={true}
                 focusableOpts={item() ? {
+                    groupId: 'creators',
+                    groupType: 'grid',
+                    groupIndices: [row(), col()],
                     onPress: () => {
                     const url = item()?.channel?.url;
                     if(url)

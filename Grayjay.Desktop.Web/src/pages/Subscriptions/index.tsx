@@ -1,4 +1,4 @@
-import { createSignal, type Component, For, createResource, Show, createEffect, createMemo } from 'solid-js';
+import { createSignal, type Component, For, createResource, Show, createEffect, createMemo, Accessor } from 'solid-js';
 import styles from './index.module.css';
 import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
 import SearchBar from '../../components/topbars/SearchBar';
@@ -29,9 +29,7 @@ import { ContentType } from '../../backend/models/ContentType';
 
 import { ImportBackend } from '../../backend/ImportBackend';
 
-import iconChevDown from '../../assets/icons/icon_chrevron_down.svg'
 import iconEdit from '../../assets/icons/icon24_edit.svg'
-import iconChevUp from '../../assets/icons/icon_chevron_right.svg'
 import iconQuestion from '../../assets/icons/icon24_faq.svg'
 import iconSubscriptions from '../../assets/icons/icon_nav_subscriptions.svg'
 import iconSearch from '../../assets/icons/icon24_search.svg'
@@ -237,7 +235,6 @@ const SubscriptionsPage: Component = () => {
     anchor.setElement(element);
   }
 
-  const [subGroupsExpanded$, setSubGroupsExpanded] = createSignal(false);
   function newSubscriptionGroup() {
     UIOverlay.overlayNewSubscriptionGroup((group)=>{
       subGroupsResource.refetch();
@@ -281,7 +278,12 @@ const SubscriptionsPage: Component = () => {
       <NavigationBar isRoot={true} childrenAfter={
           <img src={iconRefresh} style={{"margin-left": "24px", "cursor": "pointer", "height": "30px", "width": "30px" }}
             ref={setReloadButtonRef}
-            use:focusable={{ onPress: () => setShowReloadMenu(true) }}
+            use:focusable={{ 
+              onPress: () => setShowReloadMenu(true),
+              groupId: 'nav-bar',
+              groupIndices: [1],
+              groupType: 'horizontal'
+            }}
             onClick={()=>{ setShowReloadMenu(true) }} />
       } />
       <ScrollContainer ref={scrollContainerRef}>
@@ -293,7 +295,15 @@ const SubscriptionsPage: Component = () => {
                   class={styles.channel} 
                   onClick={() => toggleCreator(sub.channel.url)} 
                   classList={{[styles.active]: selectedCreators$().indexOf(sub.channel.url) >= 0}} 
-                  use:focusable={{ onPress: () => toggleCreator(sub.channel.url) }}
+                  use:focusable={{
+                    groupEscapeTo: {
+                      down: ['subgroups', 'filters']
+                    },
+                    groupId: 'creators',
+                    groupIndices: [i()],
+                    groupType: 'horizontal',
+                    onPress: () => toggleCreator(sub.channel.url) 
+                  }}
                 >
                   <div>
                     <img src={sub.channel.thumbnail} class={styles.channelImg} />
@@ -327,49 +337,56 @@ const SubscriptionsPage: Component = () => {
               </div>
             </Show>
             <Show when={hasSubGroups$()}>
-                <div class={styles.subgroups} style={{
-                  height: subGroupsExpanded$() ? undefined : '86px',
-                  overflow: 'hidden'
-                }}>
-                  <div 
-                    class={styles.subGroupExpand} 
-                    onClick={()=>setSubGroupsExpanded(!subGroupsExpanded$())}
-                    use:focusable={{ onPress: () => setSubGroupsExpanded(!subGroupsExpanded$()) }}
+              <div class={styles.subgroups}>
+                <For each={subGroups$()}>{(subGroup: ISubscriptionGroup, i: Accessor<number>) => (
+                  <div
+                    class={styles.subgroup}
+                    classList={{ [styles.active]: subGroup.id === selectedGroup$() }}
+                    onClick={() => (subGroup.id === selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id)}
+                    use:focusable={{
+                      groupEscapeTo: {
+                        down: ['filters'],
+                        up: ['creators']
+                      },
+                      groupId: 'subgroups',
+                      groupType: 'horizontal',
+                      groupIndices: [i()],
+                      onOptions: () => UIOverlay.overlayEditSubscriptionGroup(subGroup),
+                      onPress: () => (subGroup.id === selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id)
+                    }}
                   >
-                    <Show when={subGroupsExpanded$()}>
-                      <img src={iconChevUp} />
-                    </Show>
-                    <Show when={!subGroupsExpanded$()}>
-                      <img src={iconChevDown} />
-                    </Show>
+                    <div
+                      class={styles.image}
+                      style={{ "background-image": `url(${proxyImageVariable(subGroup.image)})` }}
+                    />
+                    <img
+                      class={styles.editIcon}
+                      src={iconEdit}
+                      onClick={(ev) => { UIOverlay.overlayEditSubscriptionGroup(subGroup); ev.stopPropagation(); }}
+                    />
+                    <div class={styles.name}>{subGroup.name}</div>
                   </div>
-                  <For each={subGroups$()}>{(subGroup: ISubscriptionGroup, i) =>
-                    <div 
-                      class={styles.subgroup} 
-                      classList={{[styles.active]: subGroup.id == selectedGroup$() }} 
-                      onClick={()=>(subGroup.id == selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id)}
-                      use:focusable={{ onOptions: () => UIOverlay.overlayEditSubscriptionGroup(subGroup), onPress: () => (subGroup.id == selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id) }}
-                    >
-                      <div class={styles.image} style={{"background-image": "url(" + proxyImageVariable(subGroup.image) + ")"}} />
-                      
-                      <img class={styles.editIcon} src={iconEdit} onClick={(ev)=>{ UIOverlay.overlayEditSubscriptionGroup(subGroup); ev.stopPropagation()}} />
-                      <div class={styles.name}>
-                        {subGroup.name}
-                      </div>
-                    </div>
-                  }</For>
-                  <div 
-                    class={styles.subgroup} 
-                    style="cursor: pointer" 
-                    onClick={()=>newSubscriptionGroup()}
-                    use:focusable={{ onPress: () => newSubscriptionGroup() }}
-                  >
-                    <div class={styles.image} style={{"background": "#222"}} />
-                    <div class={styles.centerText}>
-                      New Group
-                    </div>
-                  </div>
+                )}</For>
+
+                <div
+                  class={styles.subgroup}
+                  style="cursor: pointer"
+                  onClick={() => newSubscriptionGroup()}
+                  use:focusable={{ 
+                    groupEscapeTo: {
+                      down: ['filters'],
+                      up: ['creators']
+                    },
+                    groupId: 'subgroups',
+                    groupType: 'horizontal',
+                    groupIndices: [subGroups$()?.length ?? 0],
+                    onPress: () => newSubscriptionGroup() 
+                  }}
+                >
+                  <div class={styles.image} style={{ background: "#222" }} />
+                  <div class={styles.centerText}>New Group</div>
                 </div>
+              </div>
             </Show>
             <Show when={!!filters}>
               <div class={styles.filters}>
@@ -378,7 +395,15 @@ const SubscriptionsPage: Component = () => {
                     class={styles.filter}
                     classList={{[styles.active]: filter.active[0]()}}
                     onClick={()=>toggleFilter(i())}
-                    use:focusable={{ onPress: () => toggleFilter(i()) }}
+                    use:focusable={{
+                      groupEscapeTo: {
+                        up: ['subgroups', 'creators']
+                      },
+                      groupId: 'filters',
+                      groupType: 'horizontal',
+                      groupIndices: [i()],
+                      onPress: () => toggleFilter(i()) 
+                    }}
                   >
                     <div class={styles.name}>
                       {filter.name}

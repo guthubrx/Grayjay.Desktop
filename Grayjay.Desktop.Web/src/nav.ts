@@ -6,9 +6,21 @@ export type Direction = "up" | "down" | "left" | "right" | "next" | "prev";
 export type Press = "press" | "options" | "back" | "start" | "direction" | "action";
 export type ScopeId = string;
 
+export type NavAnchor =
+  | "center"
+  | "edges"
+  | { x?: "left" | "center" | "right"; y?: "top" | "center" | "bottom" };
+
 export interface FocusableOptions {
     disabled?: boolean;
     priority?: number;
+    groupId?: string;
+    groupType?: "grid" | "horizontal" | "vertical"; // required for 1D, inferred for 2D
+    groupIndices?: (number | undefined)[]; // 1D: [i], grid: [r,c]
+    groupEscapeDirs?: Direction[];
+    groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    groupRememberLast?: boolean;
+    navAnchor?: NavAnchor;
     onPress?: (el: HTMLElement, inputSource: InputSource) => void;
     onPressLabel?: string;
     onOptions?: (el: HTMLElement, inputSource: InputSource) => void;
@@ -21,6 +33,7 @@ export interface FocusableOptions {
     onActionLabel?: string;
     getRect?: (el: HTMLElement) => DOMRect;
     focusInert?: Accessor<boolean>; //If true, don't claim focus by yourself
+    
 }
 
 export type ScopeMode = 'off' | 'on' | 'trap';

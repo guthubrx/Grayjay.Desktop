@@ -1552,11 +1552,13 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 <DragArea class={styles.draggable} onDrag={handleDrag} onIsDraggingChanged={handleIsDraggingChanged} />
                                 <ResizeHandle class={styles.resizable} onResize={handleResizeHandleDrag} onIsResizingChanged={handleIsDraggingChanged} />
                             </Show>
-                        <SettingsMenu
-                            style={{ position: "absolute", right: "60px", bottom: "125px", "max-height": "calc(100% - 200px)" }}
-                            menu={settingsDialogMenu$()}
-                            show={showSettings$() ?? false}
-                            onHide={onHideSettings} />
+                            <Show when={!isMinimized()}>
+                                <SettingsMenu
+                                    style={{ position: "absolute", right: "60px", bottom: "125px", "max-height": "calc(100% - 200px)" }}
+                                    menu={settingsDialogMenu$()}
+                                    show={showSettings$() ?? false}
+                                    onHide={onHideSettings} />
+                            </Show>
                         </VideoPlayerView>
                     </div>
                 </StickyShrinkOnScrollContainer>

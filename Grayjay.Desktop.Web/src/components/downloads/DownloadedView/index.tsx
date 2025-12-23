@@ -15,11 +15,12 @@ import IconButton from '../../buttons/IconButton';
 import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
 import { focusable } from '../../../focusable'; void focusable;
 import more from '../../../assets/icons/more_horiz_FILL0_wght400_GRAD0_opsz24.svg';
-import { InputSource } from '../../../nav';
+import { FocusableOptions, InputSource } from '../../../nav';
 
 interface DownloadedViewProps {
   downloaded?: IVideoLocal
   onSettings?: (element: HTMLElement, content: IVideoLocal, inputSource: InputSource) => void;
+  focusableOpts?: FocusableOptions;
 }
 
 const DownloadedView: Component<DownloadedViewProps> = (props) => {
@@ -58,10 +59,7 @@ const DownloadedView: Component<DownloadedViewProps> = (props) => {
   let refMoreButton: HTMLDivElement | undefined;
 
   return (
-    <div class={styles.downloadingCard} use:focusable={props.downloaded ? {
-      onPress: navigate,
-      onOptions: (el, inputSource) => props.onSettings?.(el, props.downloaded!, inputSource)
-    } : undefined}>
+    <div class={styles.downloadingCard} use:focusable={props.downloaded ? props.focusableOpts : undefined}>
         <div class={styles.downloadThumbnail} onClick={navigate} style={{"background-image": "url(" + getBestThumbnail(props.downloaded?.videoDetails.thumbnails)?.url + ")"}}>
           <div class={styles.badgeStatus}>
             {toHumanTime(props.downloaded?.videoDetails?.duration)}

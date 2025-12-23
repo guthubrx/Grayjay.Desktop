@@ -353,8 +353,19 @@ const DownloadsPage: Component = () => {
                   "margin-top": "20px",
                   "margin-bottom": "10px"
               }}
-              builder={(index, item) =>
-                <DownloadedView downloaded={item()} onSettings={(e, content, inputSource)=> onSettingsClicked(e, content, inputSource)} />
+              builder={(index, item, row, col) =>
+                <DownloadedView downloaded={item()} onSettings={(e, content, inputSource)=> onSettingsClicked(e, content, inputSource)} focusableOpts={{
+                  groupId: 'downloads',
+                  groupType: 'grid',
+                  groupIndices: [row(), col()],
+                  onPress: () => {
+                    const videoDetails = item()?.videoDetails;
+                    if(videoDetails) {
+                      video?.actions.openVideo(videoDetails);
+                    }
+                  },
+                  onOptions: (el, inputSource) => onSettingsClicked(el, item(), inputSource)
+                }} />
               } />
         </Show>
         <Show when={videoType$() == "playlist"}>

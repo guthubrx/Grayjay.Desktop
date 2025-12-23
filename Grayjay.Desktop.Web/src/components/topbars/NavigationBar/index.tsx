@@ -33,7 +33,11 @@ const NavigationBar: Component<NavigationBarProps> = (props) => {
       <Show when={canGoBack$()}>
         <TransparentIconButton icon={back} onClick={() => navigate(-1)} style={{"flex-shrink":0}} />
       </Show>
-      <SearchBar id="main-search" style={{ "flex-grow": 1, "max-width": "700px" }} initialText={props.initialText} inputStyle={{ "margin-left": !canGoBack$() ? "0px" : "24px" }} overlayStyle={{ "margin-left": !canGoBack$() ? "0px" : "24px" }} defaultSearchType={props.defaultSearchType} suggestionsVisible={props.suggestionsVisible} />
+      <SearchBar id="main-search" style={{ "flex-grow": 1, "max-width": "700px" }} initialText={props.initialText} inputStyle={{ "margin-left": !canGoBack$() ? "0px" : "24px" }} overlayStyle={{ "margin-left": !canGoBack$() ? "0px" : "24px" }} defaultSearchType={props.defaultSearchType} suggestionsVisible={props.suggestionsVisible} focusableGroupOpts={{
+        groupId: 'nav-bar',
+        groupIndices: [0],
+        groupType: 'horizontal'
+      }} />
       <Show when={props.children}>
         {props.children}
       </Show>
@@ -44,6 +48,9 @@ const NavigationBar: Component<NavigationBarProps> = (props) => {
       </Show>
 
       <img src={cast} style={{"margin-left": "24px", "cursor": "pointer" }} onClick={() => casting?.actions.open()} use:focusable={{
+        groupId: 'nav-bar',
+        groupIndices: [props.childrenAfter ? 2 : 1],
+        groupType: 'horizontal',
         onPress: () => casting?.actions.open()
       }} />
     </div>

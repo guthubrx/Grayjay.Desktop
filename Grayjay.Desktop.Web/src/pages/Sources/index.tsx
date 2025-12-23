@@ -109,6 +109,8 @@ const SourcesPage: Component = () => {
   let dragSession: DragSession | undefined;
   let scrollContainerRef: HTMLDivElement | undefined;
 
+  const enabledCount = createMemo(() => enabledSources$()?.length ?? 0);
+
   return (
     <div style="height: 100%; overflow: hidden; display: flex; flex-direction: column;">
       <Show when={enabledSources$() && disabledSources$() && (enabledSources$()!.length + disabledSources$()!.length > 0)}>
@@ -130,6 +132,10 @@ const SourcesPage: Component = () => {
                       return (
                         <Show when={source()}>
                           <div class={styles.source} classList={{[styles.enabled]: source()!.id == selectedSignal$()}} onClick={()=>selectSource(source()!)} onFocus={() => selectSource(source()!)} use:focusable={{
+                            groupId: 'sources',
+                            groupType: 'vertical',
+                            groupIndices: [index()],
+                            groupRememberLast: true,
                             onPress: () => disableSource(source()!),
                             onAction: () => {
                               if (!dragSession) {
@@ -183,6 +189,10 @@ const SourcesPage: Component = () => {
                 <For each={disabledSources$()}>
                   {(source, i) =>
                     <div class={styles.source} classList={{[styles.enabled]: source.id == selectedSignal$()}} onClick={()=>selectSource(source)} onFocus={() => selectSource(source)} use:focusable={{
+                      groupId: "sources",
+                      groupType: "vertical",
+                      groupIndices: [enabledCount() + i()],
+                      groupRememberLast: true,
                       onPress: () => enableSource(source)
                     }}>
                       <div class={styles.image}>
