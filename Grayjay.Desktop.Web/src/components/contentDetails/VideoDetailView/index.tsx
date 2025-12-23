@@ -931,7 +931,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         items:  [
                             {
                                 name: "Language",
-                                value: selectedVideoLanguage$() ?? videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.lowercase() == "en")?.language ?? null,
+                                value: selectedVideoLanguage$() ?? videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.toLowerCase() == "en")?.language ?? null,
                                 type: "filter-horizontal",
                                 options: availableVideoLanguages$(),
                                 onSelected: (val: any) => {
