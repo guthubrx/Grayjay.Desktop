@@ -26,7 +26,7 @@ namespace Grayjay.ClientServer.Helpers
         public static bool IsDownloadable(IAudioSource source) => source is AudioUrlSource videoUrlSource || source is HLSManifestAudioSource || source is DashManifestRawAudioSource;
 
 
-        public static IVideoSource SelectBestVideoSource(List<IVideoSource> sources, int desiredPixelCount, List<string> prefContainers, string preferredLanguage = null)
+        public static IVideoSource SelectBestVideoSource(List<IVideoSource> sources, int desiredPixelCount, List<string> prefContainers, string preferredLanguage = null, bool ignoreOriginal = false)
         {
             if(preferredLanguage == null)
                 preferredLanguage = GrayjaySettings.Instance.Playback.GetPrimaryLanguage();
@@ -43,7 +43,7 @@ namespace Grayjay.ClientServer.Helpers
             
             //Filter Original
             var hasOriginal = altSources.Any(x => x.Original);
-            if (hasOriginal && GrayjaySettings.Instance.Playback.PreferOriginalAudio)
+            if (!ignoreOriginal && hasOriginal && GrayjaySettings.Instance.Playback.PreferOriginalAudio)
                 altSources = altSources.Where(x => x.Original);
 
             //Filter Language
@@ -95,7 +95,7 @@ namespace Grayjay.ClientServer.Helpers
         }
 
 
-        public static IAudioSource SelectBestAudioSource(List<IAudioSource> sources, List<string> prefContainers, string? prefLanguage = Language.ENGLISH, long? targetBitrate = null)
+        public static IAudioSource SelectBestAudioSource(List<IAudioSource> sources, List<string> prefContainers, string? prefLanguage = Language.ENGLISH, long? targetBitrate = null, bool ignoreOriginal = false)
         {
             var hasPriority = sources.Any(x => x.Priority);
             if (hasPriority)
