@@ -10,6 +10,7 @@ import CheckboxFlex from '../../../basics/inputs/CheckboxFlex';
 import { focusScope } from '../../../../focusScope'; void focusScope;
 import { focusable } from "../../../../focusable"; void focusable;
 import { InputSource } from '../../../../nav';
+import { uuidv4 } from '../../../../utility';
 
 export interface MenuItem {
   type?: string
@@ -440,6 +441,8 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
       } 
       return false;
     };
+
+    const groupId = uuidv4();
   
     return (
       <Show when={props.show}>
@@ -500,10 +503,16 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
               <Match when={item.type == "filter-horizontal"}>
                 <div class={styles.menuItem}
                   classList={{[styles.filterHorizontal]: true}}>
-                    <For each={(item as IMenuFilter)?.options ?? []}>{(option) =>
+                    <For each={(item as IMenuFilter)?.options ?? []}>{(option, i) =>
                       <div class={styles.filterHorizontalOption}
                           classList={{[styles.isActive]: option == item.value}}
-                          onClick={()=>selectFilter(item, option)}>
+                          onClick={()=>selectFilter(item, option)}
+                          use:focusable={{
+                            groupId,
+                            groupType: 'horizontal',
+                            groupIndices: [i()],
+                            onPress: () => selectFilter(item, option)
+                          }}>
                         {option}
                       </div>
                     }</For>
