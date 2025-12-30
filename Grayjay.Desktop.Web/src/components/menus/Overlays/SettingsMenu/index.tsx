@@ -519,7 +519,7 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
                 </div>
               </Match>
               <Match when={item.type == "option"}>
-                <Show when={item.visible && item.visible()}>
+                <Show when={item.visible === undefined || item.visible()}>
                 <div 
                   class={styles.menuItem} 
                   classList={{[styles.option]: true}} 
