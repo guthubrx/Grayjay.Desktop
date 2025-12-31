@@ -464,11 +464,14 @@ public static class HLS
                     int.TryParse(resolutionTokens[1], out height);
                 }
 
-                var suffix = string.Join(", ", new string[]
+                var suffix =  string.Join(", ", new string[]
                 {
                     x.StreamInfo?.Video ?? "",
                     x.StreamInfo?.Codecs ?? ""
-                }.Where(x => x != null));
+                }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+                if (string.IsNullOrWhiteSpace(suffix))
+                    suffix = $"{width}x{height}";
 
                 return new HLSVariantVideoUrlSource()
                 {
@@ -615,11 +618,14 @@ public static class HLS
                 int.TryParse(resolutionTokens[1], out height);
             }
 
-            var suffix = string.Join(", ", new string[]
+            var suffix =  string.Join(", ", new string[]
             {
-                    x.StreamInfo?.Video ?? "",
-                    x.StreamInfo?.Codecs ?? ""
-            }.Where(x => x != null));
+                x.StreamInfo?.Video ?? "",
+                x.StreamInfo?.Codecs ?? ""
+            }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+            if (string.IsNullOrWhiteSpace(suffix))
+                suffix = $"{width}x{height}";
 
             var mediaSegment = x.Segments.OfType<MediaSegment>().FirstOrDefault();
             var url = mediaSegment?.Uri ?? string.Empty;
