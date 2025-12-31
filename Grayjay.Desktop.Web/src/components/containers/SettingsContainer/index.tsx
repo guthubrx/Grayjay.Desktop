@@ -1,4 +1,4 @@
-import { Component, For, createMemo, Show, createEffect, JSX } from "solid-js";
+import { Component, For, createMemo, Show, createEffect, JSX, createSignal } from "solid-js";
 import styles from './index.module.css';
 
 import { Event1 } from "../../../utility/Event";
@@ -6,11 +6,15 @@ import { ISettingsField, ISettingsObject } from "../../../backend/models/setting
 import { focusable } from '../../../focusable'; void focusable;
 import Field from "./fields/Field";
 import { Direction } from "../../../nav";
+import { ISettingsFieldGroup } from "../../../backend/models/settings/fields/SettingsFieldGroup";
+import FieldToggle from "./fields/FieldToggle";
+import Toggle from "../../basics/inputs/Toggle";
 
 export interface SettingsContainerProps {
     settings: ISettingsObject | undefined,
     filterGroup?: string,
     filterName?: string,
+    showAdvanced?: boolean,
     onFieldChanged?: (arg0: ISettingsField, arg1: any) => void;
     style?: JSX.CSSProperties;
     onBack?: () => boolean;
@@ -43,6 +47,7 @@ const SettingsContainer: Component<SettingsContainerProps> = (props) => {
     let existing: ISettingsObject | undefined = undefined;
     let didChange = false;
 
+
     createEffect(()=>{
         if(existing != props.settings) {
             if(didChange) {
@@ -74,7 +79,7 @@ const SettingsContainer: Component<SettingsContainerProps> = (props) => {
                 <div style="margin: 24px">
                     <For each={props.settings!!.fields}>{ (field, index) =>
                         <Show when={(!props.filterGroup || (field.type == 'group' && field.property == props.filterGroup)) && (!props.filterName || field.title.indexOf(props.filterName!) >= 0)}>
-                            <Field container={object()} field={field} parentObject={props.settings?.object} onFieldChanged={onFieldChanged} onBack={() => {
+                            <Field container={object()} field={field} parentObject={props.settings?.object} onFieldChanged={onFieldChanged} showAdvanced={props.showAdvanced} onBack={() => {
                                 console.info("onBack");
                                 return props.onBack?.() ?? false;
                             }} focusableGroupOpts={props.focusableGroupOpts} />

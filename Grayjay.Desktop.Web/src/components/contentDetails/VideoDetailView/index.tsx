@@ -773,6 +773,16 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
 
     const [videoPlayerViewHandle$, setVideoPlayerViewHandle] = createSignal<VideoPlayerViewHandle>();
     const settingsDialogMenu$ = createMemo(() => {
+        let initialSelected = undefined;
+        let prevSelected = untrack(selectedVideoLanguage$);
+        if(prevSelected) {
+            initialSelected = prevSelected;
+        }
+        else {
+            initialSelected = videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.toLowerCase() == "en")?.language ?? null;
+            if(!!initialSelected)
+                setSelectedVideoLanguage(initialSelected);
+        }
         return {
             title: "Playback settings",
             items: [
@@ -944,7 +954,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         items:  [
                             ((availableVideoLanguages$().length > 1) ? {
                                 name: "Language",
-                                value: untrack(selectedVideoLanguage$) ?? videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.toLowerCase() == "en")?.language ?? null,
+                                value: initialSelected,
                                 type: "filter-horizontal",
                                 options: availableVideoLanguages$(),
                                 onSelected: (val: any) => {

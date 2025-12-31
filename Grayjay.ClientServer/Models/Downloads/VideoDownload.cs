@@ -38,6 +38,7 @@ namespace Grayjay.ClientServer.Models.Downloads
 
         public long? TargetPixelCount { get; set; }
         public long? TargetBitrate { get; set; }
+        public string? TargetLanguage { get; set; }
         public string? SubtitleName { get; set; }
 
         public IVideoSource? VideoSource { get; set; }
@@ -100,7 +101,7 @@ namespace Grayjay.ClientServer.Models.Downloads
 
 
         public VideoDownload() { }
-        public VideoDownload(PlatformVideo video, long? targetPixelCount = null, long? targetBitRate = null, string groupType = null, string groupId = null)
+        public VideoDownload(PlatformVideo video, long? targetPixelCount = null, long? targetBitRate = null, string targetLanguage = null, string groupType = null, string groupId = null)
         {
             Video = video;
             VideoSource = null;
@@ -126,6 +127,11 @@ namespace Grayjay.ClientServer.Models.Downloads
             SubtitleSourceLive = subtitleSource;
             TargetPixelCount = (videoSource != null) ? videoSource.Width * videoSource.Height : null;
             TargetBitrate = audioSource?.Bitrate;
+            if (audioSource != null)
+                TargetLanguage = (audioSource?.Language != Language.UNKNOWN) ? audioSource?.Language : null;
+            else
+                TargetLanguage = (videoSource?.Language != Language.UNKNOWN) ? videoSource?.Language : null;
+
             SubtitleName = subtitleSource?.Name;
 
             VideoSourceRequiresLive = (videoSource is DashManifestRawSource dashManifestRawSource && dashManifestRawSource.HasGenerate) ||
@@ -263,7 +269,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                             videoSources.Add(source);
                     }
 
-                    var vsource = VideoHelper.SelectBestVideoSource(videoSources, (int)TargetPixelCount, new List<string>());
+                    var vsource = VideoHelper.SelectBestVideoSource(videoSources, (int)TargetPixelCount, new List<string>(), TargetLanguage, TargetLanguage != null);
                     if (vsource != null)
                     {
                         if (vsource is VideoUrlSource || vsource is DashManifestRawSource)
@@ -289,7 +295,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                         }
                     }
 
-                    var asource = VideoHelper.SelectBestAudioSource(audioSources, new List<string>(), null, TargetBitrate);
+                    var asource = VideoHelper.SelectBestAudioSource(audioSources, new List<string>(), TargetLanguage, TargetBitrate, TargetLanguage != null);
                     if (asource == null && VideoSource == null)
                         throw new DownloadException("Could not find a valid video or audio source for download", false);
 

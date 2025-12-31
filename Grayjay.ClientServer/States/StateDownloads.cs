@@ -112,7 +112,7 @@ namespace Grayjay.ClientServer.States
         }
         public static VideoDownload StartDownload(PlatformVideo video, long? targetPixelCount = null, long? targetBitrate = null, string playlistId = null)
         {
-            VideoDownload download = new VideoDownload(video, targetPixelCount, targetBitrate, "playlist", playlistId);
+            VideoDownload download = new VideoDownload(video, targetPixelCount, targetBitrate, null, "playlist", playlistId);
             UpdateDownloading(download);
             OnDownloadsChanged?.Invoke();
             return download;
