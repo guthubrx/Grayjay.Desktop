@@ -206,7 +206,7 @@ const SyncPage: Component = () => {
             <div class={styles.warningCard}>Listener not started, local connections will not work</div>
           </Show>
           <Show when={status$()?.relayConnected === false}>
-            <div class={styles.warningCard}>Not connected to relay, remote connections will work</div>
+            <div class={styles.warningCard}>Not connected to relay, remote connections will not work</div>
           </Show>
         </div>
         <Show when={synchronizationEnabled()} fallback={
