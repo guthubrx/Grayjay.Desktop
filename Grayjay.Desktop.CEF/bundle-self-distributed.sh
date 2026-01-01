@@ -25,50 +25,85 @@ bundle_libidn2_for_curlshim() {
         echo "bundle_libidn2_for_curlshim: missing $CURLSHIM"
         exit 1
     fi
+    
+    local BASE_TAG
+    BASE_TAG="$(
+      ruby -rjson -ropen-uri -e '
+        data = JSON.parse(URI.open("https://formulae.brew.sh/api/formula/libidn2.json").read)
+        keys = data.dig("bottle","stable","files").keys
+        arm = keys.select { |k| k.start_with?("arm64_") }.map { |k| k.sub(/^arm64_/, "") }
+        intel = keys.reject { |k| k.start_with?("arm64_") || k.include?("linux") }
+        common = (arm & intel)
 
-    local BREW_ARCH=""
+        order = %w[sequoia sonoma ventura monterey big_sur catalina mojave high_sierra sierra]
+        chosen = (order & common).first || common.first
+        puts chosen.to_s
+      '
+    )"
+
+    if [[ -z "$BASE_TAG" ]]; then
+        echo "ERROR: Could not find a common bottle tag for libidn2 (intel+arm64)."
+        exit 1
+    fi
+
+    local BOTTLE_TAG=""
     case "$ARCH" in
-        osx-arm64) BREW_ARCH="arm64" ;;
-        osx-x64)   BREW_ARCH="x86_64" ;;
+        osx-arm64) BOTTLE_TAG="arm64_${BASE_TAG}" ;;
+        osx-x64)   BOTTLE_TAG="${BASE_TAG}" ;;
         *)
             echo "bundle_libidn2_for_curlshim: unknown arch '$ARCH'"
             exit 1
             ;;
     esac
 
-    echo "Bundling libidn2 (+ deps) for $ARCH using Homebrew bottles..."
+    echo "Bundling libidn2 for $ARCH using bottle-tag: $BOTTLE_TAG"
 
-    local FETCH_OUT
-    FETCH_OUT="$(brew fetch --deps --force --force-bottle --arch "$BREW_ARCH" libidn2 2>&1 || true)"
-
-    mapfile -t BOTTLES < <(echo "$FETCH_OUT" | awk '/Downloaded to: / {print $3}' | grep -E '\.bottle(\.[0-9]+)?\.tar\.gz$' || true)
-
-    if [[ "${#BOTTLES[@]}" -eq 0 ]]; then
-        echo "brew fetch output:"
-        echo "$FETCH_OUT"
-        echo "ERROR: Did not find any bottle .tar.gz files to extract."
-        exit 1
-    fi
+    local FORMULAE=("libidn2" "libunistring" "gettext" "libiconv")
 
     local TMP
     TMP="$(mktemp -d)"
     trap 'rm -rf "$TMP"' RETURN
 
-    for b in "${BOTTLES[@]}"; do
-        tar -xzf "$b" -C "$TMP"
+    local COPIED=()
+
+    for f in "${FORMULAE[@]}"; do
+        echo "  fetching $f ($BOTTLE_TAG)"
+        brew fetch --force --bottle-tag "$BOTTLE_TAG" "$f"
+
+        local BOTTLE
+        BOTTLE="$(brew --cache --bottle-tag "$BOTTLE_TAG" "$f")" 
+
+        if [[ ! -f "$BOTTLE" ]]; then
+            echo "ERROR: Expected bottle file not found: $BOTTLE"
+            exit 1
+        fi
+
+        tar -xzf "$BOTTLE" -C "$TMP"
+
+        while IFS= read -r -d '' lib; do
+            local base
+            base="$(basename "$lib")"
+            cp -a "$lib" "$APP_MACOS_DIR/"
+            COPIED+=("$APP_MACOS_DIR/$base")
+        done < <(find "$TMP" -type f -path '*/lib/*.dylib*' -print0)
     done
 
-    while IFS= read -r -d '' f; do
-        cp -a "$f" "$APP_MACOS_DIR/"
-    done < <(find "$TMP" \( -type f -o -type l \) -path '*/lib/*.dylib*' -print0)
+    local uniq=()
+    local seen=""
+    for p in "${COPIED[@]}"; do
+        if [[ "$seen" != *"|$p|"* ]]; then
+            uniq+=("$p")
+            seen="${seen}|$p|"
+        fi
+    done
+    COPIED=("${uniq[@]}")
 
     fix_deps_to_loader_path() {
         local file="$1"
-        local deps
+        local deps dep base
         deps="$(otool -L "$file" | tail -n +2 | awk '{print $1}')"
-        while read -r dep; do
+        while IFS= read -r dep; do
             [[ -z "$dep" ]] && continue
-            local base
             base="$(basename "$dep")"
             if [[ -e "$APP_MACOS_DIR/$base" ]]; then
                 install_name_tool -change "$dep" "@loader_path/$base" "$file"
@@ -76,9 +111,8 @@ bundle_libidn2_for_curlshim() {
         done <<< "$deps"
     }
 
-    for dylib in "$APP_MACOS_DIR"/*.dylib*; do
-        [[ -e "$dylib" ]] || continue
-        if file "$dylib" | grep -q "Mach-O"; then
+    for dylib in "${COPIED[@]}"; do
+        if [[ -f "$dylib" ]] && file "$dylib" | grep -q "Mach-O"; then
             install_name_tool -id "@loader_path/$(basename "$dylib")" "$dylib" || true
             fix_deps_to_loader_path "$dylib"
         fi
@@ -86,8 +120,7 @@ bundle_libidn2_for_curlshim() {
 
     fix_deps_to_loader_path "$CURLSHIM"
 
-    echo "Bundled dylibs now in: $APP_MACOS_DIR"
-    echo "Sanity check:"
+    echo "curlshim deps now:"
     otool -L "$CURLSHIM" | sed 's/^/  /'
 }
 
