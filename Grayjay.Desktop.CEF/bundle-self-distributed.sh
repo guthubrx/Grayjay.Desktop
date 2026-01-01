@@ -25,7 +25,7 @@ bundle_libidn2_for_curlshim() {
         echo "bundle_libidn2_for_curlshim: missing $CURLSHIM"
         exit 1
     fi
-    
+
     local BASE_TAG
     BASE_TAG="$(
       ruby -rjson -ropen-uri -e '
@@ -83,7 +83,11 @@ bundle_libidn2_for_curlshim() {
         while IFS= read -r -d '' lib; do
             local base
             base="$(basename "$lib")"
-            cp -a "$lib" "$APP_MACOS_DIR/"
+            if [[ -L "$lib" ]]; then
+                cp -Pf "$lib" "$APP_MACOS_DIR/"
+            else
+                cp -f "$lib" "$APP_MACOS_DIR/"
+            fi
             COPIED+=("$APP_MACOS_DIR/$base")
         done < <(find "$TMP" -type f -path '*/lib/*.dylib*' -print0)
     done
