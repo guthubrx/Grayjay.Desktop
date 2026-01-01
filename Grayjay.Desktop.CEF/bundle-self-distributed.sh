@@ -20,9 +20,15 @@ bundle_libidn2_for_curlshim() {
 
     local APP_MACOS_DIR="$APP_NAME/Contents/MacOS"
     local CURLSHIM="$APP_MACOS_DIR/curlshim.dylib"
+    local LIBCURLIMPERSONATE="$APP_MACOS_DIR/libcurl-impersonate.dylib"
 
     if [[ ! -f "$CURLSHIM" ]]; then
         echo "bundle_libidn2_for_curlshim: missing $CURLSHIM"
+        exit 1
+    fi
+
+    if [[ ! -f "$LIBCURLIMPERSONATE" ]]; then
+        echo "bundle_libidn2_for_curlshim: missing $LIBCURLIMPERSONATE"
         exit 1
     fi
 
@@ -126,6 +132,11 @@ bundle_libidn2_for_curlshim() {
 
     echo "curlshim deps now:"
     otool -L "$CURLSHIM" | sed 's/^/  /'
+
+    fix_deps_to_loader_path "$LIBCURLIMPERSONATE"
+
+    echo "libcurlshim deps now:"
+    otool -L "$LIBCURLIMPERSONATE" | sed 's/^/  /'
 }
 
 build_sign_notarize() {
