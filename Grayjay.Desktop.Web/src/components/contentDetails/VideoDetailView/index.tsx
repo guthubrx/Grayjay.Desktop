@@ -1246,7 +1246,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         };
     }), async (obj) => {
         const url = obj.currentVideo?.url;
-        return obj.videoLoadedIsValid && url ? Duration.fromMillis(await HistoryBackend.getHistoricalPosition(url)) : undefined;
+        return obj.videoLoadedIsValid && url ? Duration.fromMillis(await HistoryBackend.getHistoricalPosition(url) * 1000) : undefined;
     });
 
     function sendToDevice(dev: SyncDevice) {
