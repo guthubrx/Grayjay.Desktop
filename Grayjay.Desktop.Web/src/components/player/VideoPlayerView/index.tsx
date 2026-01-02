@@ -565,7 +565,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         const resumePosition = props.resumePosition;
         const pos = position();
         const dur = duration();
-        console.log("resumePosition", { resumePosition: resumePosition?.as('milliseconds'), dur: dur.as('milliseconds'), pos: pos.as('milliseconds') });
+        //console.log("resumePosition", { resumePosition: resumePosition?.as('milliseconds'), dur: dur.as('milliseconds'), pos: pos.as('milliseconds') });
         if (!resumePosition) {
             setResumePositionVisible(false);
             return;
@@ -575,7 +575,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         const res_ms = resumePosition.as('milliseconds');
         const dur_ms = dur.as('milliseconds');
         const visible = res_ms > 60000 && dur_ms - res_ms > 5000 && res_ms - pos_ms > 5000 && pos_ms < 8000;
-        console.log("resumePosition", { a: res_ms > 60000, b: dur_ms - res_ms > 5000, c: res_ms - pos_ms > 5000, d: pos_ms < 8000, res_ms, dur_ms, pos_ms });
+        //console.log("resumePosition", { a: res_ms > 60000, b: dur_ms - res_ms > 5000, c: res_ms - pos_ms > 5000, d: pos_ms < 8000, res_ms, dur_ms, pos_ms });
         setResumePositionVisible(visible);
     });
 
