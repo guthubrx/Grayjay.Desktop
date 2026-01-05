@@ -64,7 +64,7 @@ bundle_libidn2_for_curlshim() {
 
     echo "Bundling libidn2 for $ARCH using bottle-tag: $BOTTLE_TAG"
 
-    local FORMULAE=("libidn2" "libunistring" "gettext" "libiconv")
+    local FORMULAE=("libidn2" "libunistring" "gettext" "zstd")
 
     local TMP
     TMP="$(mktemp -d)"
@@ -95,7 +95,7 @@ bundle_libidn2_for_curlshim() {
                 cp -f "$lib" "$APP_MACOS_DIR/"
             fi
             COPIED+=("$APP_MACOS_DIR/$base")
-        done < <(find "$TMP" -type f -path '*/lib/*.dylib*' -print0)
+        done < <(find "$TMP" \( -type f -o -type l \) -path '*/lib/*.dylib*' -print0)
     done
 
     local uniq=()
@@ -114,6 +114,12 @@ bundle_libidn2_for_curlshim() {
         deps="$(otool -L "$file" | tail -n +2 | awk '{print $1}')"
         while IFS= read -r dep; do
             [[ -z "$dep" ]] && continue
+
+            # Never redirect Apple system libraries (prevents ABI / basename collisions)
+            if [[ "$dep" == /usr/lib/* || "$dep" == /System/Library/* ]]; then
+                continue
+            fi
+
             base="$(basename "$dep")"
             if [[ -e "$APP_MACOS_DIR/$base" ]]; then
                 install_name_tool -change "$dep" "@loader_path/$base" "$file"
