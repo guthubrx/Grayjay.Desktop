@@ -1,10 +1,12 @@
+using Grayjay.Engine.Models;
+
 namespace Grayjay.ClientServer.Proxy
 {
     public class HttpProxyResponse
     {
         public required int StatusCode;
         public required string Version;
-        public required Dictionary<string, string> Headers;
+        public required HttpHeaders Headers;
         public byte[] Data = null;
 
         public byte[] ToBytes()
@@ -37,13 +39,16 @@ namespace Grayjay.ClientServer.Proxy
             var version = responseParts[0];
             var statusCode = int.Parse(responseParts[1]);
 
-            var headers = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+            var headers = new HttpHeaders();
             string? line;
             while ((line = streamReader.ReadLine()) != null && line != string.Empty)
             {
-                var parts = line.Split([':', ' '], 2);
-                if (parts.Length == 2)
-                    headers[parts[0].Trim()] = parts[1].Trim();
+                var idx = line.IndexOf(':');
+                if (idx <= 0) continue;
+                var name = line.Substring(0, idx).Trim();
+                var value = line.Substring(idx + 1).Trim();
+                if (name.Length == 0) continue;
+                headers.Add(name, value);
             }
 
             return new HttpProxyResponse

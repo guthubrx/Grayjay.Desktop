@@ -68,7 +68,7 @@ namespace Grayjay.ClientServer.Controllers
 
             using (HttpClient client = new HttpClient())
             {
-                var modified = modifier?.ModifyRequest(hlsUrl, new Dictionary<string, string>());
+                var modified = modifier?.ModifyRequest(hlsUrl, new Engine.Models.HttpHeaders());
                 if(modified != null)
                 {
                     hlsUrl = modified.Url ?? hlsUrl;
@@ -155,14 +155,18 @@ namespace Grayjay.ClientServer.Controllers
                             RequestModifier = (modifier != null) ? (string url, HttpProxyRequest req) =>
                             {
                                 var modified = modifier.ModifyRequest(url, req.Headers);
-                                return (modified?.Url ?? url, new HttpProxyRequest()
+                                var newReq = new HttpProxyRequest()
                                 {
                                     Method = req.Method,
                                     Path = req.Path,
                                     QueryString = req.QueryString,
                                     Version = req.Version,
-                                    Headers = modified?.Headers ?? req.Headers
-                                });
+                                    Headers = modified?.Headers ?? req.Headers,
+                                    Options = req.Options?.Clone() ?? new HttpProxyRequestOptions()
+                                };
+
+                                newReq.Options.ImpersonateTarget = modified?.Options?.ImpersonateTarget ?? newReq.Options.ImpersonateTarget;
+                                return (modified?.Url ?? url, newReq);
                             }
                             : null
                         }, ip);

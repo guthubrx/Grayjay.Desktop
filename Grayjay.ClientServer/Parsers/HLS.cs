@@ -191,7 +191,7 @@ public static class HLS
     {
         using (HttpClient client = new HttpClient())
         {
-            var modified = modifier?.ModifyRequest(url, new Dictionary<string, string>());
+            var modified = modifier?.ModifyRequest(url, new Engine.Models.HttpHeaders());
             if (modified != null)
             {
                 url = modified.Url ?? url;

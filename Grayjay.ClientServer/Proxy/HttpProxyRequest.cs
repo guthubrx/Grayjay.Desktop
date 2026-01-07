@@ -1,21 +1,36 @@
 using System.Text;
 using Grayjay.Desktop.POC;
+using Grayjay.Engine.Models;
 
 namespace Grayjay.ClientServer.Proxy
 {
+    public sealed class HttpProxyRequestOptions
+    {
+        public string? ImpersonateTarget { get; set; }
+
+        public HttpProxyRequestOptions Clone()
+        {
+            return new HttpProxyRequestOptions 
+            {
+                ImpersonateTarget = ImpersonateTarget
+            };
+        }
+    }
+
     public class HttpProxyRequest
     {
         public required string Method;
         public required string Path;
         public string QueryString;
         public required string Version;
-        public required Dictionary<string, string> Headers;
+        public required HttpHeaders Headers;
+        public HttpProxyRequestOptions Options { get; set; } = new();
 
         public byte[] ToBytes()
         {
             var stringBuilder = new StringBuilder();
             stringBuilder.Append($"{Method} {Path} {Version}\r\n");
-            foreach (var header in Headers)
+            foreach (var header in Headers.Items)
                 stringBuilder.Append($"{header.Key}: {header.Value}\r\n");
             stringBuilder.Append("\r\n");
 
@@ -40,13 +55,16 @@ namespace Grayjay.ClientServer.Proxy
             var path = requestParts[1];
             var version = requestParts[2];
 
-            var headers = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+            var headers = new HttpHeaders();
             string? line;
             while ((line = streamReader.ReadLine()) != null && line != string.Empty)
             {
-                var parts = line.Split([':', ' '], 2);
-                if (parts.Length == 2)
-                    headers[parts[0].Trim()] = parts[1].Trim();
+                var idx = line.IndexOf(':');
+                if (idx <= 0) continue;
+                var name = line.Substring(0, idx).Trim();
+                var value = line.Substring(idx + 1).Trim();
+                if (name.Length == 0) continue;
+                headers.Add(name, value);
             }
 
             return new HttpProxyRequest
@@ -54,7 +72,8 @@ namespace Grayjay.ClientServer.Proxy
                 Method = method,
                 Path = path,
                 Headers = headers,
-                Version = version
+                Version = version,
+                Options = new HttpProxyRequestOptions()
             };
         }
     }

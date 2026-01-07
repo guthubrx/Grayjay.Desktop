@@ -626,7 +626,7 @@ namespace Grayjay.ClientServer.Controllers
                 EnsureVideo(this.State()).Video.VideoSources[videoIndex];
             if(video is HLSManifestSource hlsVideo)
             {
-                var hlsResponse = _qualityClient.GET(hlsVideo.Url, new Dictionary<string, string>());
+                var hlsResponse = _qualityClient.GET(hlsVideo.Url, new Engine.Models.HttpHeaders());
                 if (!hlsResponse.IsOk)
                     return new List<VideoQuality>();
                 string hlsContent = hlsResponse.Body.AsString();
@@ -960,11 +960,11 @@ namespace Grayjay.ClientServer.Controllers
                             return new HttpProxyResponse()
                             {
                                 StatusCode = 200,
-                                Headers = new Dictionary<string, string>()
-                                    {
-                                        { "Content-Type", mediaType },
-                                        { "Content-Length", result.Length.ToString() }
-                                    },
+                                Headers = new Engine.Models.HttpHeaders(new Dictionary<string, string>()
+                                {
+                                    { "Content-Type", mediaType },
+                                    { "Content-Length", result.Length.ToString() }
+                                }),
                                 Version = "HTTP/1.1",
                                 Data = result
                             };

@@ -240,8 +240,9 @@ namespace Grayjay.ClientServer.Models.Downloads
                             try
                             {
                                 var modifier = hlsManifestSource?.GetRequestModifier();
-                                var modified = modifier?.ModifyRequest(hlsManifestSource.Url, new Dictionary<string, string>());
-                                var manifest = client.GET(modified?.Url ?? hlsManifestSource.Url, modified?.Headers ?? new Dictionary<string, string>());
+                                var headers = new Engine.Models.HttpHeaders();
+                                var modified = modifier?.ModifyRequest(hlsManifestSource.Url, headers);
+                                var manifest = client.GET(modified?.Url ?? hlsManifestSource.Url, modified?.Headers ?? headers);
                                 if (manifest.IsOk)
                                 {
                                     var sources = HLS.ParseToVideoSources(source, manifest.Body.AsString(), hlsManifestSource.Url);
@@ -492,7 +493,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                             File.WriteAllText(SubtitleFilePath, File.ReadAllText(uri.AbsolutePath));
                         else
                         {
-                            var resp = client.GET(SubtitleSource.Url, new Dictionary<string, string>());
+                            var resp = client.GET(SubtitleSource.Url, new Engine.Models.HttpHeaders());
                             if (!resp.IsOk)
                                 throw new Exception("Failed to download subtitles.");
                             File.WriteAllText(SubtitleFilePath, resp.Body.AsString());
@@ -560,7 +561,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                 {
                     var head = client.TryHead(url);
                     //GrayjaySettings.Instance.Downloads.ByteRangeDownload
-                    if (allowByteRangeDownload && true && head?.Headers?.ContainsKey("accept-ranges") == true && head?.Headers?.ContainsKey("content-length") == true)
+                    if (allowByteRangeDownload && true && head?.Headers?.Contains("accept-ranges") == true && head?.Headers?.Contains("content-length") == true)
                     {
                         var concurrency = Math.Min(2, GrayjaySettings.Instance.Downloads.GetByteRangeThreadCount()); //TODO: Temporary limit to 2 to prevent ratelimits
                         Logger.i(nameof(VideoDownload), $"Download {Video.Name} ByteRange Parallel ({concurrency})");
@@ -593,9 +594,9 @@ namespace Grayjay.ClientServer.Models.Downloads
 
             long lastSpeed = 0;
 
-            var modified = modifier?.ModifyRequest(url, new Dictionary<string, string>());
-
-            var result = client.GET(modified?.Url ?? url, modified?.Headers ?? new Dictionary<string, string>());
+            var headers = new Engine.Models.HttpHeaders();
+            var modified = modifier?.ModifyRequest(url, headers);
+            var result = client.GET(modified?.Url ?? url, modified?.Headers ?? headers);
             if (!result.IsOk)
                 throw new InvalidDataException($"Failed to download source. Web[{result.Code}] Error");
             if (result.Body == null)
@@ -713,7 +714,7 @@ namespace Grayjay.ClientServer.Models.Downloads
         {
             var toRead = rangeEnd - rangeStart;
             ManagedHttpClient.Response req = null;
-            var headers = new Dictionary<string, string>() { { "range", $"bytes={rangeStart}-{rangeEnd}" } };
+            var headers = new Engine.Models.HttpHeaders() { { "range", $"bytes={rangeStart}-{rangeEnd}" } };
             var modified = modifier?.ModifyRequest(url, headers);
 
             for (int i = 0; i <= 5; i++)
@@ -871,9 +872,9 @@ namespace Grayjay.ClientServer.Models.Downloads
                     }
                 }
 
-                var modified = modifier?.ModifyRequest(url, headers);
-
-                var resp = httpClient.GET(modified?.Url ?? url, modified?.Headers ?? headers);
+                var httpHeaders = new Engine.Models.HttpHeaders(headers);
+                var modified = modifier?.ModifyRequest(url, httpHeaders);
+                var resp = httpClient.GET(modified?.Url ?? url, modified?.Headers ?? httpHeaders);
                 if (!resp.IsOk)
                     throw new InvalidDataException($"Failed to download HLS resource ({url}): HTTP {resp.Code}");
 
@@ -928,8 +929,9 @@ namespace Grayjay.ClientServer.Models.Downloads
             }
 
             long downloadedTotalLength = 0;
-            var modified = modifier?.ModifyRequest(hlsUrl, new Dictionary<string, string>());
-            var response = client.GET(modified?.Url ?? hlsUrl, modified?.Headers ?? new Dictionary<string, string>());
+            var headers = new Engine.Models.HttpHeaders();
+            var modified = modifier?.ModifyRequest(hlsUrl, headers);
+            var response = client.GET(modified?.Url ?? hlsUrl, modified?.Headers ?? headers);
             if (!response.IsOk)
                 throw new InvalidDataException("Failed to get variant playlist: " + response.Code.ToString());
 
@@ -949,8 +951,9 @@ namespace Grayjay.ClientServer.Models.Downloads
                     throw new InvalidDataException("Encrypted HLS playlist without key URI is not supported.");
 
 
-                var modifiedDec = modifier?.ModifyRequest(decryption.KeyUrl, new Dictionary<string, string>());
-                var keyResp = client.GET(modifiedDec?.Url ?? decryption.KeyUrl, modifiedDec?.Headers ?? new Dictionary<string, string>());
+                var headersDec = new Engine.Models.HttpHeaders();
+                var modifiedDec = modifier?.ModifyRequest(decryption.KeyUrl, headersDec);
+                var keyResp = client.GET(modifiedDec?.Url ?? decryption.KeyUrl, modifiedDec?.Headers ?? headersDec);
                 if (!keyResp.IsOk)
                     throw new InvalidDataException("Failed to download AES-128 key: " + keyResp.Code);
 
