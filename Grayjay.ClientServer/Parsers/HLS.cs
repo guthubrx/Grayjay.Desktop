@@ -189,33 +189,18 @@ public static class HLS
 
     public static async Task<IHLSPlaylist> DownloadAndParsePlaylist(string url, IRequestModifier? modifier = null)
     {
-        using (HttpClient client = new HttpClient())
+        var res = ModifierHttp.GetBytes(new Engine.Web.ManagedHttpClient(), url, modifier);
+        if (!res.IsOk)
+            throw new InvalidDataException($"Failed to fetch manifest [{res.Code}]");
+
+        var body = Encoding.UTF8.GetString(res.Bytes);
+        try
         {
-            var modified = modifier?.ModifyRequest(url, new Engine.Models.HttpHeaders());
-            if (modified != null)
-            {
-                url = modified.Url ?? url;
-                if (modified.Headers != null)
-                    foreach (var header in modified.Headers)
-                    {
-                        client.DefaultRequestHeaders.Add(header.Key, header.Value);
-                    }
-            }
-
-            var result = await client.GetAsync(url);
-            if (result.StatusCode != HttpStatusCode.OK)
-                throw new InvalidDataException($"Failed to fetch manifest [" + result.StatusCode + "]");
-
-            var body = await result.Content.ReadAsStringAsync();
-
-            try
-            {
-                return ParseMasterPlaylist(body, url);
-            }
-            catch
-            {
-                return ParseVariantPlaylist(body, url);
-            }
+            return ParseMasterPlaylist(body, url);
+        }
+        catch
+        {
+            return ParseVariantPlaylist(body, url);
         }
     }
     public static List<HLSVariantVideoUrlSource> ParseToVideoSources(object parentSource, string content, string url)
