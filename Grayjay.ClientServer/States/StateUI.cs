@@ -293,16 +293,16 @@ namespace Grayjay.ClientServer.Controllers
 
             var descriptor = (config.ID == StateDeveloper.DEV_ID) ? StatePlatform.GetDevClient()?.Descriptor : StatePlugins.GetPlugin(config.ID);
             var pluginConfig = descriptor.Config;
-            var authConfig = pluginConfig.Captcha;
+            var captchaConfig = pluginConfig.GetPlatformCaptcha();
 
-            bool urlFound = string.IsNullOrEmpty(authConfig.CompletionUrl);
+            bool urlFound = string.IsNullOrEmpty(captchaConfig.CompletionUrl);
             Dictionary<string, Dictionary<string, string>> cookiesFoundMap = new Dictionary<string, Dictionary<string, string>>();
 
             bool completionUrlExcludeQuery = false;
-            string completionUrlToCheck = (string.IsNullOrEmpty(authConfig.CompletionUrl)) ? null : authConfig.CompletionUrl;
+            string completionUrlToCheck = (string.IsNullOrEmpty(captchaConfig.CompletionUrl)) ? null : captchaConfig.CompletionUrl;
             if (completionUrlToCheck != null)
             {
-                if (authConfig.CompletionUrl.EndsWith("?*"))
+                if (captchaConfig.CompletionUrl.EndsWith("?*"))
                 {
                     completionUrlToCheck = completionUrlToCheck.Substring(0, completionUrlToCheck.Length - 2);
                     completionUrlExcludeQuery = true;
@@ -313,7 +313,7 @@ namespace Grayjay.ClientServer.Controllers
 
             bool _didLogIn()
             {
-                var cookiesFound = authConfig.CookiesToFind?.All(toFind => cookiesFoundMap.Any(x => x.Value.ContainsKey(toFind))) ?? true;
+                var cookiesFound = captchaConfig.CookiesToFind?.All(toFind => cookiesFoundMap.Any(x => x.Value.ContainsKey(toFind))) ?? true;
 
                 return (urlFound && cookiesFound);
             }
@@ -346,15 +346,15 @@ namespace Grayjay.ClientServer.Controllers
             }
 
             string? captchaUrl = null;
-            if (authConfig.CaptchaUrl != null)
-                captchaUrl = authConfig.CaptchaUrl;
+            if (captchaConfig.CaptchaUrl != null)
+                captchaUrl = captchaConfig.CaptchaUrl;
             else if (!string.IsNullOrEmpty(ex.Url))
                 captchaUrl = ex.Url;
             else
                 throw new NotImplementedException("Unhandable captcha?");
 
-            window = await GrayjayServer.Instance.WindowProvider.CreateInterceptorWindowAsync("Grayjay (Captcha)", captchaUrl, authConfig.UserAgent, 
-                ((authConfig is PluginCaptchaDesktopConfig dconfig) ? dconfig.UseMobileEmulation : true), 
+            window = await GrayjayServer.Instance.WindowProvider.CreateInterceptorWindowAsync("Grayjay (Captcha)", captchaUrl, captchaConfig.UserAgent, 
+                ((captchaConfig is PluginCaptchaDesktopConfig dconfig) ? dconfig.UseMobileEmulation : true), 
                 null,
                 (InterceptorRequest request) =>
             {
@@ -392,7 +392,7 @@ namespace Grayjay.ClientServer.Controllers
 
                             if (pluginConfig == null || pluginConfig.AllowUrls.Any(x => x == "everywhere" || domain.MatchesDomain(x)))
                             {
-                                authConfig.CookiesToFind?.ForEach(cookiesToFind =>
+                                captchaConfig.CookiesToFind?.ForEach(cookiesToFind =>
                                 {
                                     var cookies = cookieString.Split(";");
                                     foreach (var cookieStr in cookies)
@@ -402,7 +402,7 @@ namespace Grayjay.ClientServer.Controllers
                                         var cookieKey = cookieStr.Substring(0, cookieSplitIndex).Trim();
                                         var cookieVal = cookieStr.Substring(cookieSplitIndex + 1).Trim();
 
-                                        if (authConfig.CookiesExclOthers && !cookiesToFind.Contains(cookieKey))
+                                        if (captchaConfig.CookiesExclOthers && !cookiesToFind.Contains(cookieKey))
                                             continue;
 
                                         if (cookiesFoundMap.ContainsKey(cookieDomain))

@@ -82,7 +82,7 @@ namespace Grayjay.ClientServer.Controllers
                 var masterPlaylist = Parsers.HLS.ParseMasterPlaylist(body, hlsUrl);
                 if (masterPlaylist.Unhandled.Any(x=>x.StartsWith("#EXTINF:")))
                     throw new ArgumentException("Is a variant playlist");
-                masterPlaylist = ProxyHLSMasterPlaylist(baseUri, masterPlaylist, proxyMedia, modifierId);
+                masterPlaylist = ProxyHLSMasterPlaylist(baseUri, masterPlaylist, proxyMedia, modifierId, state?.WindowID);
                 return masterPlaylist;
             }
             catch
@@ -93,12 +93,13 @@ namespace Grayjay.ClientServer.Controllers
             }
         }
 
-        public static HLS.MasterPlaylist ProxyHLSMasterPlaylist(string baseUri, HLS.MasterPlaylist hlsMasterPlaylist, bool proxyMedia, string? modifierId = null)
+        public static HLS.MasterPlaylist ProxyHLSMasterPlaylist(string baseUri, HLS.MasterPlaylist hlsMasterPlaylist, bool proxyMedia, string? modifierId = null, string? windowId = null)
         {
+            //todo pass in window id
             foreach (var vp in hlsMasterPlaylist.MediaRenditions)
-                vp.Uri = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Uri)}&proxyMedia={proxyMedia}" + (modifierId != null ? "&modifierId=" + modifierId : "");
+                vp.Uri = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Uri)}&proxyMedia={proxyMedia}" + (modifierId != null ? "&modifierId=" + modifierId : "") + (windowId != null ? "&windowId=" + windowId : "");
             foreach (var vp in hlsMasterPlaylist.VariantPlaylistsRefs)
-                vp.Url = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Url)}&proxyMedia={proxyMedia}" + (modifierId != null ? "&modifierId=" + modifierId : "");
+                vp.Url = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Url)}&proxyMedia={proxyMedia}" + (modifierId != null ? "&modifierId=" + modifierId : "") + (windowId != null ? "&windowId=" + windowId : "");
 
             return hlsMasterPlaylist;
         }
