@@ -27,6 +27,7 @@ import Dropdown from '../basics/inputs/Dropdown';
 import ic_search from '../../assets/icons/search.svg';
 import { focusable } from '../../focusable'; void focusable;
 import { InputSource } from '../../nav';
+import { VideoState } from '../../contexts/VideoProvider';
 
 interface PlaylistDetailViewProps {
   type: string;
@@ -34,12 +35,12 @@ interface PlaylistDetailViewProps {
   videos?: IPlatformVideo[];
   isLoading: boolean;
   id?: string;
-  onPlayAll: () => void;
-  onShuffleAll: () => void;
+  onPlayAll: (videoState?: VideoState) => void;
+  onShuffleAll: (videoState?: VideoState) => void;
   onDragEnd: () => void;
   onRemove: (video: IPlatformVideo) => void;
   onDownload: (video: IPlatformVideo) => void;
-  onPlay: (video: IPlatformVideo) => void;
+  onPlay: (video: IPlatformVideo, videoState?: VideoState) => void;
   onAddToQueue: (video: IPlatformVideo) => void;
   refetch?: () => void;
 }
@@ -131,37 +132,6 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
             <div class={styles.metadata}>{props.videos?.length} {props.videos?.length === 1 ? "item" : "items"}</div>
           </div>
           <div style="flex-grow: 1"></div>
-          <Show when={props.id}>
-            <img src={iconSettings} style="width: 24px; height: 100%; margin-left: 16px; margin-right: 16px; padding-left: 16px; padding-right: 16px; cursor: pointer;" onClick={(ev) => {
-              onSettingsClicked(ev.target as HTMLElement, "pointer", undefined);
-            }}  use:focusable={{
-              onPress: (el, inputSource) => onSettingsClicked(el, inputSource, undefined)
-            }} />
-          </Show>
-          <CustomButton
-            text="Play all"
-            icon={iconPlay}
-            style={{
-              background: "linear-gradient(267deg, #01D6E6 -100.57%, #0182E7 90.96%)",
-              "flex-shrink": 0
-            }}
-            onClick={() => props.onPlayAll()}
-            focusableOpts={{
-              onPress: () => props.onPlayAll()
-            }} />
-          <CustomButton
-            text="Shuffle"
-            icon={iconShuffle}
-            style={{
-              border: "1px solid #2E2E2E",
-              "margin-left": "16px",
-              "margin-right": "16px",
-              "flex-shrink": 0
-            }}
-            onClick={() => props.onShuffleAll()}
-            focusableOpts={{
-              onPress: () => props.onShuffleAll()
-            }} />
         </div>
         <ScrollContainer ref={scrollContainerRef}>
           <div class={styles.containerFilters}>
@@ -176,6 +146,37 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
                 setFilterText(v);
               }}
               focusable={true} />
+          <CustomButton
+            text="Play all"
+            icon={iconPlay}
+            style={{
+              background: "linear-gradient(267deg, #01D6E6 -100.57%, #0182E7 90.96%)",
+              "flex-shrink": 0
+            }}
+            onClick={() => props.onPlayAll()}
+            focusableOpts={{
+              onPress: () => props.onPlayAll(VideoState.Fullscreen)
+            }} />
+          <CustomButton
+            text="Shuffle"
+            icon={iconShuffle}
+            style={{
+              border: "1px solid #2E2E2E",
+              "margin-left": "16px",
+              "margin-right": "16px",
+              "flex-shrink": 0
+            }}
+            onClick={() => props.onShuffleAll()}
+            focusableOpts={{
+              onPress: () => props.onShuffleAll(VideoState.Fullscreen)
+            }} />
+            <Show when={props.id}>
+              <img src={iconSettings} style="width: 24px; height: 100%; margin-left: 16px; margin-right: 16px; padding-left: 16px; padding-right: 16px; cursor: pointer;" onClick={(ev) => {
+                onSettingsClicked(ev.target as HTMLElement, "pointer", undefined);
+              }}  use:focusable={{
+                onPress: (el, inputSource) => onSettingsClicked(el, inputSource, undefined)
+              }} />
+            </Show>
           </div>
 
           <VirtualDragDropList outerContainerRef={scrollContainerRef}
@@ -217,10 +218,13 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
                     props.onPlay(v);
                   }}
                   focusableOpts={{
+                    groupId: 'playlist',
+                    groupType: 'vertical',
+                    groupIndices: [index()],
                     onPress: () => {
                       const v = video();
                       if (!v) return;
-                      props.onPlay(v);
+                      props.onPlay(v, VideoState.Fullscreen);
                     },
                     onOptions: (el, inputSource) => {
                       const v = video();

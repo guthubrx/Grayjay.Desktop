@@ -158,13 +158,13 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             if(chapter.type == ChapterType.SKIP) {
                 if(lastSkip != chapter) {
                     lastSkip = chapter;
-                    setCurrentPosition(Duration.fromMillis(chapter.timeEnd * 1000));
+                    void seek(Duration.fromMillis(chapter.timeEnd * 1000));
                 }
             }
             else if(chapter.type == ChapterType.SKIPONCE) {
                 if(skippedOnce.indexOf(chapter) < 0) {
                     skippedOnce.push(chapter);
-                    setCurrentPosition(Duration.fromMillis(chapter.timeEnd * 1000));
+                    void seek(Duration.fromMillis(chapter.timeEnd * 1000));
                 }
             }
         }
@@ -173,7 +173,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         const chapter = currentChapter$();
         if(!chapter)
             return;
-        setCurrentPosition(Duration.fromMillis(chapter.timeEnd * 1000));
+        void seek(Duration.fromMillis(chapter.timeEnd * 1000));
     }
 
     let mouseDownOnVideo = false;
@@ -242,6 +242,28 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         return Duration.fromMillis(0);
     };
 
+    type CastLoadRequest = {
+        tag: string;
+        source: SourceSelected;
+        resumePosition: Duration;
+        duration: Duration;
+        title?: string;
+    };
+
+    const [pendingCastLoad, setPendingCastLoad] = createSignal<CastLoadRequest | null>(null);
+    let lastLoadedCastKey: string | undefined;
+    let lastLocalPositionBeforeCast = Duration.fromMillis(0);
+
+    const computeResumeForCast = (source: SourceSelected) => {
+        if (source.isLive) return Duration.fromMillis(0);
+        if (source.shouldResume) {
+            return untrack(position);
+        }
+
+        return source.time ?? Duration.fromMillis(0);
+    };
+
+
     const startCastingIfApplicable = async (castConnectionState?: CastConnectionState, shouldResume?: boolean, startTime?: Duration, tag?: string) => {
         if (castConnectionState === CastConnectionState.Connected) {
             if (!props.source)
@@ -292,7 +314,14 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
 
         if (untrack(isCasting)) {
             console.info("start casting because changeSourceToSetSource call and casting");
-            await startCastingIfApplicable(untrack(casting.activeDevice.state), source.shouldResume, source.time, currentTag);
+            const resumePosition = computeResumeForCast(source);
+            setPendingCastLoad({
+                tag: currentTag,
+                source,
+                resumePosition,
+                duration: untrack(duration),
+                title: props.video?.name
+            });
         } else {
             console.info("change source because changeSourceToSetSource call");
 
@@ -308,12 +337,24 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     createEffect(on(isCasting, async (isCurrentlyCasting) => {
         if (casting && isCurrentlyCasting) {
             console.info("start casting because isCasting change");
-            await startCastingIfApplicable(untrack(casting.activeDevice.state), true, props.source?.time, currentTag);
             changeSource(undefined);
             stopHideControls();
+
+            const s = props.source;
+            if (s) {
+                setPendingCastLoad({
+                    tag: currentTag,
+                    source: s,
+                    resumePosition: lastLocalPositionBeforeCast,
+                    duration: untrack(duration),
+                    title: props.video?.name
+                });
+            }
         } else {
             console.info("stop casting because isCasting change");
             //TODO: playWhenReady = casting?.activeDevice.device()?.isPlaying() ?? false
+            setPendingCastLoad(null);
+            lastLoadedCastKey = undefined;
             await changeSourceToSetSource(props.source ? { ... props.source, shouldResume: true } : undefined);
             await stopCastingIfApplicable();
             startHideControls();
@@ -344,8 +385,6 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         const castConnectionState = casting?.activeDevice.state();
         if (isCasting() && castConnectionState === CastConnectionState.Connected) {
             casting?.actions.close();
-            console.info("start casting because casting?.activeDevice.state or isCasting change");
-            await startCastingIfApplicable(castConnectionState, true, props.source?.time, currentTag);
         }
     });
 
@@ -357,12 +396,11 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     })
 
     createEffect(on(casting.activeDevice.device, (device) => {
-        const isCurrentlyCasting = device ? true : false;
-        if (isCurrentlyCasting != isCasting()) {
-            switchPosition = untrack(position);
-            console.log("set switch position to", {switchPosition: switchPosition.toMillis(), isCasting});
-            setIsCasting(isCurrentlyCasting);
+        const isCurrentlyCasting = !!device;
+        if (isCurrentlyCasting && !isCasting()) {
+            lastLocalPositionBeforeCast = untrack(position);
         }
+        setIsCasting(isCurrentlyCasting);
     }));
 
     const stopHideControls = () => {
@@ -518,7 +556,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         }
     };
 
-    const setCurrentPosition = (time: Duration) => {
+    const seekLocal = (time: Duration) => {
         const seconds = time.as('seconds');
         if (dashPlayer) {
             dashPlayer.seek(seconds);
@@ -534,7 +572,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         }
 
         if (shouldSetCurrentPosition && (props.source?.isLive ?? false) === false) {
-            setCurrentPosition(getResumePosition(shouldResume, startTime));
+            seekLocal(getResumePosition(shouldResume, startTime));
         }
         play();
         setPlaybackSpeed(props.playbackSpeed ?? 1.0);
@@ -565,6 +603,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         const resumePosition = props.resumePosition;
         const pos = position();
         const dur = duration();
+        //console.log("resumePosition", { resumePosition: resumePosition?.as('milliseconds'), dur: dur.as('milliseconds'), pos: pos.as('milliseconds') });
         if (!resumePosition) {
             setResumePositionVisible(false);
             return;
@@ -574,6 +613,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         const res_ms = resumePosition.as('milliseconds');
         const dur_ms = dur.as('milliseconds');
         const visible = res_ms > 60000 && dur_ms - res_ms > 5000 && res_ms - pos_ms > 5000 && pos_ms < 8000;
+        //console.log("resumePosition", { a: res_ms > 60000, b: dur_ms - res_ms > 5000, c: res_ms - pos_ms > 5000, d: pos_ms < 8000, res_ms, dur_ms, pos_ms });
         setResumePositionVisible(visible);
     });
 
@@ -592,7 +632,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     console.warn("Skipped changing video URL because URL and time is (nearly) unchanged", {sourceUrl, currentUrl, shouldResume, startTime: startTime ? formatDuration(startTime) : undefined, switchPosition: switchPosition ? formatDuration(switchPosition) : undefined});
                 } else {
                     console.info("Skipped changing video URL because URL is the same, but time was changed, seeking instead", {sourceUrl, currentUrl, shouldResume, startTime: startTime ? formatDuration(startTime) : undefined, switchPosition: switchPosition ? formatDuration(switchPosition) : undefined});
-                    setCurrentPosition(startTime);
+                    seekLocal(startTime);
                 }
             }
             return;
@@ -1061,12 +1101,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
 
         props.eventRestart?.register(async () => {
             const start = Duration.fromMillis(0);
-            setPosition(start);
-            if (isCasting()) {
-                await CastingBackend.mediaSeek(start);
-            } else {
-                setCurrentPosition(start);
-            }
+            await seek(start);
 
             if (isCasting()) {
                 await CastingBackend.mediaResume();
@@ -1190,13 +1225,18 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         }        
     });
 
-    const performSetPosition = async (duration: Duration) => { 
+    const seek = async (time: Duration) => { 
         clearLiveChatOnSeek();
-        setPosition(duration);
+
+        const isLive = props.source?.isLive ?? false;
+        const maxMs = duration().toMillis();
+        const clamped = isLive ? time : Duration.fromMillis(Math.max(0, Math.min(time.toMillis(), maxMs)));
+
+        setPosition(clamped);
         if (isCasting()) {
-            await CastingBackend.mediaSeek(duration);
+            await CastingBackend.mediaSeek(clamped);
         } else {
-            setCurrentPosition(duration);
+            seekLocal(clamped);
         }
     };
 
@@ -1211,10 +1251,10 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             onDirection: (el, dir, inputSource) => {
                 switch (dir) {
                     case 'left':
-                        performSetPosition(Duration.fromMillis(Math.max(Math.min(duration().toMillis(), position().toMillis() - 5000), 0)));
+                        void seek(Duration.fromMillis(Math.max(Math.min(duration().toMillis(), position().toMillis() - 5000), 0)));
                         return true;
                     case 'right':
-                        performSetPosition(Duration.fromMillis(Math.max(Math.min(duration().toMillis(), position().toMillis() + 5000), 0)));
+                        void seek(Duration.fromMillis(Math.max(Math.min(duration().toMillis(), position().toMillis() + 5000), 0)));
                         return true;
                     case 'down':
                         console.info("isFullscreen", isFullscreen());
@@ -1236,6 +1276,34 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             onDirectionLabel: "(WS: Toggle Fullscreen  AD: Seek)"
         };
     });
+
+    createEffect(on(
+        () => [isCasting(), casting.activeDevice.state(), pendingCastLoad()] as const,
+        async ([castingNow, state, req]) => {
+            if (!castingNow) return;
+            if (state !== CastConnectionState.Connected) return;
+            if (!req) return;
+
+            const key = `${req.tag}|${req.source.url}|${req.source.video}|${req.source.audio}|${req.source.subtitle}|${req.resumePosition.toMillis()}`;
+            if (key === lastLoadedCastKey) return;
+            lastLoadedCastKey = key;
+
+            casting.actions.close();
+
+            await CastingBackend.mediaLoad({
+                streamType: req.source.isLive ? "LIVE" : "BUFFERED",
+                resumePosition: req.resumePosition,
+                duration: req.duration,
+                sourceSelected: req.source,
+                speed: await getDefaultPlaybackSpeed(),
+                tag: req.tag,
+                title: req.title
+            });
+
+            setPendingCastLoad(null);
+        },
+        { defer: true }
+    ));
 
     return (
         <div ref={setContainerRef} 
@@ -1281,7 +1349,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                         setIsScrubbing(scrubbing);
                         props.onSetScrubbing?.(scrubbing);
                     }}
-                    onSetPosition={performSetPosition}
+                    onSetPosition={seek}
                     isPlaying={isPlaying()}
                     onSetVolume={(v) => setVolume(v)}
                     onToggleSubtitles={props.onToggleSubtitles}
@@ -1295,11 +1363,11 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                                 return;
                             }
 
-                            performSetPosition(Duration.fromMillis(currentChapter.timeStart * 1000));
+                            void seek(Duration.fromMillis(currentChapter.timeStart * 1000));
                             return;
                         }
 
-                        performSetPosition(Duration.fromMillis(chapter.timeStart * 1000));
+                        void seek(Duration.fromMillis(chapter.timeStart * 1000));
                     }}
                     onNextChapter={() => {
                         const chapter = nextChapter();
@@ -1309,22 +1377,22 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                                 return;
                             }
 
-                            performSetPosition(Duration.fromMillis(currentChapter.timeEnd * 1000));
+                            void seek(Duration.fromMillis(currentChapter.timeEnd * 1000));
                             return;
                         }
 
-                        performSetPosition(Duration.fromMillis(chapter.timeStart * 1000));
+                        void seek(Duration.fromMillis(chapter.timeStart * 1000));
                     }}
                     onPreviousVideo={props.onPreviousVideo}
                     onNextVideo={props.onNextVideo}
                     onOpenSearch={props.onOpenSearch}
                     onSingleFrameForward={() => {
                         if (paused())
-                            performSetPosition(Duration.fromMillis(Math.min(duration().milliseconds, position().milliseconds + 1000 / (frameRate ?? 24))));
+                            void seek(Duration.fromMillis(Math.min(duration().milliseconds, position().milliseconds + 1000 / (frameRate ?? 24))));
                     }}
                     onSingleFrameBackward={() => {
                         if (paused())
-                            performSetPosition(Duration.fromMillis(Math.max(0, position().milliseconds - 1000 / (frameRate ?? 24))));
+                            void seek(Duration.fromMillis(Math.max(0, position().milliseconds - 1000 / (frameRate ?? 24))));
                     }}
                     isLive={props.source?.isLive}
                     volume={currentVolume$()}
@@ -1356,9 +1424,9 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             </Show>
 
             <Show when={props.resumePosition && resumePositionVisible()}>
-                <div class={styles.resumeButton} onClick={() => {
+                <div class={styles.resumeButton} onClick={async () => {
                     if (props.resumePosition) {
-                        setCurrentPosition(props.resumePosition);
+                        await seek(props.resumePosition);
                     }
                 }}>
                     Resume at {formatDuration(props.resumePosition!)}

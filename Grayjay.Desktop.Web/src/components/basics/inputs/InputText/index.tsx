@@ -25,6 +25,11 @@ interface InputTextProps {
     focusable?: boolean;
     id?: string;
     onBack?: (el: HTMLElement, inputSource: InputSource) => boolean;
+    focusableGroupOpts?: {
+        groupId?: string;
+        groupType?: "grid" | "horizontal" | "vertical";
+        groupIndices?: (number | undefined)[];
+    };
 }
 
 const InputText: Component<InputTextProps> = (props) => {
@@ -79,6 +84,8 @@ const InputText: Component<InputTextProps> = (props) => {
             "flex-direction": "column",
             ... merged.style
         }} use:focusable={props.focusable ? {
+            ... (props.focusableGroupOpts ?? {}),
+            navAnchor: {x: 'left'},
             onPress: () => {
                 if (document.activeElement === inputElement) {
                     merged.onSubmit?.(text());

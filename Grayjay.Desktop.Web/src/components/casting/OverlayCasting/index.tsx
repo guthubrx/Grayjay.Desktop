@@ -95,6 +95,7 @@ const CastingDeviceView: Component<CastingDeviceViewProps> = (props) => {
             }} use:focusable={{
                 onPress: async () => await casting?.actions.connect(props.device.id),
                 onBack: globalBack,
+                onOptionsLabel: 'Pin',
                 onOptions: () => props.pinned ? casting?.actions?.removePinnedDevice(props.device) : casting?.actions?.addPinnedDevice(props.device)
             }}>
                 <img src={icon$()} /> 

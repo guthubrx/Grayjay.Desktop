@@ -17,6 +17,7 @@ import LoaderSmall from '../../basics/loaders/LoaderSmall';
 import { ContentType } from '../../../backend/models/ContentType';
 import ScrollContainer from '../../containers/ScrollContainer';
 import { useFocus } from '../../../FocusProvider';
+import { Direction } from '../../../nav';
 
 interface SearchBarProps {
   placeholder?: string;
@@ -28,6 +29,12 @@ interface SearchBarProps {
   onSearch?: (query: string, type?: ContentType) => void;
   suggestionsVisible?: boolean;
   id?: string;
+  focusableGroupOpts?: {
+      groupId?: string;
+      groupType?: "grid" | "horizontal" | "vertical";
+      groupIndices?: (number | undefined)[];
+      groupEscapeTo?: Partial<Record<Direction, string[]>>;
+  };
 }
 
 const SearchBar: Component<SearchBarProps> = (props) => {
@@ -146,6 +153,7 @@ const SearchBar: Component<SearchBarProps> = (props) => {
         value={query$()}
         showClearButton={true}
         focusable={true} 
+        focusableGroupOpts={props.focusableGroupOpts}
         onClick={async () => {
           if (!suggestionsVisible$()) {
             setSuggestionsVisible(true);

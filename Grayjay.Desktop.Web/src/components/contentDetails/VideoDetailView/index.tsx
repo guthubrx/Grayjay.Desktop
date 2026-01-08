@@ -29,7 +29,7 @@ import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, s
 import { DetailsBackend } from "../../../backend/DetailsBackend";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
-import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton } from "../../menus/Overlays/SettingsMenu";
+import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton, IMenuFilter } from "../../menus/Overlays/SettingsMenu";
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
 import Loader from "../../basics/loaders/Loader";
@@ -334,11 +334,24 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const nvi = nextVideoIndex();
         if (nvi === undefined) {
             console.error("Playback error: " + error, { errorCounter });
-            UIOverlay.overlayConfirm({
-                yes: () => {
-                    reloadMedia();
+            if (video?.state() === VideoState.Fullscreen || document.fullscreenElement) {
+                try {
+                    videoPlayerViewHandle$()?.toggleFullscreen?.();
+                } catch (e) {
+                    console.warn("toggleFullscreen failed:", e);
                 }
-            }, "An error occurred while playing the video, do you want to reload?");
+
+                if (document.fullscreenElement) {
+                    document.exitFullscreen?.().catch?.(() => {});
+                }
+            }
+
+            setTimeout(() => {
+                UIOverlay.overlayConfirm(
+                    { yes: () => reloadMedia() },
+                    "An error occurred while playing the video, do you want to reload?"
+                );
+            }, 0);
         } else {
             if (errorCounter < 2) {
                 const waitTime_ms = Math.max((errorCounter - 1) * 1000, 0);
@@ -732,8 +745,44 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             "Auto (" + videoSourceQualities$()[playerQuality$()].width + "x" + videoSourceQualities$()[playerQuality$()].height +")" : "Auto");
     }
 
+    const availableVideoLanguages$ = createMemo(()=>{
+        var sources = videoSources$();
+        if(!sources) {
+            console.log("No sources?")
+            return [];
+        }
+        var original = sources.find(x=>x.original)
+        var originalLanguage = original?.language;
+        var english = sources.find(x=>x.language == "en");
+        var languages = sources.map(x=>x.language);
+
+
+        const unique = [];
+        if(!!originalLanguage)
+            unique.push(originalLanguage);
+        if(!!english && unique.indexOf("en") < 0)
+            unique.push("en");
+        for(let language of languages) {
+            if(unique.indexOf(language) < 0)
+                unique.push(language);
+        }
+        console.log("Found languages", unique);
+        return unique;
+    });
+    const [selectedVideoLanguage$, setSelectedVideoLanguage] = createSignal<string | undefined>(undefined);
+
     const [videoPlayerViewHandle$, setVideoPlayerViewHandle] = createSignal<VideoPlayerViewHandle>();
     const settingsDialogMenu$ = createMemo(() => {
+        let initialSelected = undefined;
+        let prevSelected = untrack(selectedVideoLanguage$);
+        if(prevSelected) {
+            initialSelected = prevSelected;
+        }
+        else {
+            initialSelected = videoSources$()?.find(x=>x.original)?.language ?? videoSources$()?.find(x=>x.language?.toLowerCase() == "en")?.language ?? null;
+            if(!!initialSelected)
+                setSelectedVideoLanguage(initialSelected);
+        }
         return {
             title: "Playback settings",
             items: [
@@ -902,11 +951,26 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     type: "group",
                     subMenu: {
                         title: "Video sources",
-                        items: videoSources$().map(x => {
+                        items:  [
+                            ((availableVideoLanguages$().length > 1) ? {
+                                name: "Language",
+                                value: initialSelected,
+                                type: "filter-horizontal",
+                                options: availableVideoLanguages$(),
+                                onSelected: (val: any) => {
+                                    if(!val)
+                                        setSelectedVideoLanguage(undefined);
+                                    else
+                                        setSelectedVideoLanguage(val);
+                                },
+                                isSelected: false
+                            } as IMenuFilter : null)
+                        ].filter<any>(x=>!!x).concat(videoSources$().map(x => {
                             return {
                                 name: x.name,
                                 value: x,
                                 type: "option",
+                                visible: createMemo(()=>selectedVideoLanguage$() == undefined || selectedVideoLanguage$() == x.language),
                                 onSelected: (val: any) => {
                                     const videoObj = videoLoaded$();
                                     const originalSource = videoSource$();
@@ -925,7 +989,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 },
                                 isSelected: !videoSource$()?.videoIsLocal && videoSources$().indexOf(x) == videoSource$()?.video
                             } as IMenuItemOption
-                        })
+                        }))
                     }
                 } as IMenuItemGroup : undefined,
                 (videoSourceQualities$() && videoSourceQualities$().length > 0) ? {
@@ -1182,7 +1246,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         };
     }), async (obj) => {
         const url = obj.currentVideo?.url;
-        return obj.videoLoadedIsValid && url ? Duration.fromMillis(await HistoryBackend.getHistoricalPosition(url)) : undefined;
+        return obj.videoLoadedIsValid && url ? Duration.fromMillis(await HistoryBackend.getHistoricalPosition(url) * 1000) : undefined;
     });
 
     function sendToDevice(dev: SyncDevice) {
@@ -1511,11 +1575,13 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 <DragArea class={styles.draggable} onDrag={handleDrag} onIsDraggingChanged={handleIsDraggingChanged} />
                                 <ResizeHandle class={styles.resizable} onResize={handleResizeHandleDrag} onIsResizingChanged={handleIsDraggingChanged} />
                             </Show>
-                        <SettingsMenu
-                            style={{ position: "absolute", right: "60px", bottom: "125px", "max-height": "calc(100% - 200px)" }}
-                            menu={settingsDialogMenu$()}
-                            show={showSettings$() ?? false}
-                            onHide={onHideSettings} />
+                            <Show when={!isMinimized()}>
+                                <SettingsMenu
+                                    style={{ position: "absolute", right: "60px", bottom: "125px", "max-height": "calc(100% - 200px)" }}
+                                    menu={settingsDialogMenu$()}
+                                    show={showSettings$() ?? false}
+                                    onHide={onHideSettings} />
+                            </Show>
                         </VideoPlayerView>
                     </div>
                 </StickyShrinkOnScrollContainer>

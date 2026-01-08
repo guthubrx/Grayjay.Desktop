@@ -10,6 +10,7 @@ import CheckboxFlex from '../../../basics/inputs/CheckboxFlex';
 import { focusScope } from '../../../../focusScope'; void focusScope;
 import { focusable } from "../../../../focusable"; void focusable;
 import { InputSource } from '../../../../nav';
+import { uuidv4 } from '../../../../utility';
 
 export interface MenuItem {
   type?: string
@@ -35,11 +36,19 @@ export class MenuItemGroup implements IMenuItemGroup {
     this.subMenu = subMenu;
   }
 }
+export interface IMenuFilter extends MenuItem {
+  name: string,
+  value: any,
+  options: any[],
+  onSelected: (val: any) => void,
+  visible?: boolean | undefined
+}
 export interface IMenuItemOption extends MenuItem {
   name: string,
   value: any,
   onSelected: (val: any) => void,
-  isSelected: boolean
+  isSelected: boolean,
+  visible?: Accessor<boolean> | undefined
 }
 export class MenuItemOption implements IMenuItemOption {
   type = "option"
@@ -246,6 +255,12 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
         }
     }
 
+    function selectFilter(option: IMenuFilter, value: any) {
+        console.log("Filter selected", option);
+        option?.onSelected(value);
+        if(option)
+          option.value = value;
+    }
     function selectOption(option: IMenuItemOption) {
         console.log("Option selected", option);
         option?.onSelected(option.value);
@@ -426,6 +441,8 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
       } 
       return false;
     };
+
+    const groupId = uuidv4();
   
     return (
       <Show when={props.show}>
@@ -483,7 +500,26 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
                   </div>
                 </div>
               </Match>
+              <Match when={item.type == "filter-horizontal"}>
+                <div class={styles.menuItem}
+                  classList={{[styles.filterHorizontal]: true}}>
+                    <For each={(item as IMenuFilter)?.options ?? []}>{(option, i) =>
+                      <div class={styles.filterHorizontalOption}
+                          classList={{[styles.isActive]: option == item.value}}
+                          onClick={()=>selectFilter(item, option)}
+                          use:focusable={{
+                            groupId,
+                            groupType: 'horizontal',
+                            groupIndices: [i()],
+                            onPress: () => selectFilter(item, option)
+                          }}>
+                        {option}
+                      </div>
+                    }</For>
+                </div>
+              </Match>
               <Match when={item.type == "option"}>
+                <Show when={item.visible === undefined || item.visible()}>
                 <div 
                   class={styles.menuItem} 
                   classList={{[styles.option]: true}} 
@@ -501,6 +537,7 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
                     {(item as IMenuItemOption).name}
                   </div>
                 </div>
+                </Show>
               </Match>
               <Match when={item.type == "toggle"}>
                 {renderToggle(item as MenuItemToggle, index, settingsMenuBack)}

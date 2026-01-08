@@ -14,6 +14,7 @@ import { parseBool } from '../../../../../utility';
 import { SettingsContainerParent } from '../..';
 import UIOverlay from '../../../../../state/UIOverlay';
 import warning from '../../../../../assets/icons/icon_warning.svg';
+import { Direction } from '../../../../../nav';
 
 interface FieldProps {
     container?: SettingsContainerParent,
@@ -21,7 +22,13 @@ interface FieldProps {
     onFieldChanged?: (field: ISettingsField, newVal: any)=>void,
     parentObject: any,
     isSubField?: boolean,
-    onBack?: () => boolean
+    showAdvanced?: boolean,
+    onBack?: () => boolean,
+    focusableGroupOpts?: {
+        groupId?: string;
+        groupType?: "grid" | "horizontal" | "vertical";
+        groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    }
 }
 
 const Field: Component<FieldProps> = (props) => {
@@ -46,7 +53,8 @@ const Field: Component<FieldProps> = (props) => {
                             style: "none",
                             onClick: ()=>{
                                 props.parentObject[props.field.property] = oldValBool;
-                                onCancel();
+                                if(onCancel)
+                                    onCancel();
                             }
                         },
                         {
@@ -84,12 +92,13 @@ const Field: Component<FieldProps> = (props) => {
 
     return (
         <div class={styles.container}>
-            <Show when={isVisible$()}>
+            <Show when={isVisible$() && (!props.field.advanced || !!props.showAdvanced) && (props.field.type != "group" || !!props.showAdvanced ||  (props.field as ISettingsFieldGroup).fields.find(x=>!x.advanced))}>
                 <Switch>
                     <Match when={props.field.type == "group"}>
                         <FieldGroup field={props.field as ISettingsFieldGroup} value={props.parentObject[props.field.property]}
                             container={props.container}
                             onFieldChanged={onChanged}
+                            showAdvanced={props.showAdvanced}
                             onBack={props.onBack} />
                     </Match>
                     <Match when={props.field.type == "group_flat"}>
@@ -100,7 +109,7 @@ const Field: Component<FieldProps> = (props) => {
                     </Match>
                     <Match when={props.field.type == "toggle"}>
                         <FieldToggle field={props.field as ISettingsFieldToggle} value={parseBool(props.parentObject[props.field.property])} 
-                            onFieldChanged={onChangedDirect} isSubField={props.isSubField} onBack={props.onBack} />
+                            onFieldChanged={onChangedDirect} isSubField={props.isSubField} onBack={props.onBack} focusableGroupOpts={props.focusableGroupOpts} />
                     </Match>
                     <Match when={props.field.type == "readonly"}>
                         <FieldReadOnly field={props.field as ISettingsFieldReadOnly} value={props.parentObject[props.field.property]}
@@ -108,7 +117,7 @@ const Field: Component<FieldProps> = (props) => {
                     </Match>
                     <Match when={props.field.type == "dropdown"}>
                         <FieldDropDown field={props.field as ISettingsFieldDropDown} value={props.parentObject[props.field.property]}
-                            onFieldChanged={onChangedDirect} isSubField={props.isSubField} onBack={props.onBack} />
+                            onFieldChanged={onChangedDirect} isSubField={props.isSubField} onBack={props.onBack} focusableGroupOpts={props.focusableGroupOpts} />
                     </Match>
                 </Switch>
             </Show>

@@ -102,6 +102,9 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>cef/libsteam_api.so</TargetPath>
     </ContentWithTargetPath>
+    <Content Include="Changelogs\13.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Changelogs\12.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

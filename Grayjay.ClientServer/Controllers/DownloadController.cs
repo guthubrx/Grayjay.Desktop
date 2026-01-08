@@ -1,4 +1,5 @@
 ﻿using Grayjay.ClientServer.Exceptions;
+using Grayjay.ClientServer.Helpers;
 using Grayjay.ClientServer.Models.Downloads;
 using Grayjay.ClientServer.States;
 using Grayjay.ClientServer.Transcoding;
@@ -42,8 +43,8 @@ namespace Grayjay.ClientServer.Controllers
                 _details = details;
                 _sources = new DownloadSources()
                 {
-                    VideoSources = details.Video.VideoSources.Where(x=>x.IsDownloadable()).ToList(),
-                    AudioSources = (details.Video is UnMuxedVideoDescriptor unmux) ? unmux.AudioSources.Where(x=>x.IsDownloadable()).ToList() : new List<IAudioSource>(),
+                    VideoSources = VideoHelper.ReorderVideoSources(details.Video.VideoSources.Where(x=>x.IsDownloadable()).ToList(), (details.Video is UnMuxedVideoDescriptor unmux && (unmux.AudioSources?.Any(x=>x.IsDownloadable()) ?? false))),
+                    AudioSources = VideoHelper.ReorderAudioSources(((details.Video is UnMuxedVideoDescriptor unmux2) ? unmux2.AudioSources.Where(x=>x.IsDownloadable()).ToList() : new List<IAudioSource>())),
                     SubtitleSources = details.Subtitles.ToList(),
                     ManifestSources = details.Video.VideoSources.Where(x => x is HLSManifestSource)
                         .ToDictionary(x => Array.IndexOf(details.Video.VideoSources, x), y =>

@@ -1,4 +1,4 @@
-import { For, type Component, createResource, createSignal, createEffect, JSX, onCleanup, Show } from 'solid-js';
+import { For, type Component, createResource, createSignal, createEffect, JSX, onCleanup, Show, createMemo } from 'solid-js';
 import styles from './index.module.css';
 import { SourcesBackend } from '../../backend/SourcesBackend';
 import { Backend } from '../../backend/Backend';
@@ -16,6 +16,8 @@ import ScrollContainer from '../../components/containers/ScrollContainer';
 import { SyncBackend } from '../../backend/SyncBackend';
 import { focusable } from '../../focusable'; void focusable;
 import { createResourceDefault } from '../../utility';
+import { ISettingsFieldGroup } from '../../backend/models/settings/fields/SettingsFieldGroup';
+import Toggle from '../../components/basics/inputs/Toggle';
 
 
 export interface SettingsPageProps {
@@ -59,6 +61,33 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
     return true;
   };
 
+    let [showAdvanced$, setAdvanced] = createSignal(false);
+    let hasAdvanced$ = createMemo(()=>{
+        const fields = settings$()?.fields;
+        if(fields)
+            return !!findAdvancedField(fields);
+        return false;
+    });
+
+    function findAdvancedField(fields: ISettingsField[]): ISettingsField | undefined {
+        if(!fields)
+            return undefined;
+        for(let field of fields) {
+            if(field.type == "group") {
+                if(field.advanced) 
+                    return field;
+                const group = field as ISettingsFieldGroup;
+                if(group.fields) {
+                    let foundField = findAdvancedField(group.fields);
+                    if(foundField)
+                        return foundField;
+                }
+            }
+            if(field.advanced)
+                return field;
+        }
+    }
+    
   return (
     <div class={styles.container} style="height: calc(100% - 20px); overflow-y: hidden;">
       <div class={styles.settingsMenu} style={props.settingsMenuStyle}>
@@ -80,6 +109,18 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
               }</For>
             </ScrollContainer>
             <div class={styles.bottomMenu}>
+              <Show when={hasAdvanced$()}>
+                  <div>
+                    <div style="float: left; line-height: 33px; font-size: 16px; color: #999; margin-left: 3px;">
+                      Advanced
+                    </div>
+                    <div style="text-align: right; margin-right: 10px">
+                      <div style="scale: 0.6; display: inline-block">
+                      <Toggle value={showAdvanced$()} onToggle={(val)=>setAdvanced(val)} style=";" />
+                      </div>
+                    </div>
+                  </div>
+              </Show>
               <div style="margin-top: 10px; margin-right: 20px;">
                 <Button onClick={()=>{UIOverlay.dismiss(); UIOverlay.overlayImportSelect()}} style={{width: '100%'}} text='Import' icon='' focusableOpts={{
                   onPress: () => { UIOverlay.dismiss(); UIOverlay.overlayImportSelect() },
@@ -95,7 +136,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       </div>
       <div class={styles.settingsContainer} style={props.settingsContainerStyle}>
         <ScrollContainer>
-          <SettingsContainer settings={settings$()} filterGroup={filterGroup$()} onFieldChanged={onFieldChanged} onBack={globalBack} />
+          <SettingsContainer settings={settings$()} showAdvanced={showAdvanced$()} filterGroup={filterGroup$()} onFieldChanged={onFieldChanged} onBack={globalBack} />
         </ScrollContainer>
       </div>
     </div>

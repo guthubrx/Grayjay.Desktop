@@ -6,7 +6,7 @@ export interface VirtualGridProps {
     itemHeight?: number;
     itemWidth: number;
     items?: any[];
-    builder: (index: Accessor<number | undefined>, item: Accessor<any>) => JSX.Element;
+    builder: (index: Accessor<number | undefined>, item: Accessor<any>, row: Accessor<number | undefined>, col: Accessor<number | undefined>) => JSX.Element;
     outerContainerRef: HTMLDivElement | undefined;
     overscan?: number;
     notifyEndOnLast?: number;
@@ -265,7 +265,24 @@ const VirtualGrid: Component<VirtualGridProps> = (props) => {
             const [left$, setLeft] = createSignal<number>(-1);
             const [index$, setIndex] = createSignal<number | undefined>(undefined);
             const [item$, setItem] = createSignal<any>();
-            const element = props.builder(index$, item$);
+            const row$ = createMemo(() => {
+                const i = index$();
+                const rp = renderProperties();
+                if (!i) {
+                    return undefined;
+                }
+                return Math.floor(i / rp.itemsPerRow);
+            });
+            const col$ = createMemo(() => {
+                const i = index$();
+                const row = row$();
+                const rp = renderProperties();
+                if (!i || !row) {
+                    return undefined;
+                }
+                return i - row * rp.itemsPerRow;
+            });
+            const element = props.builder(index$, item$, row$, col$);
             return {
                 top: top$,
                 left: left$,

@@ -16,21 +16,16 @@ namespace Grayjay.ClientServer.Settings
         public LanguageSettings Language { get; set; } = new LanguageSettings();
         public class LanguageSettings
         {
-
-            [SettingsField("App Language", SettingsField.DROPDOWN, "", 0)]
-            [SettingsDropdownOptions("")]
             public int AppLanguage { get; set; } = 0;
         }
 
         //Home
-        [SettingsField("Home", SettingsField.GROUP, "Configure how your Home tab works and feels", 1)]
         public HomeSettings Home { get; set; } = new HomeSettings();
         public class HomeSettings
         {
             //[SettingsField("Preview Feed Items", SettingsField.TOGGLE, "When the preview feedstyle is used, if items should auto-preview when scrolling over them", 6)]
             //public bool PreviewFeedItems { get; set; } = true;
 
-            [SettingsField("Progress Bar", SettingsField.TOGGLE, "If a historical progress bar should be shown", 7)]
             public bool ProgressBar { get; set; } = true;
 
         }
@@ -41,20 +36,18 @@ namespace Grayjay.ClientServer.Settings
         public class SearchSettings
         {
             [SettingsField("Search history", SettingsField.TOGGLE, "Disable to stop recording of new search history entries", 3)]
+            [SettingsAdvanced]
             public bool SearchHistory { get; set; } = true;
 
             //[SettingsField("Preview Feed Items", SettingsField.TOGGLE, "When the preview feedstyle is used, if items should automatically preview.", 5)]
             //public bool PreviewFeedItems { get; set; } = true;
 
-            [SettingsField("Progress Bar", SettingsField.TOGGLE, "If a historical progress bar should be shown", 6)]
             public bool ProgressBar { get; set; } = true;
         }
 
-        [SettingsField("Channel", "group", "", 3)]
         public ChannelSettings Channel { get; set; } = new ChannelSettings();
         public class ChannelSettings
         {
-            [SettingsField("Progress Bar", SettingsField.TOGGLE, "If a historical progress bar should be shown", 6)]
             public bool ProgressBar { get; set; } = true;
         }
 
@@ -72,6 +65,7 @@ namespace Grayjay.ClientServer.Settings
             //public bool PreviewFeedItems { get; set; } = true;
 
             [SettingsField("Progress Bar", SettingsField.TOGGLE, "If a historical progress bar should be shown", 7)]
+            [SettingsAdvanced]
             public bool ProgressBar { get; set; } = true;
 
             //[SettingsField("Fetch on app boot", SettingsField.TOGGLE, "Shortly after opening the app, start fetching subscriptions", 8)]
@@ -156,7 +150,7 @@ namespace Grayjay.ClientServer.Settings
                 };
             }
 
-            [SettingsField("Prefer Original Audio", SettingsField.TOGGLE, "", 0)]
+            [SettingsField("Prefer Original Audio", SettingsField.TOGGLE, "Specify if original audio (eg. non-AI generated audio) is preferred over the selected language.", 0)]
             public bool PreferOriginalAudio { get; set; } = true;
 
             [SettingsField("Default Playback Speed", SettingsField.DROPDOWN, "", 1)]
@@ -301,27 +295,34 @@ namespace Grayjay.ClientServer.Settings
             public bool Enabled { get; set; } = false;
 
             [SettingsField("mDNS Broadcast", SettingsField.TOGGLE, "Allow device to broadcast presence using mDNS", 1)]
+            [SettingsAdvanced]
             public bool Broadcast { get; set; } = true;
 
             [SettingsField("mDNS Connect", SettingsField.TOGGLE, "Allow device to search for and initiate connection with known paired devices using mDNS", 2)]
+            [SettingsAdvanced]
             public bool ConnectDiscovered { get; set; } = true;
 
             [SettingsField("Connect Last Known", SettingsField.TOGGLE, "Allow device to automatically connect to last known endpoints", 3)]
+            [SettingsAdvanced]
             public bool ConnectLast { get; set; } = true;
 
             [SettingsField("Relay Enable", SettingsField.TOGGLE, "Allow device to use a relay for discovery/relaying connection", 4)]
             public bool DiscoverThroughRelay { get; set; } = true;
 
             [SettingsField("Relay Pairing", SettingsField.TOGGLE, "Allow device to be paired through the relay", 4)]
+            [SettingsAdvanced]
             public bool PairThroughRelay { get; set; } = true;
 
             [SettingsField("Relay Connect Relayed", SettingsField.TOGGLE, "Allow device to be connected to using a relayed connection", 4)]
+            [SettingsAdvanced]
             public bool ConnectThroughRelay { get; set; } = true;
 
             [SettingsField("Relay Connect Direct", SettingsField.TOGGLE, "Allow device to be directly connected to using relay published information", 4)]
+            [SettingsAdvanced]
             public bool ConnectLocalDirectThroughRelay { get; set; } = true;
 
             [SettingsField("Bind Listener", SettingsField.TOGGLE, "Allow device to be directly connected to", 4)]
+            [SettingsAdvanced]
             public bool LocalConnections { get; set; } = true;
         }
 

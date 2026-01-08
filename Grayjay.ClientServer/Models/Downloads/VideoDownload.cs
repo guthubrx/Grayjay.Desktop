@@ -1,4 +1,5 @@
-﻿using Grayjay.ClientServer.Exceptions;
+﻿using Grayjay.ClientServer.Constants;
+using Grayjay.ClientServer.Exceptions;
 using Grayjay.ClientServer.Helpers;
 using Grayjay.ClientServer.Parsers;
 using Grayjay.ClientServer.Settings;
@@ -39,6 +40,7 @@ namespace Grayjay.ClientServer.Models.Downloads
 
         public long? TargetPixelCount { get; set; }
         public long? TargetBitrate { get; set; }
+        public string? TargetLanguage { get; set; }
         public string? SubtitleName { get; set; }
 
         public IVideoSource? VideoSource { get; set; }
@@ -56,6 +58,8 @@ namespace Grayjay.ClientServer.Models.Downloads
         public IAudioSource? AudioSourceLive { get; set; }
         [JsonIgnore]
         private IAudioSource? AudioSourceToUse => AudioSourceLive ?? AudioSource;
+        [JsonIgnore]
+        public IAudioSource? AudioSourceOverride { get; set; }
         public StreamMetaData? AudioSourceMetaDataOverride { get; set; }
         public string AudioSourceMimeTypeOverride { get; set; }
 
@@ -99,7 +103,7 @@ namespace Grayjay.ClientServer.Models.Downloads
 
 
         public VideoDownload() { }
-        public VideoDownload(PlatformVideo video, long? targetPixelCount = null, long? targetBitRate = null, string groupType = null, string groupId = null)
+        public VideoDownload(PlatformVideo video, long? targetPixelCount = null, long? targetBitRate = null, string targetLanguage = null, string groupType = null, string groupId = null)
         {
             Video = video;
             VideoSource = null;
@@ -125,6 +129,11 @@ namespace Grayjay.ClientServer.Models.Downloads
             SubtitleSourceLive = subtitleSource;
             TargetPixelCount = (videoSource != null) ? videoSource.Width * videoSource.Height : null;
             TargetBitrate = audioSource?.Bitrate;
+            if (audioSource != null)
+                TargetLanguage = (audioSource?.Language != Language.UNKNOWN) ? audioSource?.Language : null;
+            else
+                TargetLanguage = (videoSource?.Language != Language.UNKNOWN) ? videoSource?.Language : null;
+
             SubtitleName = subtitleSource?.Name;
 
             VideoSourceRequiresLive = (videoSource is DashManifestRawSource dashManifestRawSource && dashManifestRawSource.HasGenerate) ||
@@ -261,7 +270,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                             videoSources.Add(source);
                     }
 
-                    var vsource = VideoHelper.SelectBestVideoSource(videoSources, (int)TargetPixelCount, new List<string>());
+                    var vsource = VideoHelper.SelectBestVideoSource(videoSources, (int)TargetPixelCount, new List<string>(), TargetLanguage, TargetLanguage != null);
                     if (vsource != null)
                     {
                         if (vsource is VideoUrlSource || vsource is DashManifestRawSource)
@@ -287,7 +296,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                         }
                     }
 
-                    var asource = VideoHelper.SelectBestAudioSource(audioSources, new List<string>(), null, TargetBitrate);
+                    var asource = VideoHelper.SelectBestAudioSource(audioSources, new List<string>(), TargetLanguage, TargetBitrate, TargetLanguage != null);
                     if (asource == null && VideoSource == null)
                         throw new DownloadException("Could not find a valid video or audio source for download", false);
 
@@ -327,11 +336,22 @@ namespace Grayjay.ClientServer.Models.Downloads
             List<DashRepresentation> videoRepresentations = (!string.IsNullOrEmpty(videoDash)) ? DashHelper.GetRepresentations(videoDash) : null;
             if (VideoSource != null)
             {
-                var representation = videoRepresentations?.FirstOrDefault();
+                var representation = videoRepresentations?.FirstOrDefault(x => x.MimeType.StartsWith("video/"));
                 var mimeType = representation?.MimeType ?? VideoSource.Container;
 
                 VideoFileName = $"{VideoDetails.ID.Value} [{VideoSource.Width}x{VideoSource.Height}].{VideoHelper.VideoContainerToExtension(mimeType)}".SanitizeFileName();
                 VideoFilePath = Path.Combine(downloadDir, VideoFileName);
+
+                if(AudioSource == null && VideoSource is DashManifestRawSource)
+                {
+                    var representationAudio = videoRepresentations?.FirstOrDefault(x => x.MimeType.StartsWith("audio/"));
+                    var mimeTypeAudio = representation?.MimeType;
+                    if(representationAudio != null && mimeTypeAudio != null)
+                    {
+                        AudioFileName = $"{VideoDetails.ID.Value} [unknown].{VideoHelper.AudioContainerToExtension(mimeTypeAudio)}".SanitizeFileName();
+                        AudioFilePath = Path.Combine(downloadDir, AudioFileName);
+                    }
+                }
             }
             string audioDash = (AudioSource is DashManifestRawAudioSource dAudioSource) ? dAudioSource.Generate() : null;
             List<DashRepresentation> audioRepresentations = (!string.IsNullOrEmpty(audioDash)) ? DashHelper.GetRepresentations(audioDash) : null;
@@ -387,9 +407,10 @@ namespace Grayjay.ClientServer.Models.Downloads
 
                     if (VideoSourceToUse is DashManifestRawSource dashManifestRawSource)
                     {
-                        var rep = videoRepresentations.FirstOrDefault();
+                        var rep = videoRepresentations.FirstOrDefault(x => x.MimeType.StartsWith("video/"));
+                        var repAudio = AudioSourceToUse == null ? videoRepresentations.FirstOrDefault(x => x.MimeType.StartsWith("audio/")) : null;
 
-                        (var length, var metaData) = await DownloadDashRawSource("Video", client, dashManifestRawSource, rep, VideoFilePath, progressCallback);
+                        (var length, var metaData) = await DownloadDashRawSource("Video", client, dashManifestRawSource, rep, VideoFilePath, progressCallback, default, repAudio, (repAudio != null) ? AudioFilePath : null);
                         VideoFileSize = length;
                         if (metaData != null)
                             VideoSourceMetaDataOverride = metaData;
@@ -748,20 +769,27 @@ namespace Grayjay.ClientServer.Models.Downloads
         }
 
 
-        private async Task<(long, StreamMetaData)> DownloadDashRawSource(string name, ManagedHttpClient client, IDashManifestRawSource source, DashRepresentation rep, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default)
+        private async Task<(long, StreamMetaData)> DownloadDashRawSource(string name, ManagedHttpClient client, IDashManifestRawSource source, DashRepresentation rep, string targetFile, Action<long, long, long> onProgress, CancellationToken cancel = default, DashRepresentation repAudio = null, string targetFileAudio = null)
         {
             if (File.Exists(targetFile))
                 File.Delete(targetFile);
-
+            string dash = null;
             if (rep == null)
             {
-                var dash = source.Generate();
-                rep = DashHelper.GetRepresentations(dash).First();
+                var reps = DashHelper.GetRepresentations(dash);
+                dash = source.Generate();
+                rep = reps.First(x=>x.MimeType.StartsWith("video/"));
+
+                if(repAudio == null && targetFileAudio != null)
+                {
+                    repAudio = reps.First(x => x.MimeType.StartsWith("audio/"));
+                }
             }
 
             var executor = source.GetRequestExecutor();
             var modifier = source?.GetRequestModifier();
             StreamMetaData metaData = null;
+            StreamMetaData metaDataAudio = null;
 
             if (source.HasStreamMetadata)
                 metaData = new StreamMetaData()
@@ -771,16 +799,33 @@ namespace Grayjay.ClientServer.Models.Downloads
                     FileIndexStart = source.IndexStart,
                     FileIndexEnd = source.IndexEnd
                 };
+            if (source is DashManifestRawSource sourceDash && sourceDash.HasAudioStreamMetadata)
+                metaDataAudio = new StreamMetaData()
+                {
+                    FileInitStart = sourceDash.AudioInitStart,
+                    FileInitEnd = sourceDash.AudioInitEnd,
+                    FileIndexStart = sourceDash.AudioIndexStart,
+                    FileIndexEnd = sourceDash.AudioIndexEnd
+                };
 
             long sourceLength = 0;
             try
             {
                 using (FileStream stream = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+                using (FileStream streamAudio = ((targetFileAudio != null) ? new FileStream(targetFileAudio, FileMode.Create, FileAccess.Write, FileShare.ReadWrite) : null))
                 {
                     Logger.i(nameof(VideoDownload), $"Download {Video.Name} segments (" + rep.Segments.Count.ToString() + ")");
                     long read = 0;
+                    long readAudio = 0;
                     var speedmeter = new SpeedMonitor(TimeSpan.FromSeconds(5));
                     int preRead = 0;
+                    int preReadAudio = 0;
+                    int segmentsTotal = (rep?.Segments?.Count ?? 0) + (repAudio?.Segments?.Count ?? 0) + 1;
+                    if (repAudio != null)
+                        segmentsTotal++;
+                    int segmentsDownloadedCount = 0;
+                    var segmentsDownloadedAudio = new HashSet<DashSegment>();
+                    long totalEstimateSize = 0;
                     if (rep?.InitializationUrl != null)
                     {
                         int segRead = 0;
@@ -793,12 +838,31 @@ namespace Grayjay.ClientServer.Models.Downloads
                         else
                             segRead = (int)DownloadSourceSequential(client, modifier, stream, rep.InitializationUrl, onProgress);
                         read += segRead;
+                        segmentsDownloadedCount++;
                         speedmeter.Activity(read);
-                        onProgress?.Invoke(rep.Segments.Count * (read), read, speedmeter.GetCurrentSpeed());
+                        onProgress?.Invoke(rep.Segments.Count * read, read, speedmeter.GetCurrentSpeed());
                         preRead += segRead;
+                    }
+                    if(repAudio?.InitializationUrl != null)
+                    {
+                        int segRead = 0;
+                        if (executor != null)
+                        {
+                            var data = executor.ExecuteRequest(repAudio.InitializationUrl, new Dictionary<string, string>());
+                            streamAudio.Write(data, 0, data.Length);
+                            segRead = data.Length;
+                        }
+                        else
+                            segRead = (int)DownloadSourceSequential(client, modifier, streamAudio, repAudio.InitializationUrl, onProgress);
+                        readAudio += segRead;
+                        segmentsDownloadedCount++;
+                        speedmeter.Activity(readAudio);
+                        onProgress?.Invoke(segmentsTotal, segmentsDownloadedCount, speedmeter.GetCurrentSpeed());
+                        preReadAudio += segRead;
                     }
                     for (int i = 0; i < rep.Segments.Count; i++)
                     {
+                        bool isLast = i == rep.Segments.Count - 1;
                         var segment = rep.Segments[i];
                         int segRead = 0;
                         if (executor != null)
@@ -814,9 +878,60 @@ namespace Grayjay.ClientServer.Models.Downloads
 
                         var avgSegmentSize = (long)(read / (i + 1));
                         var estimatedSize = (rep.Segments.Count * (long)avgSegmentSize + preRead);
-                        onProgress?.Invoke(estimatedSize, (avgSegmentSize * (i + 1) + preRead), speedmeter.GetCurrentSpeed());
+                        segmentsDownloadedCount++;
+                        onProgress?.Invoke(totalEstimateSize, read + readAudio, speedmeter.GetCurrentSpeed());
+
+                        var audioToDownload = (repAudio != null) ?
+                            (isLast ? 
+                                repAudio.Segments.Where(x=>!segmentsDownloadedAudio.Contains(x)).ToList() :
+                                repAudio.Segments.Where(x=>x.StartTime < segment.StartTime && !segmentsDownloadedAudio.Contains(x)).ToList()
+                            ) : new List<DashSegment>();
+
+                        foreach(var segmentAudio in audioToDownload)
+                        {
+                            int segReadAudio = 0;
+                            if (executor != null)
+                            {
+                                var data = executor.ExecuteRequest(segmentAudio.Url, new Dictionary<string, string>());
+                                streamAudio.Write(data, 0, data.Length);
+                                segReadAudio = data.Length;
+                            }
+                            else
+                                segReadAudio = (int)DownloadSourceSequential(client, modifier, stream, segment.Url, onProgress);
+                            readAudio += segReadAudio;
+                            speedmeter.Activity(segReadAudio);
+
+                            var avgSegmentSizeAudio = (long)(readAudio / (i + 1));
+                            var estimatedSizeAudio = (repAudio.Segments.Count * (long)avgSegmentSizeAudio + preReadAudio);
+                            segmentsDownloadedCount++;
+                            segmentsDownloadedAudio.Add(segmentAudio);
+                            totalEstimateSize = estimatedSize + estimatedSizeAudio;
+                            onProgress?.Invoke(totalEstimateSize, read + readAudio, speedmeter.GetCurrentSpeed());
+                        }
                     }
                     onProgress?.Invoke(read, read, speedmeter.GetCurrentSpeed());
+
+
+                    if(repAudio != null)
+                    {
+
+                        AudioFileSize = readAudio;
+                        AudioSourceOverride = new LocalAudioSource()
+                        {
+                            Name = (VideoSourceToUse?.Name != null) ? VideoSourceToUse.Name + " [audio]" : "audio",
+                            FilePath = "",
+                            FileSize = readAudio,
+                            Container = repAudio.MimeType,
+                            Codec = repAudio.Codec,
+                            Language = Language.UNKNOWN
+                        };
+                        AudioSourceMetaDataOverride = metaDataAudio;
+                        //if (metaData != null)
+                        //    AudioSourceMetaDataOverride = metaData;
+                        if (rep != null)
+                            AudioSourceMimeTypeOverride = repAudio.MimeType;
+                    }
+
                     return (read, metaData);
                 }
             }
@@ -1137,7 +1252,7 @@ namespace Grayjay.ClientServer.Models.Downloads
         {
             var existing = StateDownloads.GetDownloadedVideo(Video.ID);
             var localVideoSource = (VideoFilePath != null ? LocalVideoSource.FromSource(VideoSourceToUse, VideoFilePath, VideoFileSize.Value, VideoSourceMetaDataOverride, VideoSourceMimeTypeOverride) : null);
-            var localAudioSource = (AudioFilePath != null ? LocalAudioSource.FromSource(AudioSourceToUse, AudioFilePath, AudioFileSize.Value, AudioSourceMetaDataOverride, AudioSourceMimeTypeOverride) : null);
+            var localAudioSource = (AudioFilePath != null ? LocalAudioSource.FromSource(AudioSourceOverride ?? AudioSourceToUse, AudioFilePath, AudioFileSize.Value, AudioSourceMetaDataOverride, AudioSourceMimeTypeOverride) : null);
             var localSubtitleSource = (SubtitleFilePath != null ? LocalSubtitleSource.FromSource(SubtitleSourcetoUse, SubtitleFilePath) : null);
 
             if (localVideoSource != null && VideoSourceToUse != null && VideoSourceToUse is IStreamMetaDataSource smsv)

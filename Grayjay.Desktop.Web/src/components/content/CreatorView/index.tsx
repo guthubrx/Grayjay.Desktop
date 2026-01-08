@@ -1,4 +1,4 @@
-import { Component, Show, createMemo, createSignal } from 'solid-js'
+import { Component, JSX, Show, createMemo, createSignal } from 'solid-js'
 
 import styles from './index.module.css';
 import { proxyImage, toHumanSignificantDuration, toHumanTime } from '../../../utility';
@@ -22,6 +22,7 @@ interface CreatorViewProps {
   onSettingsClick?: (el: HTMLElement) => void;
   isSubscribedInitialState?: boolean;
   focusableOpts?: FocusableOptions;
+  style?: JSX.CSSProperties;
 }
 
 const CreatorView: Component<CreatorViewProps> = (props) => {
@@ -48,7 +49,7 @@ const CreatorView: Component<CreatorViewProps> = (props) => {
   });
 
   return (
-    <div class={styles.containerCreator} onClick={() => props.onClick?.()} use:focusable={props.focusableOpts}>
+    <div class={styles.containerCreator} onClick={() => props.onClick?.()} use:focusable={props.focusableOpts} style={props.style}>
       <div style="position: relative; display: inline-block;"> 
         <img src={(props.thumbnail) ? "/Images/CachePassthrough?url=" + encodeURIComponent(props.thumbnail) : undefined} class={styles.thumbnail} referrerPolicy='no-referrer' />
         <Show when={pluginIconUrl()}>

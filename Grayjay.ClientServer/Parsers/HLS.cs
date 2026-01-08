@@ -351,35 +351,61 @@ public static class HLS
 
     private static Dictionary<string, string> ParseAttributes(string content)
     {
-        var attributes = new Dictionary<string, string>();
+        int colon = content.IndexOf(':');
+        if (colon < 0)
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        int startIndex = content.IndexOf(":");
-        if (startIndex < 0)
-            return attributes;
+        var attrs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        var attributePairs = content.Substring(startIndex + 1).Split(',');
+        var sb = new StringBuilder();
+        bool inQuotes = false;
 
-        var currentPair = new StringBuilder();
-        foreach (var pair in attributePairs)
+        void FlushPair()
         {
-            currentPair.Append(pair);
-            if (currentPair.ToString().Count(c => c == '\"') % 2 == 0)
-            {
-                var pairParts = currentPair.ToString().Split('=');
-                if (pairParts.Length < 2)
-                    continue;
-                attributes[pairParts[0].Trim()] = pairParts[1].Trim().Trim('"');
-                currentPair.Clear();
-            }
-            else
-            {
-                currentPair.Append(',');
-            }
+            if (sb.Length == 0) return;
+
+            var token = sb.ToString().Trim();
+            sb.Clear();
+
+            if (token.Length == 0) return;
+
+            int eq = token.IndexOf('=');
+            if (eq <= 0) return;
+
+            string key = token.Substring(0, eq).Trim();
+            string value = token.Substring(eq + 1).Trim();
+
+            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+                value = value.Substring(1, value.Length - 2);
+            attrs[key] = value;
         }
 
-        return attributes;
-    }
+        for (int i = colon + 1; i < content.Length; i++)
+        {
+            char c = content[i];
 
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+                sb.Append(c);
+                continue;
+            }
+
+            if (c == ',' && !inQuotes)
+            {
+                FlushPair();
+                continue;
+            }
+
+            sb.Append(c);
+        }
+
+        if (inQuotes)
+            throw new InvalidDataException("Unterminated quoted-string in attribute list: " + content);
+
+        FlushPair();
+        return attrs;
+    }
 
     public interface IHLSPlaylist
     {
@@ -449,11 +475,14 @@ public static class HLS
                     int.TryParse(resolutionTokens[1], out height);
                 }
 
-                var suffix = string.Join(", ", new string[]
+                var suffix =  string.Join(", ", new string[]
                 {
                     x.StreamInfo?.Video ?? "",
                     x.StreamInfo?.Codecs ?? ""
-                }.Where(x => x != null));
+                }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+                if (string.IsNullOrWhiteSpace(suffix))
+                    suffix = $"{width}x{height}";
 
                 return new HLSVariantVideoUrlSource()
                 {
@@ -600,11 +629,14 @@ public static class HLS
                 int.TryParse(resolutionTokens[1], out height);
             }
 
-            var suffix = string.Join(", ", new string[]
+            var suffix =  string.Join(", ", new string[]
             {
-                    x.StreamInfo?.Video ?? "",
-                    x.StreamInfo?.Codecs ?? ""
-            }.Where(x => x != null));
+                x.StreamInfo?.Video ?? "",
+                x.StreamInfo?.Codecs ?? ""
+            }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+            if (string.IsNullOrWhiteSpace(suffix))
+                suffix = $"{width}x{height}";
 
             var mediaSegment = x.Segments.OfType<MediaSegment>().FirstOrDefault();
             var url = mediaSegment?.Uri ?? string.Empty;

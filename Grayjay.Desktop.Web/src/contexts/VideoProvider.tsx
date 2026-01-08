@@ -41,7 +41,7 @@ export interface VideoContextValue {
     actions: {
         openVideo: (video: IPlatformVideo, time?: Duration, videoState?: VideoState) => void;
         openVideoByUrl: (url: string, time?: Duration, videoState?: VideoState) => void;
-        setQueue: (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean) => void;
+        setQueue: (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState) => void;
         addToQueue: (v: IPlatformVideo) => void;
         setIndex: (index: number) => void;
         setRepeat: (value: boolean) => void;
@@ -102,12 +102,13 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
                 setState(desiredVideoState);
         });
     };
-    const sq = (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean) => { 
+    const sq = (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState) => { 
         if (index < 0 || index >= queue.length) {
             console.error("index not valid for queue", {index, queue});
             return;
         }
 
+        const desiredVideoState = videoState ?? VideoState.Maximized;
         batch(() => {
             setIndex(index);
             setQueue(queue);
@@ -116,8 +117,8 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
                 setRepeat(repeat);
             if (shuffle !== undefined)
                 setShuffle(shuffle);
-            if (state() === VideoState.Closed)
-                setState(VideoState.Maximized);
+            if (state() !== desiredVideoState)
+                setState(desiredVideoState);
         });
     };
     const addToQueue = (video: IPlatformVideo) => { 
