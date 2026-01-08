@@ -2,11 +2,18 @@ using System.IO.Compression;
 using System.Net.Security;
 using System.Net.Sockets;
 using Grayjay.Desktop.POC;
+using Grayjay.Engine.Models;
+using Grayjay.Engine.Packages;
 
 namespace Grayjay.ClientServer.Proxy
 {
     public class HttpProxySession : IDisposable
     {
+        private static readonly HashSet<string> _hopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "connection", "proxy-connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade"
+        };
+
         private readonly HttpProxy _proxy;
         private readonly Stream _stream;
         private readonly Action<HttpProxySession> _onDisconnected;
@@ -49,6 +56,56 @@ namespace Grayjay.ClientServer.Proxy
             });
         }
 
+
+        private static void RemoveHopByHopHeaders(HttpHeaders headers)
+        {
+            foreach (var h in _hopByHopHeaders) headers.Remove(h);
+        }
+        
+        private static void RemoveHopByHopHeaders(List<KeyValuePair<string, string>> headers)
+        {
+            headers.RemoveAll(kv => _hopByHopHeaders.Contains(kv.Key));
+        }
+
+        private static string ResolveRedirectUrl(string currentUrl, string location)
+        {
+            if (Uri.TryCreate(location, UriKind.Absolute, out var abs)) return abs.ToString();
+            var baseUri = new Uri(currentUrl);
+            return new Uri(baseUri, location).ToString();
+        }
+
+        private async Task<byte[]?> ReadRequestBodyBytesAsync(HttpProxyStream clientStream, HttpProxyRequest request, CancellationToken ct)
+        {
+            if (_noBodyMethods.Contains(request.Method))
+                return null;
+
+            if (request.Headers.TryGetFirst("transfer-encoding", out var te) &&
+                te!.Equals("chunked", StringComparison.OrdinalIgnoreCase))
+            {
+                using var ms = new MemoryStream();
+                using (var bodyStream = new HttpProxyStream(ms))
+                    await clientStream.TransferAllChunksAsync(bodyStream, true, ct);
+
+                request.Headers.Remove("transfer-encoding");
+                request.Headers.Set("content-length", ms.Length.ToString());
+                return ms.ToArray();
+            }
+
+            if (request.Headers.TryGetFirst("content-length", out var cls) && int.TryParse(cls, out var len) && len >= 0)
+            {
+                using var ms = new MemoryStream(len);
+                using (var bodyStream = new HttpProxyStream(ms))
+                    await clientStream.TransferFixedLengthContentAsync(bodyStream, len, ct);
+                return ms.ToArray();
+            }
+
+            using var fb = new MemoryStream();
+            using (var bodyStream = new HttpProxyStream(fb))
+                await clientStream.TransferUntilEndOfStreamAsync(bodyStream, ct);
+            request.Headers.Set("content-length", fb.Length.ToString());
+            return fb.ToArray();
+        }
+
         public async Task RunAsync()
         {
             using var clientStream = new HttpProxyStream(_stream);
@@ -65,7 +122,7 @@ namespace Grayjay.ClientServer.Proxy
                 {
                     string? referer;
                     int port = _proxy.LocalEndPoint.Port;
-                    if (incomingRequest.Headers.TryGetValue("referer", out referer) && referer != null) 
+                    if (incomingRequest.Headers.TryGetFirst("referer", out referer) && referer != null) 
                     {
                         if (referer.Contains("localhost:" + port) || referer.Contains("127.0.0.1:" + port))
                         {
@@ -87,13 +144,13 @@ namespace Grayjay.ClientServer.Proxy
                 {
                     await clientStream.WriteResponseAsync(new HttpProxyResponse()
                     {
-                        Headers = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase)
+                        Headers = new HttpHeaders(new List<KeyValuePair<string, string>>
                         {
-                            { "access-control-allow-headers", "*" },
-                            { "access-control-allow-methods", registryEntry.SupportedMethods != null ? string.Join(", ", registryEntry.SupportedMethods) : "*" },
-                            { "access-control-allow-origin", "*" },
-                            { "content-length", "0" } //TODO: Can this become 204 and can content-length: 0 then be removed?
-                        },
+                            new("access-control-allow-headers", "*"),
+                            new("access-control-allow-methods", registryEntry.SupportedMethods != null ? string.Join(", ", registryEntry.SupportedMethods) : "*"),
+                            new("access-control-allow-origin", "*"),
+                            new("content-length", "0") //TODO: Can this become 204 and can content-length: 0 then be removed?
+                        }),
                         StatusCode = 200,
                         Version = "HTTP/1.1"
                     }, _cancellationTokenSource.Token);
@@ -111,9 +168,16 @@ namespace Grayjay.ClientServer.Proxy
                     string? previousUrl = null;
                     HttpProxyResponse? returnedResponse = null;
                     bool isRedirected = false;
-                    Dictionary<string, string> initialHeaders = null;
+                    bool handledThisRequest = false;
+                    HttpHeaders? initialHeaders = null;
+                    byte[]? bufferedRequestBody = null;
+                    bool bufferedRequestBodyRead = false;
+
                     while (true)
                     {
+                        if (handledThisRequest)
+                            break;
+
                         var parsedUrl = Utilities.ParseUrl(url);
                         if (isRelativeProxy || registryEntry.IsRelative)
                         {
@@ -123,16 +187,15 @@ namespace Grayjay.ClientServer.Proxy
 
                         incomingRequest.Path = parsedUrl.Path;
 
-
                         if (registryEntry.RequestHeaderOptions.InjectHost)
-                            incomingRequest.Headers["host"] = parsedUrl.Host;
-                        else if (registryEntry.RequestHeaderOptions.ReplaceHost && incomingRequest.Headers.ContainsKey("host"))
-                            incomingRequest.Headers["host"] = parsedUrl.Host;
+                            incomingRequest.Headers.Set("host", parsedUrl.Host);
+                        else if (registryEntry.RequestHeaderOptions.ReplaceHost && incomingRequest.Headers.Contains("host"))
+                            incomingRequest.Headers.Set("host", parsedUrl.Host);
 
                         if (registryEntry.RequestHeaderOptions.InjectOrigin)
-                            incomingRequest.Headers["origin"] = parsedUrl.Scheme + "://" + parsedUrl.Host;
-                        else if (registryEntry.RequestHeaderOptions.ReplaceOrigin && incomingRequest.Headers.ContainsKey("origin"))
-                            incomingRequest.Headers["origin"] = parsedUrl.Scheme + "://" + parsedUrl.Host;
+                            incomingRequest.Headers.Set("origin", parsedUrl.Scheme + "://" + parsedUrl.Host);
+                        else if (registryEntry.RequestHeaderOptions.ReplaceOrigin && incomingRequest.Headers.Contains("origin"))
+                            incomingRequest.Headers.Set("origin", parsedUrl.Scheme + "://" + parsedUrl.Host);
 
                         if (!isRedirected)
                         {
@@ -140,16 +203,16 @@ namespace Grayjay.ClientServer.Proxy
                             {
                                 //TODO: This is not entirely correct, referer should have something related to the previous request
                                 if (isRelativeProxy)
-                                    incomingRequest.Headers["referer"] = registryEntry.Url;
+                                    incomingRequest.Headers.Set("referer", registryEntry.Url);
                                 else
-                                    incomingRequest.Headers["referer"] = url;
+                                    incomingRequest.Headers.Set("referer", url);
                             }
-                            else if (registryEntry.RequestHeaderOptions.ReplaceOrigin && incomingRequest.Headers.ContainsKey("referer"))
+                            else if (registryEntry.RequestHeaderOptions.ReplaceOrigin && incomingRequest.Headers.Contains("referer"))
                             {
                                 if (isRelativeProxy)
-                                    incomingRequest.Headers["referer"] = registryEntry.Url;
+                                    incomingRequest.Headers.Set("referer", registryEntry.Url);
                                 else
-                                    incomingRequest.Headers["referer"] = url;
+                                    incomingRequest.Headers.Set("referer", url);
                             }
 
                             foreach (var r in registryEntry.RequestHeaderOptions.HeadersToInject)
@@ -157,13 +220,14 @@ namespace Grayjay.ClientServer.Proxy
                                 if (r.Value == null)
                                     incomingRequest.Headers.Remove(r.Key);
                                 else
-                                    incomingRequest.Headers[r.Key] = r.Value;
+                                    incomingRequest.Headers.Set(r.Key, r.Value);
                             }
 
-                            initialHeaders = new Dictionary<string, string>(incomingRequest.Headers, StringComparer.OrdinalIgnoreCase);
+                            initialHeaders = incomingRequest.Headers.Clone();
                             if (registryEntry.RequestModifier != null)
                             {
                                 (var newUrl, incomingRequest) = registryEntry.RequestModifier(url, incomingRequest);
+                                url = newUrl;
                                 parsedUrl = Utilities.ParseUrl(newUrl);
                                 incomingRequest.Path = parsedUrl.Path;
                             }
@@ -171,7 +235,7 @@ namespace Grayjay.ClientServer.Proxy
                         else
                         {
                             if(previousUrl != null)
-                                incomingRequest.Headers["referer"] = previousUrl;
+                                incomingRequest.Headers.Set("referer", previousUrl);
                         }
 
 
@@ -189,17 +253,132 @@ namespace Grayjay.ClientServer.Proxy
                             return;
                         }
 
+                        if (!string.IsNullOrEmpty(incomingRequest.Options?.ImpersonateTarget))
+                        {
+                            if (!bufferedRequestBodyRead)
+                            {
+                                bufferedRequestBody = await ReadRequestBodyBytesAsync(clientStream, incomingRequest, _cancellationTokenSource.Token);
+                                bufferedRequestBodyRead = true;
+                            }
+
+                            var outHeaders = incomingRequest.Headers.Clone();
+                            RemoveHopByHopHeaders(outHeaders);
+
+                            if (bufferedRequestBody != null)
+                                outHeaders["content-length"] = bufferedRequestBody.Length.ToString();
+
+                            var curlResult = Libcurl.Perform(new Libcurl.Request
+                            {
+                                Url = url,
+                                Method = incomingRequest.Method,
+                                Headers = outHeaders.ToList(),
+                                ImpersonateTarget = incomingRequest.Options.ImpersonateTarget,
+                                Body = bufferedRequestBody
+                            });
+
+                            if (curlResult == null)
+                                throw new InvalidOperationException("Libcurl.Perform returned null for: " + url);
+
+                            HttpHeaders respHeaders = curlResult.Headers != null
+                                ? new HttpHeaders(curlResult.Headers)
+                                : new HttpHeaders();
+
+                            RemoveHopByHopHeaders(respHeaders);
+
+                            returnedResponse = new HttpProxyResponse
+                            {
+                                StatusCode = curlResult.Status,
+                                Version = "HTTP/1.1",
+                                Headers = respHeaders
+                            };
+
+                            // your range fix-up parity
+                            if (returnedResponse.StatusCode == 200 &&
+                                registryEntry.RequestModifier != null &&
+                                initialHeaders != null &&
+                                initialHeaders.Contains("range") &&
+                                !incomingRequest.Headers.Contains("range"))
+                            {
+                                returnedResponse.StatusCode = 206;
+                                var rangeParts = initialHeaders["range"]!.Substring("bytes=".Length).Split("-");
+                                returnedResponse.Headers["content-range"] = $"bytes {rangeParts[0]}-{rangeParts[1]}/*";
+                            }
+
+                            //TODO: Follow redirects ignored for impersonated requests
+
+                            if (registryEntry.ResponseHeaderOptions.InjectPermissiveCORS)
+                                returnedResponse.Headers["access-control-allow-origin"] = "*";
+
+                            foreach (var r in registryEntry.ResponseHeaderOptions.HeadersToInject)
+                            {
+                                if (r.Value == null)
+                                    returnedResponse.Headers.Remove(r.Key);
+                                else
+                                    returnedResponse.Headers[r.Key] = r.Value;
+                            }
+
+                            var respBody = curlResult.BodyBytes ?? Array.Empty<byte>();
+
+                            if (incomingRequest.Method != "HEAD")
+                            {
+                                var bodyModifier = registryEntry.ResponseModifier?.Invoke(returnedResponse);
+                                if (bodyModifier != null)
+                                {
+                                    if (returnedResponse.Headers.TryGetFirst("content-encoding", out var contentEncoding))
+                                    {
+                                        switch (contentEncoding!.ToLower())
+                                        {
+                                            case "gzip":
+                                                respBody = DecompressGzip(respBody);
+                                                break;
+                                            case "deflate":
+                                                respBody = DecompressDeflate(respBody);
+                                                break;
+                                            case "br":
+                                                respBody = DecompressBrotli(respBody);
+                                                break;
+                                            case "zstd":
+                                                respBody = DecompressZstd(respBody);
+                                                break;
+                                            default:
+                                                throw new Exception("Unsupported content encoding.");
+                                        }
+
+                                        returnedResponse.Headers.Remove("content-encoding");
+                                    }
+
+                                    respBody = bodyModifier(respBody);
+                                }
+                            }
+                            else
+                            {
+                                respBody = Array.Empty<byte>();
+                            }
+
+                            returnedResponse.Headers.Remove("transfer-encoding");
+                            returnedResponse.Headers["content-length"] = respBody.Length.ToString();
+
+                            await clientStream.WriteResponseAsync(returnedResponse, _cancellationTokenSource.Token);
+                            if (incomingRequest.Method != "HEAD" && respBody.Length > 0)
+                                await clientStream.WriteAsync(respBody);
+
+                            await clientStream.FlushAsync(_cancellationTokenSource.Token);
+
+                            handledThisRequest = true;
+                            break;
+                        }
+
                         var (c, s) = await OpenWriteConnectionAsync(parsedUrl.Scheme, parsedUrl.Host, parsedUrl.Port, _cancellationTokenSource.Token);
                         using var destinationClient = c;
                         using var destinationStream = new HttpProxyStream(s);
 
                         await destinationStream.WriteRequestAsync(incomingRequest, _cancellationTokenSource.Token);
-                        if (incomingRequest.Headers.TryGetValue("transfer-encoding", out var te) && te == "chunked")
+                        if (incomingRequest.Headers.TryGetFirst("transfer-encoding", out var te) && te == "chunked")
                         {
                             await clientStream.TransferAllChunksAsync(destinationStream);
                             await destinationStream.FlushAsync(_cancellationTokenSource.Token);
                         }
-                        else if (incomingRequest.Headers.TryGetValue("content-length", out var contentLengthStr) && int.TryParse(contentLengthStr, out var contentLength))
+                        else if (incomingRequest.Headers.TryGetFirst("content-length", out var contentLengthStr) && int.TryParse(contentLengthStr, out var contentLength))
                         {
                             await clientStream.TransferFixedLengthContentAsync(destinationStream, contentLength);
                             await destinationStream.FlushAsync(_cancellationTokenSource.Token);
@@ -213,14 +392,14 @@ namespace Grayjay.ClientServer.Proxy
 
                         returnedResponse = await destinationStream.ReadResponseHeadersAsync(_cancellationTokenSource.Token);
                         
-                        if(returnedResponse.StatusCode == 200 && registryEntry.RequestModifier != null && initialHeaders.ContainsKey("range") && !incomingRequest.Headers.ContainsKey("range"))
+                        if(returnedResponse.StatusCode == 200 && registryEntry.RequestModifier != null && initialHeaders != null && initialHeaders.Contains("range") && !incomingRequest.Headers.Contains("range"))
                         {
                             returnedResponse.StatusCode = 206;
-                            var rangeParts = initialHeaders["range"].Substring("bytes=".Length).Split("-");
+                            var rangeParts = initialHeaders["range"]!.Substring("bytes=".Length).Split("-");
                             returnedResponse.Headers.Add("content-range", $"bytes {rangeParts[0]}-{rangeParts[1]}/*");
                         }
 
-                        var shouldFollowRedirect = _redirectStatusCodes.Contains(returnedResponse.StatusCode) && registryEntry.FollowRedirects && returnedResponse.Headers.ContainsKey("location");
+                        var shouldFollowRedirect = _redirectStatusCodes.Contains(returnedResponse.StatusCode) && registryEntry.FollowRedirects && returnedResponse.Headers.Contains("location");
                         if (!shouldFollowRedirect)
                         {
                             if (registryEntry.ResponseHeaderOptions.InjectPermissiveCORS)
@@ -241,9 +420,9 @@ namespace Grayjay.ClientServer.Proxy
                                 {
                                     var invokeBodyModifier = (byte[] bodyBytes) =>
                                     {
-                                        if (returnedResponse.Headers.TryGetValue("content-encoding", out var contentEncoding))
+                                        if (returnedResponse.Headers.TryGetFirst("content-encoding", out var contentEncoding))
                                         {
-                                            switch (contentEncoding.ToLower())
+                                            switch (contentEncoding!.ToLower())
                                             {
                                                 case "gzip":
                                                     bodyBytes = DecompressGzip(bodyBytes);
@@ -266,7 +445,7 @@ namespace Grayjay.ClientServer.Proxy
                                         return bodyModifier(bodyBytes);
                                     };
 
-                                    if (returnedResponse.Headers.TryGetValue("transfer-encoding", out var transferEncoding) && transferEncoding == "chunked")
+                                    if (returnedResponse.Headers.TryGetFirst("transfer-encoding", out var transferEncoding) && transferEncoding == "chunked")
                                     {
                                         returnedResponse.Headers.Remove("transfer-encoding");
                                         using var bodyStream = new MemoryStream();
@@ -278,7 +457,7 @@ namespace Grayjay.ClientServer.Proxy
                                         await clientStream.WriteAsync(modifiedBody);
                                         await clientStream.FlushAsync(_cancellationTokenSource.Token);
                                     }
-                                    else if (returnedResponse.Headers.TryGetValue("content-length", out var contentLengthStr) && int.TryParse(contentLengthStr, out var contentLength))
+                                    else if (returnedResponse.Headers.TryGetFirst("content-length", out var contentLengthStr) && int.TryParse(contentLengthStr, out var contentLength))
                                     {
                                         using var bodyStream = new MemoryStream();
                                         using (var httpBodyStream = new HttpProxyStream(bodyStream))
@@ -307,12 +486,12 @@ namespace Grayjay.ClientServer.Proxy
                                     await clientStream.WriteResponseAsync(returnedResponse, _cancellationTokenSource.Token);
                                     await clientStream.FlushAsync(_cancellationTokenSource.Token);
 
-                                    if (returnedResponse.Headers.TryGetValue("transfer-encoding", out var transferEncoding) && transferEncoding == "chunked")
+                                    if (returnedResponse.Headers.TryGetFirst("transfer-encoding", out var transferEncoding) && transferEncoding == "chunked")
                                     {
                                         await destinationStream.TransferAllChunksAsync(clientStream);
                                         await clientStream.FlushAsync(_cancellationTokenSource.Token);
                                     }
-                                    else if (returnedResponse.Headers.TryGetValue("content-length", out var contentLengthStr) && int.TryParse(contentLengthStr, out var contentLength))
+                                    else if (returnedResponse.Headers.TryGetFirst("content-length", out var contentLengthStr) && int.TryParse(contentLengthStr, out var contentLength))
                                     {
                                         await destinationStream.TransferFixedLengthContentAsync(clientStream, contentLength);
                                         await clientStream.FlushAsync(_cancellationTokenSource.Token);
@@ -343,7 +522,7 @@ namespace Grayjay.ClientServer.Proxy
                     }
                 }
 
-                keepAlive = incomingRequest.Headers.TryGetValue("connection", out var connection) && connection.ToLowerInvariant() == "keep-alive";
+                keepAlive = incomingRequest.Headers.TryGetFirst("connection", out var connection) && connection!.ToLowerInvariant() == "keep-alive";
                 if (!keepAlive)
                 {
                     //_logger.LogInformation("Keep alive is false, terminating connection.");

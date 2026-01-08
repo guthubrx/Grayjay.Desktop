@@ -376,6 +376,12 @@ namespace Grayjay.Desktop.POC.Port.States
                             }
                         }
                     }
+                    catch (ScriptCaptchaRequiredException capEx)
+                    {
+                        Logger.Warning(nameof(StatePlatform), $"Captcha required: " + capEx.Message + "\n" + capEx.Url + "\n" + "Has Body: " + (capEx.Body != null).ToString());
+                        //_ = StateApp.HandleCaptchaException(capEx.Config, capEx);
+                        throw;
+                    }
                     catch(Exception ex)
                     {
                         Logger.e(nameof(StatePlatform), $"Home failed for plugin [{client.Config.Name}]: " + ex.Message, ex);

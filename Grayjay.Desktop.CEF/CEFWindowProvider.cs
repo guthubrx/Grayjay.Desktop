@@ -118,14 +118,14 @@ namespace Grayjay.Desktop.CEF
                 minimumHeight: 833, 
                 preferredWidth: useMobileEmulation ? 385 : 1024, 
                 preferredHeight: useMobileEmulation ? 833 : 800, 
-                title: title, 
-                iconPath: Utilities.FindFile("grayjay.png"), 
-                developerToolsEnabled: true, 
+                //title: title, 
+                //iconPath: Utilities.FindFile("grayjay.png"), 
+                developerToolsEnabled: true,
                 modifyRequests: true,
                 //resizable: false,
                 requestModifier: (window, req) =>
                 {
-                    foreach (var header in req.Headers.ToList())
+                    /*foreach (var header in req.Headers.ToList())
                     {
                         if (header.Key.ToLower().StartsWith("sec-"))
                             req.Headers.Remove(header.Key);
@@ -134,7 +134,7 @@ namespace Grayjay.Desktop.CEF
                     if(req.Url.Contains("batch"))
                     {
                         string isBatch = "";
-                    }
+                    }*/
                     handler(new InterceptorRequest()
                     {
                         Url = req.Url,

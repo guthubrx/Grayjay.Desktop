@@ -42,11 +42,11 @@ namespace Grayjay.ClientServer.Proxy
             ResponseModifier = (resp) => 
             {
                 Encoding encoding = Encoding.UTF8;                
-                if (resp.Headers.TryGetValue("content-type", out var contentType))
+                if (resp.Headers.TryGetFirst("content-type", out var contentType))
                 {
                     try
                     {
-                        var contentTypeHeader = new System.Net.Mime.ContentType(contentType);
+                        var contentTypeHeader = new System.Net.Mime.ContentType(contentType!);
                         if (!string.IsNullOrEmpty(contentTypeHeader.CharSet))
                             encoding = Encoding.GetEncoding(contentTypeHeader.CharSet);
                     }

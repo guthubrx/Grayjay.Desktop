@@ -197,7 +197,7 @@ namespace Grayjay.ClientServer.Controllers
                 {
                     var script = (IsFileUrl(config.AbsoluteScriptUrl)) ?
                         System.IO.File.ReadAllText(config.AbsoluteScriptUrl.Substring("file:///".Length)) :
-                        _client.GET(config.AbsoluteScriptUrl, new Dictionary<string, string>())?.Body?.AsString();
+                        _client.GET(config.AbsoluteScriptUrl, new Engine.Models.HttpHeaders())?.Body?.AsString();
 
                     _testPlugin = new GrayjayPlugin(new PluginDescriptor(config, encryptedAuth, null, null), script, null, client, clientAuth, new GrayjayPlugin.Options()
                     {
@@ -365,7 +365,7 @@ namespace Grayjay.ClientServer.Controllers
                     });
                 }
 
-                var resp = _client.GET(req.Url, req.Headers ?? new Dictionary<string, string>());
+                var resp = _client.GET(req.Url, new Engine.Models.HttpHeaders(req.Headers ?? new Dictionary<string, string>()));
 
                 return Ok(new
                 {
@@ -426,7 +426,7 @@ namespace Grayjay.ClientServer.Controllers
                 }
                 else
                 {
-                    var resp = _client.GET(config.AbsoluteScriptUrl, new Dictionary<string, string>());
+                    var resp = _client.GET(config.AbsoluteScriptUrl, new Engine.Models.HttpHeaders());
                     if (!resp.IsOk)
                         return BadRequest($"URL {config.ScriptUrl} return code {resp.Code}");
                     if(resp.Body == null)

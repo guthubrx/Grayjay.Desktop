@@ -2,10 +2,13 @@
 using Grayjay.ClientServer.Pagers;
 using Grayjay.ClientServer.States;
 using Grayjay.Desktop.POC.Port.States;
+using Grayjay.Engine.Exceptions;
 using Grayjay.Engine.Models.Detail;
 using Grayjay.Engine.Models.Feed;
 using Grayjay.Engine.Pagers;
 using Microsoft.AspNetCore.Mvc;
+
+using Logger = Grayjay.Desktop.POC.Logger;
 
 namespace Grayjay.ClientServer.Controllers
 {
@@ -28,6 +31,7 @@ namespace Grayjay.ClientServer.Controllers
             this.State().HomeState.HomePager = home;
             return home.AsPagerResult(x => x is PlatformVideo, y => StateHistory.AddVideoMetadata((PlatformVideo)y));
         }
+        
         [HttpGet]
         public async Task<PagerResult<PlatformContent>> HomeLoadLazy(int initialPageSize)
         {
