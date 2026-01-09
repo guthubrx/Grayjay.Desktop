@@ -50,12 +50,17 @@ namespace Grayjay.ClientServer
                     Headers = ToHeaderList(finalHeaders),
                     ImpersonateTarget = impersonate
                 });
+                if (res.EffectiveUrl != null)
+                    finalUrl = res.EffectiveUrl;
 
                 var code = Convert.ToInt32(res.Status);
                 return new BytesResult(finalUrl, code, res.BodyBytes ?? Array.Empty<byte>());
             }
 
             var resp = client.GET(finalUrl, finalHeaders);
+            if (resp.Url != null)
+                finalUrl = resp.Url;
+
             if (resp.Body == null)
                 return new BytesResult(finalUrl, resp.Code, Array.Empty<byte>());
 
