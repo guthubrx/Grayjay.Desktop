@@ -22,6 +22,9 @@ namespace Grayjay.ClientServer.Controllers
     [Route("[controller]/[action]")]
     public class ProxyController: ControllerBase
     {
+        private static readonly ConcurrentDictionary<string, string> ModifierIdCache = new();
+        private static readonly Dictionary<(string? modifierId, string url), string> ExistingHlsProxies = new();
+
         [HttpGet]
         public async Task<IActionResult> Image(string url, string cacheName = null)
         {
@@ -53,7 +56,7 @@ namespace Grayjay.ClientServer.Controllers
             if (modifierId != null)
                 DetailsState.Modifiers.TryGetValue(modifierId, out modifier);
 
-            var playlist = await GenerateProxiedHLS(url, proxyMedia, $"{Request.Scheme}://{Request.Host.Value}", state, modifier);
+            var playlist = await GenerateProxiedHLS(url, proxyMedia, $"{Request.Scheme}://{Request.Host.Value}", state, modifier, modifierId);
 
             return new ContentResult()
             {
@@ -62,12 +65,24 @@ namespace Grayjay.ClientServer.Controllers
             };
         }
 
-        public static async Task<Parsers.HLS.IHLSPlaylist> GenerateProxiedHLS(string hlsUrl, bool proxyMedia, string baseUri, WindowState state = null, IRequestModifier? modifier = null)
+        private static string GetOrCreateModifierId(WindowState state, IRequestModifier modifier, string finalHlsUrl)
+        {
+            if (state == null || modifier == null || string.IsNullOrEmpty(finalHlsUrl))
+                return null;
+
+            var key = $"{state.WindowID}|{modifier.GetType().FullName}|{finalHlsUrl}";
+
+            return ModifierIdCache.GetOrAdd(key, _ =>
+            {
+                return state.DetailsState.RegisterModifier(modifier);
+            });
+        }
+
+        public static async Task<Parsers.HLS.IHLSPlaylist> GenerateProxiedHLS(string hlsUrl, bool proxyMedia, string baseUri, WindowState state = null, IRequestModifier? modifier = null, string modifierId = null)
         {
             if (string.IsNullOrEmpty(hlsUrl))
                 throw new BadHttpRequestException("Missing url");
 
-            string modifierId = (state != null && modifier != null) ? state.DetailsState.RegisterModifier(modifier) : null;
             var headers = new Engine.Models.HttpHeaders();
             var res = ModifierHttp.GetBytes(new ManagedHttpClient(), hlsUrl, modifier, headers);
 
@@ -76,6 +91,12 @@ namespace Grayjay.ClientServer.Controllers
 
             hlsUrl = res.FinalUrl;
             var body = Encoding.UTF8.GetString(res.Bytes);
+
+            if (string.IsNullOrEmpty(modifierId))
+                modifierId = GetOrCreateModifierId(state, modifier, hlsUrl);
+
+            if (!string.IsNullOrEmpty(modifierId) && modifier != null)
+                DetailsState.Modifiers[modifierId] = modifier;
 
             try
             {
@@ -88,7 +109,7 @@ namespace Grayjay.ClientServer.Controllers
             catch
             {
                 var playlist = Parsers.HLS.ParseVariantPlaylist(body, hlsUrl);
-                playlist = ProxyHLSPlaylist(baseUri, playlist, proxyMedia, modifier);
+                playlist = ProxyHLSPlaylist(baseUri, playlist, proxyMedia, modifier, modifierId);
                 return playlist;
             }
         }
@@ -104,27 +125,27 @@ namespace Grayjay.ClientServer.Controllers
             return hlsMasterPlaylist;
         }
 
-        private static Dictionary<string, string> ExistingHlsProxies = new Dictionary<string, string>();
-
-        public static HLS.VariantPlaylist ProxyHLSPlaylist(string baseUri, HLS.VariantPlaylist hlsMediaPlaylist, bool proxyMedia, IRequestModifier? modifier = null)
+        public static HLS.VariantPlaylist ProxyHLSPlaylist(string baseUri, HLS.VariantPlaylist hlsMediaPlaylist, bool proxyMedia, IRequestModifier? modifier = null, string? modifierId = null)
         {
             if (!proxyMedia)
                 return hlsMediaPlaylist;
+
+            var uri = new Uri(baseUri);
+            var isLoopback = uri.Host.Contains("127.0.0.1");
+            var ip = IPAddress.Parse(uri.Host);
 
             foreach (var s in hlsMediaPlaylist.Segments)
             {
                 if (!(s is HLS.MediaSegment ms))
                     continue;
 
-                var uri = new Uri(baseUri);
-                var isLoopback = uri.Host.Contains("127.0.0.1");
-                var ip = IPAddress.Parse(uri.Host);
-
-
+                var key = (modifierId, ms.Uri);
                 lock (ExistingHlsProxies)
                 {
-                    if (ExistingHlsProxies.TryGetValue(ms.Uri, out var ur))
-                        ms.Uri = ur;
+                    if (ExistingHlsProxies.TryGetValue(key, out var cached))
+                    {
+                        ms.Uri = cached;
+                    }
                     else
                     {
                         var proxiedUri = HttpProxy.Get(isLoopback).Add(new HttpProxyRegistryEntry()
@@ -161,7 +182,7 @@ namespace Grayjay.ClientServer.Controllers
                             : null
                         }, ip);
 
-                        ExistingHlsProxies[ms.Uri] = proxiedUri;
+                        ExistingHlsProxies[key] = proxiedUri;
                         ms.Uri = proxiedUri;
                     }
                 }
@@ -169,13 +190,16 @@ namespace Grayjay.ClientServer.Controllers
 
             if (!string.IsNullOrEmpty(hlsMediaPlaylist.MapUrl))
             {
+                var key = (modifierId, hlsMediaPlaylist.MapUrl);
                 lock (ExistingHlsProxies)
                 {
-                    if (ExistingHlsProxies.TryGetValue(hlsMediaPlaylist.MapUrl, out var ur))
-                        hlsMediaPlaylist.MapUrl = ur;
+                    if (ExistingHlsProxies.TryGetValue(key, out var cached))
+                    {
+                        hlsMediaPlaylist.MapUrl = cached;
+                    }
                     else
                     {
-                        var proxiedUri = HttpProxy.Get().Add(new HttpProxyRegistryEntry()
+                        var proxiedUri = HttpProxy.Get(isLoopback).Add(new HttpProxyRegistryEntry()
                         {
                             Url = hlsMediaPlaylist.MapUrl,
                             FollowRedirects = true,
@@ -208,7 +232,7 @@ namespace Grayjay.ClientServer.Controllers
                             } : null
                         });
 
-                        ExistingHlsProxies[hlsMediaPlaylist.MapUrl] = proxiedUri;
+                        ExistingHlsProxies[key] = proxiedUri;
                         hlsMediaPlaylist.MapUrl = proxiedUri;
                     }
                 }

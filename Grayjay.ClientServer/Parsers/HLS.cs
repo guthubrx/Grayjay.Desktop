@@ -48,13 +48,22 @@ public static class HLS
 
         List<string> unhandled = new List<string>();
 
-        var lines = masterPlaylistContent.Split('\n');
+        var lines = masterPlaylistContent
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n');
         for (int i = 0; i < lines.Length; i++)
         {
-            var line = lines[i];
+            var line = lines[i].Trim();
+            if (line.Length == 0) continue;
             if (line.StartsWith("#EXT-X-STREAM-INF"))
             {
-                var nextLine = i < lines.Length ? lines[++i] : null;
+                if (i + 1 >= lines.Length)
+                    throw new Exception("Expected URI following #EXT-X-STREAM-INF, found none");
+
+                var nextLine = lines[++i].Trim();
+                if (nextLine.Length == 0)
+                    throw new Exception("Expected URI following #EXT-X-STREAM-INF, found empty line");
                 if (nextLine == null)
                     throw new Exception("Expected URI following #EXT-X-STREAM-INF, found none");
                 var url = nextLine.Trim().EnsureAbsoluteUrl(baseUrl);
@@ -64,10 +73,10 @@ public static class HLS
                 version = v;
             else if (line.StartsWith("#EXT-X-MEDIA-SEQUENCE") && int.TryParse(line.Substring("#EXT-X-MEDIA-SEQUENCE:".Length), out var ms))
                 mediaSequence = ms;
-            else if (line.StartsWith("#EXT-X-MEDIA"))
-                mediaRenditions.Add(ParseMediaRendition(line.Trim(), baseUrl));
             else if (line == "#EXT-X-INDEPENDENT-SEGMENTS")
                 independentSegments = true;
+            else if (line.StartsWith("#EXT-X-MEDIA"))
+                mediaRenditions.Add(ParseMediaRendition(line.Trim(), baseUrl));
             else if (line.StartsWith("#EXT-X-SESSION-DATA"))
                 sessionDataList.Add(ParseSessionData(line.Trim()));
             else
@@ -80,7 +89,12 @@ public static class HLS
     public static VariantPlaylist ParseVariantPlaylist(string content, string sourceUrl)
     {
         var baseUrl = new Uri(new Uri(sourceUrl), "./");
-        var lines = content.Split('\n');
+        var lines = content
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n')
+            .Select(l => l.Trim())
+            .ToArray();
         var version = GetValueInt32(lines, "#EXT-X-VERSION:");
         var targetDuration = GetValueInt32(lines, "#EXT-X-TARGETDURATION:");
         var mediaSequence = GetValueInt64(lines, "#EXT-X-MEDIA-SEQUENCE:");
@@ -88,6 +102,7 @@ public static class HLS
         var programDateTime = GetValueDateTime(lines, "#EXT-X-PROGRAM-DATE-TIME:");
         var playlistType = GetValue(lines, "#EXT-X-PLAYLIST-TYPE:");
         var streamInfo = lines.FirstOrDefault(l => l.StartsWith("#EXT-X-STREAM-INF:"))?.Trim();
+        var independentSegments = lines.Any(l => l == "#EXT-X-INDEPENDENT-SEGMENTS");
         string? mapUrl = null;
         long mapBytesStart = -1;
         long mapBytesLength = -1;
@@ -183,7 +198,8 @@ public static class HLS
         )
         {
             MapBytesStart = mapBytesStart,
-            MapBytesLength = mapBytesLength
+            MapBytesLength = mapBytesLength,
+            IndependentSegments = independentSegments
         };
     }
 
@@ -509,6 +525,7 @@ public static class HLS
         public string? PlaylistType;
         public StreamInfo? StreamInfo;
         public List<Segment> Segments;
+        public bool IndependentSegments;
         public string? MapUrl;
         public long MapBytesStart = -1;
         public long MapBytesLength = -1;
@@ -550,6 +567,9 @@ public static class HLS
 
             if (!string.IsNullOrEmpty(PlaylistType))
                 builder.AppendLine("#EXT-X-PLAYLIST-TYPE:" + PlaylistType);
+
+            if (IndependentSegments)
+                builder.AppendLine("#EXT-X-INDEPENDENT-SEGMENTS");
 
             if (ProgramDateTime.HasValue)
                 builder.AppendLine("#EXT-X-PROGRAM-DATE-TIME:" + ProgramDateTime.Value.ToString("yyyy-MM-ddTHH:mm:ssZ"));
