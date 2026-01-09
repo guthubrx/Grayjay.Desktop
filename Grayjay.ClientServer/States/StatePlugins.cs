@@ -323,6 +323,7 @@ namespace Grayjay.Desktop.POC.Port.States
             bool urlFound = string.IsNullOrEmpty(authConfig.CompletionUrl);
             Dictionary<string, Dictionary<string, string>> headersFoundMap = new Dictionary<string, Dictionary<string, string>>();
             Dictionary<string, Dictionary<string, string>> cookiesFoundMap = new Dictionary<string, Dictionary<string, string>>();
+            string? capturedUserAgent = null;
 
             bool completionUrlExcludeQuery = false;
             string completionUrlToCheck = (string.IsNullOrEmpty(authConfig.CompletionUrl)) ? null : authConfig.CompletionUrl;
@@ -371,7 +372,8 @@ namespace Grayjay.Desktop.POC.Port.States
                     tcs.SetResult(new SourceAuth()
                     {
                         Headers = headersFoundMap,
-                        CookieMap = cookiesFoundMap
+                        CookieMap = cookiesFoundMap,
+                        UserAgent = capturedUserAgent
                     });
                 }
                 else
@@ -391,6 +393,9 @@ namespace Grayjay.Desktop.POC.Port.States
             {
                 try
                 {
+                    if (capturedUserAgent == null && request.Headers.TryGetValue("user-agent", out var uaValues))
+                        capturedUserAgent = uaValues.FirstOrDefault();
+
                     var uri = new Uri(request.Url);
                     string domain = uri.Host;
                     string domainLower = uri.Host.ToLower();

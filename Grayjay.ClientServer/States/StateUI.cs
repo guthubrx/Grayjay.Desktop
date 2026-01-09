@@ -297,6 +297,7 @@ namespace Grayjay.ClientServer.Controllers
 
             bool urlFound = string.IsNullOrEmpty(captchaConfig.CompletionUrl);
             Dictionary<string, Dictionary<string, string>> cookiesFoundMap = new Dictionary<string, Dictionary<string, string>>();
+            string? capturedUserAgent = null;
 
             bool completionUrlExcludeQuery = false;
             string completionUrlToCheck = (string.IsNullOrEmpty(captchaConfig.CompletionUrl)) ? null : captchaConfig.CompletionUrl;
@@ -334,7 +335,8 @@ namespace Grayjay.ClientServer.Controllers
                     var plugin = (config.ID == StateDeveloper.DEV_ID) ? StatePlatform.GetDevClient()?.Descriptor : StatePlugins.GetPlugin(config.ID);
                     plugin.SetCaptchaData(new Engine.SourceCaptcha()
                     {
-                        CookieMap = cookiesFoundMap
+                        CookieMap = cookiesFoundMap,
+                        UserAgent = capturedUserAgent
                     });
 
                     if (plugin.Config.ID != StateDeveloper.DEV_ID)
@@ -360,6 +362,9 @@ namespace Grayjay.ClientServer.Controllers
             {
                 try
                 {
+                    if (capturedUserAgent == null && request.Headers.TryGetValue("user-agent", out var uaValues))
+                        capturedUserAgent = uaValues.FirstOrDefault();
+
                     var uri = new Uri(request.Url);
                     string domain = uri.Host;
                     string domainLower = uri.Host.ToLower();
