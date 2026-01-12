@@ -3,9 +3,11 @@ using Grayjay.ClientServer.Controllers;
 using Grayjay.ClientServer.Proxy;
 using Grayjay.ClientServer.States;
 using Grayjay.Desktop.POC;
+using Grayjay.Engine.Models.Video.Additions;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using SQLitePCL;
+using static Grayjay.ClientServer.Controllers.DetailsController;
 
 namespace Grayjay.ClientServer
 {
@@ -126,7 +128,7 @@ namespace Grayjay.ClientServer
             });
 
             AddCorsHandler("/proxy/HLS", [ "GET", "HEAD", "OPTIONS" ]);
-            _app.MapMethods("/proxy/HLS", [ "HEAD" ], async (HttpContext context, string url, bool proxyMedia) =>
+            _app.MapMethods("/proxy/HLS", [ "HEAD" ], async (HttpContext context, string url, bool proxyMedia, string? modifierId = null) =>
             {
                 context.Response.Headers["Access-Control-Allow-Origin"] = "*";
 
@@ -134,13 +136,23 @@ namespace Grayjay.ClientServer
                 if (activeDevice == null)
                     return Results.BadRequest("No active casting device.");
 
-                var proxy = HttpProxy.Get(false);
-                var contentLength = (await ProxyController.GenerateProxiedHLS(url, proxyMedia, $"{context.Request.Scheme}://{context.Request.Host.Value}")).GenerateM3U8().Length;
+                IRequestModifier? modifier = null;
+                if (!string.IsNullOrEmpty(modifierId))
+                    DetailsState.Modifiers.TryGetValue(modifierId, out modifier);
+                var playlist = await ProxyController.GenerateProxiedHLS(
+                    url,
+                    proxyMedia,
+                    $"{context.Request.Scheme}://{context.Request.Host.Value}",
+                    state: null,
+                    modifier: modifier,
+                    modifierId: modifierId
+                );
+                var contentLength = playlist.GenerateM3U8().Length;
                 context.Response.Headers["Content-Length"] = contentLength.ToString();
                 context.Response.Headers["Content-Type"] = "application/x-mpegurl";
                 return Results.StatusCode(200);
             });
-            _app.MapGet("/proxy/HLS", async (HttpContext context, string url, bool proxyMedia) =>
+            _app.MapGet("/proxy/HLS", async (HttpContext context, string url, bool proxyMedia, string? modifierId = null) =>
             {
                 context.Response.Headers["Access-Control-Allow-Origin"] = "*";
 
@@ -148,7 +160,20 @@ namespace Grayjay.ClientServer
                 if (activeDevice == null)
                     return Results.BadRequest("No active casting device.");
 
-                return Results.Content((await ProxyController.GenerateProxiedHLS(url, proxyMedia, $"{context.Request.Scheme}://{context.Request.Host.Value}")).GenerateM3U8(), "application/x-mpegurl");
+                IRequestModifier? modifier = null;
+                if (!string.IsNullOrEmpty(modifierId))
+                    DetailsState.Modifiers.TryGetValue(modifierId, out modifier);
+            
+                var playlist = await ProxyController.GenerateProxiedHLS(
+                    url,
+                    proxyMedia,
+                    $"{context.Request.Scheme}://{context.Request.Host.Value}",
+                    state: null,
+                    modifier: modifier,
+                    modifierId: modifierId
+                );
+            
+                return Results.Content(playlist.GenerateM3U8(), "application/x-mpegurl");
             });
 
 
