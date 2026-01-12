@@ -230,7 +230,7 @@ namespace Grayjay.ClientServer.Controllers
                                 newReq.Options.ImpersonateTarget = modified?.Options?.ImpersonateTarget ?? newReq.Options.ImpersonateTarget;
                                 return (modified?.Url ?? url, newReq);
                             } : null
-                        });
+                        }, ip);
 
                         ExistingHlsProxies[key] = proxiedUri;
                         hlsMediaPlaylist.MapUrl = proxiedUri;
