@@ -11,6 +11,7 @@ using Microsoft.Extensions.Primitives;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -47,6 +48,108 @@ namespace Grayjay.ClientServer.Controllers
             }
         }
 
+        [HttpGet]
+        public async Task<IActionResult> Subtitle(int subtitleIndex, bool subtitleIsLocal = false, string? modifierId = null)
+        {
+            Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+            var state = this.State();
+
+            byte[] bytes;
+            string contentType;
+
+            if (subtitleIsLocal)
+            {
+                var local = EnsureLocal(state);
+                var src = local.SubtitleSources[subtitleIndex];
+                contentType = src.Format ?? "text/vtt";
+                bytes = await System.IO.File.ReadAllBytesAsync(src.FilePath);
+                return File(bytes, contentType);
+            }
+
+            var video = EnsureVideo(state);
+            var srcRemote = video.Subtitles[subtitleIndex];
+            contentType = srcRemote.Format ?? "text/vtt";
+
+            var uri = srcRemote.GetSubtitlesUri() ?? new Uri(srcRemote.Url);
+
+            if (uri.Scheme.Equals("file", StringComparison.OrdinalIgnoreCase))
+            {
+                bytes = await System.IO.File.ReadAllBytesAsync(uri.LocalPath);
+                return File(bytes, contentType);
+            }
+
+            IRequestModifier? modifier = null;
+            if (!string.IsNullOrEmpty(modifierId))
+                DetailsState.Modifiers.TryGetValue(modifierId, out modifier);
+
+            if (modifier != null)
+            {
+                var headers = new Grayjay.Engine.Models.HttpHeaders();
+                var res = ModifierHttp.GetBytes(new ManagedHttpClient(), uri.ToString(), modifier, headers);
+                if (!res.IsOk)
+                    return StatusCode(res.Code);
+
+                return File(res.Bytes, contentType);
+            }
+
+            using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true });
+            bytes = await client.GetByteArrayAsync(uri);
+            return File(bytes, contentType);
+        }
+
+        [HttpGet]
+        public IActionResult SubtitleHLS(int subtitleIndex, bool subtitleIsLocal = false, string? modifierId = null)
+        {
+            Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+            var state = this.State();
+            var baseUri = $"{Request.Scheme}://{Request.Host.Value}";
+
+            var vttUrl =
+                $"{baseUri}/Details/Subtitle?subtitleIndex={subtitleIndex}" +
+                $"&subtitleIsLocal={subtitleIsLocal}" +
+                $"&windowId={state.WindowID}" +
+                (!string.IsNullOrEmpty(modifierId) ? $"&modifierId={Uri.EscapeDataString(modifierId)}" : "");
+
+            var durationSeconds = TryGetVideoDurationSeconds(state) ?? 60.0;
+            var targetDuration = Math.Max(1, (int)Math.Ceiling(durationSeconds));
+            var dur = durationSeconds.ToString(CultureInfo.InvariantCulture);
+
+            var m3u8 =
+                "#EXTM3U\n" +
+                "#EXT-X-VERSION:3\n" +
+                $"#EXT-X-TARGETDURATION:{targetDuration}\n" +
+                "#EXT-X-MEDIA-SEQUENCE:0\n" +
+                $"#EXTINF:{dur},\n" +
+                vttUrl + "\n" +
+                "#EXT-X-ENDLIST\n";
+
+            return Content(m3u8, "application/x-mpegurl");
+        }
+
+        private static double? TryGetVideoDurationSeconds(WindowState state)
+        {
+            var v = state.DetailsState.VideoLoaded;
+            if (v == null) return null;
+
+            var prop = v.GetType().GetProperty("Duration") ?? v.GetType().GetProperty("DurationSeconds");
+            if (prop?.GetValue(v) is int i) return i;
+            if (prop?.GetValue(v) is long l) return l;
+            if (prop?.GetValue(v) is double d) return d;
+
+            var videoProp = v.GetType().GetProperty("Video")?.GetValue(v);
+            if (videoProp != null)
+            {
+                var p2 = videoProp.GetType().GetProperty("Duration") ?? videoProp.GetType().GetProperty("DurationSeconds");
+                if (p2?.GetValue(videoProp) is int i2) return i2;
+                if (p2?.GetValue(videoProp) is long l2) return l2;
+                if (p2?.GetValue(videoProp) is double d2) return d2;
+            }
+
+            return null;
+        }
+
 
         [HttpGet]
         public async Task<IActionResult> HLS(string url, bool proxyMedia, string modifierId = null)
@@ -65,7 +168,7 @@ namespace Grayjay.ClientServer.Controllers
             };
         }
 
-        private static string GetOrCreateModifierId(WindowState state, IRequestModifier modifier, string finalHlsUrl)
+        public static string GetOrCreateModifierId(WindowState state, IRequestModifier modifier, string finalHlsUrl)
         {
             if (state == null || modifier == null || string.IsNullOrEmpty(finalHlsUrl))
                 return null;
@@ -114,16 +217,47 @@ namespace Grayjay.ClientServer.Controllers
             }
         }
 
+        private static bool IsSameHost(string baseUri, string url)
+        {
+            if (!Uri.TryCreate(baseUri, UriKind.Absolute, out var b))
+                return false;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
+                return false;
+
+            return string.Equals(b.Host, u.Host, StringComparison.OrdinalIgnoreCase) && b.Port == u.Port;
+        }
+
         public static HLS.MasterPlaylist ProxyHLSMasterPlaylist(string baseUri, HLS.MasterPlaylist hlsMasterPlaylist, bool proxyMedia, string? modifierId = null, string? windowId = null)
         {
-            //todo pass in window id
             foreach (var vp in hlsMasterPlaylist.MediaRenditions)
-                vp.Uri = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Uri)}&proxyMedia={proxyMedia}" + (modifierId != null ? "&modifierId=" + modifierId : "") + (windowId != null ? "&windowId=" + windowId : "");
+            {
+                if (string.IsNullOrEmpty(vp.Uri))
+                    continue;
+
+                if (IsSameHost(baseUri, vp.Uri))
+                    continue;
+
+                vp.Uri = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Uri)}&proxyMedia={proxyMedia}"
+                    + (modifierId != null ? "&modifierId=" + modifierId : "")
+                    + (windowId != null ? "&windowId=" + windowId : "");
+            }
+
             foreach (var vp in hlsMasterPlaylist.VariantPlaylistsRefs)
-                vp.Url = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Url)}&proxyMedia={proxyMedia}" + (modifierId != null ? "&modifierId=" + modifierId : "") + (windowId != null ? "&windowId=" + windowId : "");
+            {
+                if (string.IsNullOrEmpty(vp.Url))
+                    continue;
+
+                if (IsSameHost(baseUri, vp.Url))
+                    continue;
+
+                vp.Url = $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(vp.Url)}&proxyMedia={proxyMedia}"
+                    + (modifierId != null ? "&modifierId=" + modifierId : "")
+                    + (windowId != null ? "&windowId=" + windowId : "");
+            }
 
             return hlsMasterPlaylist;
         }
+
 
         public static HLS.VariantPlaylist ProxyHLSPlaylist(string baseUri, HLS.VariantPlaylist hlsMediaPlaylist, bool proxyMedia, IRequestModifier? modifier = null, string? modifierId = null)
         {
@@ -131,9 +265,22 @@ namespace Grayjay.ClientServer.Controllers
                 return hlsMediaPlaylist;
 
             var uri = new Uri(baseUri);
-            var isLoopback = uri.Host.Contains("127.0.0.1");
-            var ip = IPAddress.Parse(uri.Host);
 
+            IPAddress? ip = null;
+            if (!IPAddress.TryParse(uri.Host, out ip) || ip == null)
+            {
+                if (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                    ip = IPAddress.Loopback;
+                else
+                    ip = Dns.GetHostAddresses(uri.Host).First(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
+            }
+            else
+            {
+                if (ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork && IPAddress.IsLoopback(ip))
+                    ip = IPAddress.Loopback;
+            }
+
+            var isLoopback = IPAddress.IsLoopback(ip);
             foreach (var s in hlsMediaPlaylist.Segments)
             {
                 if (!(s is HLS.MediaSegment ms))

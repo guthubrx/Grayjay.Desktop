@@ -268,7 +268,21 @@ public static class HLS
         }
     }
 
-    private static readonly List<string> _quoteList = new List<string> { "GROUP-ID", "NAME", "URI", "CODECS", "AUDIO", "VIDEO" };
+    private static readonly HashSet<string> _quoteList = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "GROUP-ID",
+        "NAME",
+        "URI",
+        "CODECS",
+        "AUDIO",
+        "VIDEO",
+        "SUBTITLES",
+        "LANGUAGE",
+        "DATA-ID",
+        "VALUE",
+        "KEYFORMAT",
+        "KEYFORMATVERSIONS"
+    };
 
     private static bool ShouldQuote(string key, string value)
     {

@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Globalization;
+using System.Net;
 using Grayjay.ClientServer.Controllers;
 using Grayjay.ClientServer.Proxy;
 using Grayjay.ClientServer.States;
@@ -103,7 +104,8 @@ namespace Grayjay.ClientServer
             });
 
             AddCorsHandler("/details/SourceHLS", [ "GET", "HEAD", "OPTIONS" ]);
-            _app.MapMethods("/details/SourceHLS", [ "HEAD" ], async (HttpContext context, int videoIndex = -1, int audioIndex = -1, bool videoIsLocal = false, bool audioIsLocal = false, bool subtitleIsLocal = false) =>
+
+            _app.MapMethods("/details/SourceHLS", [ "HEAD" ], async (HttpContext context, int videoIndex = -1, int audioIndex = -1, int subtitleIndex = -1, bool subtitleIsLocal = false, string? modifierId = null) =>
             {
                 context.Response.Headers["Access-Control-Allow-Origin"] = "*";
 
@@ -111,12 +113,13 @@ namespace Grayjay.ClientServer
                 if (activeDevice == null)
                     return Results.BadRequest("No active casting device.");
 
-                var contentLength = (await DetailsController.GenerateSourceHLS(context.GetState(), videoIndex, audioIndex, new ProxySettings(false, proxyAddress: activeDevice.LocalEndPoint?.Address))).Length;
-                context.Response.Headers["Content-Length"] = contentLength.ToString();
+                var content = await DetailsController.GenerateSourceHLS(context.GetState(), videoIndex, audioIndex, subtitleIndex, subtitleIsLocal, new ProxySettings(false, proxyAddress: activeDevice.LocalEndPoint?.Address), modifierId);
+                context.Response.Headers["Content-Length"] = content.Length.ToString();
                 context.Response.Headers["Content-Type"] = "application/x-mpegurl";
                 return Results.StatusCode(200);
             });
-            _app.MapGet("/details/SourceHLS", async (HttpContext context, int videoIndex = -1, int audioIndex = -1, bool videoIsLocal = false, bool audioIsLocal = false, bool subtitleIsLocal = false) =>
+
+            _app.MapGet("/details/SourceHLS", async (HttpContext context, int videoIndex = -1, int audioIndex = -1, int subtitleIndex = -1, bool subtitleIsLocal = false, string? modifierId = null) =>
             {
                 context.Response.Headers["Access-Control-Allow-Origin"] = "*";
 
@@ -124,9 +127,10 @@ namespace Grayjay.ClientServer
                 if (activeDevice == null)
                     return Results.BadRequest("No active casting device.");
 
-                return Results.Content(await DetailsController.GenerateSourceHLS(context.GetState(), videoIndex, audioIndex, new ProxySettings(false, proxyAddress: activeDevice.LocalEndPoint?.Address, exposeLocalAsAny: true)), "application/x-mpegurl");
+                var content = await DetailsController.GenerateSourceHLS(context.GetState(), videoIndex, audioIndex, subtitleIndex, subtitleIsLocal, new ProxySettings(false, proxyAddress: activeDevice.LocalEndPoint?.Address, exposeLocalAsAny: true), modifierId);
+                return Results.Content(content, "application/x-mpegurl");
             });
-
+            
             AddCorsHandler("/proxy/HLS", [ "GET", "HEAD", "OPTIONS" ]);
             _app.MapMethods("/proxy/HLS", [ "HEAD" ], async (HttpContext context, string url, bool proxyMedia, string? modifierId = null) =>
             {
@@ -273,6 +277,133 @@ namespace Grayjay.ClientServer
                 var stream = new FileStream(uri.AbsolutePath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 return Results.File(stream, source.Format, enableRangeProcessing: true);
             });
+
+            AddCorsHandler("/details/Subtitle", [ "GET", "HEAD", "OPTIONS" ]);
+
+            _app.MapMethods("/details/Subtitle", [ "HEAD" ], async (HttpContext context, int subtitleIndex, bool subtitleIsLocal = false, string? modifierId = null) =>
+            {
+                context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+                var (bytes, contentType) = await DetailsController.GetSubtitleBytesAsync(context.GetState(), subtitleIndex, subtitleIsLocal, modifierId);
+                context.Response.Headers["Content-Length"] = bytes.Length.ToString();
+                context.Response.Headers["Content-Type"] = contentType;
+                return Results.StatusCode(200);
+            });
+
+            _app.MapGet("/details/Subtitle", async (HttpContext context, int subtitleIndex, bool subtitleIsLocal = false, string? modifierId = null) =>
+            {
+                context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+                var (bytes, contentType) = await DetailsController.GetSubtitleBytesAsync(context.GetState(), subtitleIndex, subtitleIsLocal, modifierId);
+                return Results.File(bytes, contentType);
+            });
+
+            AddCorsHandler("/details/SubtitleHLS", [ "GET", "HEAD", "OPTIONS" ]);
+
+            _app.MapMethods("/details/SubtitleHLS", [ "HEAD" ], (
+                HttpContext context,
+                int subtitleIndex,
+                bool subtitleIsLocal = false,
+                string? modifierId = null) =>
+            {
+                context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+                var state = context.GetState();
+                var baseUri = $"{context.Request.Scheme}://{context.Request.Host.Value}";
+                var subtitleUrl = BuildSubtitleUrl(baseUri, state, subtitleIndex, subtitleIsLocal, modifierId);
+
+                var dur = GetVideoDurationSecondsOrFallback(state);
+                var m3u8 = GenerateSingleSegmentSubtitlePlaylist(subtitleUrl, dur);
+
+                context.Response.Headers["Content-Length"] = m3u8.Length.ToString();
+                context.Response.Headers["Content-Type"] = "application/x-mpegurl";
+                return Results.StatusCode(200);
+            });
+
+            _app.MapGet("/details/SubtitleHLS", (
+                HttpContext context,
+                int subtitleIndex,
+                bool subtitleIsLocal = false,
+                string? modifierId = null) =>
+            {
+                context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+                var state = context.GetState();
+                var baseUri = $"{context.Request.Scheme}://{context.Request.Host.Value}";
+                var subtitleUrl = BuildSubtitleUrl(baseUri, state, subtitleIndex, subtitleIsLocal, modifierId);
+
+                var dur = GetVideoDurationSecondsOrFallback(state);
+                var m3u8 = GenerateSingleSegmentSubtitlePlaylist(subtitleUrl, dur);
+
+                return Results.Content(m3u8, "application/x-mpegurl");
+            });
+
+
+        }
+
+        private static string BuildSubtitleUrl(string baseUri, WindowState state, int subtitleIndex, bool subtitleIsLocal, string? modifierId)
+        {
+            var url = $"{baseUri}/Details/Subtitle?subtitleIndex={subtitleIndex}" +
+                    $"&subtitleIsLocal={subtitleIsLocal}" +
+                    $"&windowId={state.WindowID}";
+
+            if (!string.IsNullOrEmpty(modifierId))
+                url += $"&modifierId={Uri.EscapeDataString(modifierId)}";
+
+            return url;
+        }
+
+        private static double GetVideoDurationSecondsOrFallback(WindowState state)
+        {
+            var v = state?.DetailsState?.VideoLoaded;
+            if (v == null)
+                return 60.0;
+
+            static double? ReadDuration(object obj)
+            {
+                foreach (var propName in new[] { "DurationSeconds", "Duration" })
+                {
+                    var p = obj.GetType().GetProperty(propName);
+                    if (p == null) continue;
+
+                    var val = p.GetValue(obj);
+                    if (val is int i) return i;
+                    if (val is long l) return l;
+                    if (val is double d) return d;
+                    if (val is float f) return f;
+                }
+                return null;
+            }
+
+            var d1 = ReadDuration(v);
+            if (d1.HasValue && d1.Value > 0) return d1.Value;
+
+            var inner = v.GetType().GetProperty("Video")?.GetValue(v);
+            if (inner != null)
+            {
+                var d2 = ReadDuration(inner);
+                if (d2.HasValue && d2.Value > 0) return d2.Value;
+            }
+
+            return 60.0;
+        }
+
+        private static string GenerateSingleSegmentSubtitlePlaylist(string subtitleUrl, double durationSeconds)
+        {
+            if (durationSeconds <= 0)
+                durationSeconds = 60.0;
+
+            var targetDuration = Math.Max(1, (int)Math.Ceiling(durationSeconds));
+            var dur = durationSeconds.ToString(CultureInfo.InvariantCulture);
+
+            return
+                "#EXTM3U\n" +
+                "#EXT-X-VERSION:3\n" +
+                $"#EXT-X-TARGETDURATION:{targetDuration}\n" +
+                "#EXT-X-MEDIA-SEQUENCE:0\n" +
+                $"#EXTINF:{dur},\n" +
+                subtitleUrl + "\n" +
+                "#EXT-X-ENDLIST\n";
         }
 
         private void AddCorsHandler(string url, string[] methods)

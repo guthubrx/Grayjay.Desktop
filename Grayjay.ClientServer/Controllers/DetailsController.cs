@@ -839,61 +839,16 @@ namespace Grayjay.ClientServer.Controllers
             return (dashTask, null);
         }
 
-        private static ISubtitleSource SubtitleToProxied(WindowState state, ISubtitleSource sourceSubtitle, bool subtitleIsLocal, int subtitleIndex, ProxySettings? proxySettings)
+        private static ISubtitleSource SubtitleToProxied(WindowState state, ISubtitleSource sourceSubtitle, bool subtitleIsLocal, int subtitleIndex, ProxySettings? proxySettings, string? modifierId = null)
         {
             if (sourceSubtitle == null)
                 return null;
 
-            string? subtitleUrl;
-            if (sourceSubtitle != null)
-            {
-                if (subtitleIsLocal)
-                {
-                    if (proxySettings != null && proxySettings.Value.ExposeLocalAsAny && proxySettings.Value.ProxyAddress != null && sourceSubtitle != null)
-                        subtitleUrl = $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}/Details/StreamLocalSubtitleSource?index={subtitleIndex}&windowId={state.WindowID}";
-                    else
-                        subtitleUrl = $"{GrayjayServer.Instance.BaseUrl}/Details/StreamLocalSubtitleSource?index={subtitleIndex}&windowId={state.WindowID}";
-                }
-                else
-                {
-                    var uri = sourceSubtitle.GetSubtitlesUri()!;
-                    if (uri.Scheme == "file")
-                    {
-                        if (proxySettings != null && proxySettings.Value.ExposeLocalAsAny && proxySettings.Value.ProxyAddress != null)
-                        {
-                            subtitleUrl = sourceSubtitle != null
-                                ? WebUtility.HtmlEncode(HttpProxy.Get(proxySettings.Value.IsLoopback).Add(new HttpProxyRegistryEntry() { Url = $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}/Details/StreamSubtitleFile?index={subtitleIndex}&windowId={state.WindowID}" }, proxySettings?.ProxyAddress))
-                                : null;
-                        }
-                        else
-                            subtitleUrl = $"{GrayjayServer.Instance.BaseUrl}/Details/StreamSubtitleFile?index={subtitleIndex}&windowId={state.WindowID}";
-                    }
-                    else
-                    {
-                        if (proxySettings != null && proxySettings.Value.ShouldProxy)
-                        {
-                            subtitleUrl = sourceSubtitle != null
-                                ? WebUtility.HtmlEncode(HttpProxy.Get(proxySettings.Value.IsLoopback).Add(new HttpProxyRegistryEntry() { Url = uri.ToString() }, proxySettings?.ProxyAddress))
-                                : null;
-                        }
-                        else
-                        {
-                            subtitleUrl = sourceSubtitle != null
-                                ? sourceSubtitle.Url
-                                : null;
-                        }
-                    }
-                }
-            }
-            else
-                subtitleUrl = null;
-
-            if (subtitleUrl == null)
-                return null;
+            var subtitleUrl = BuildSubtitleUrl(state, subtitleIndex, subtitleIsLocal, proxySettings, modifierId);
 
             return new SubtitleSource()
             {
-                Name = "Proxied",
+                Name = "Served",
                 HasFetch = false,
                 Format = sourceSubtitle.Format,
                 Url = subtitleUrl
@@ -1003,43 +958,158 @@ namespace Grayjay.ClientServer.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> SourceHLS(int videoIndex = -1, int audioIndex = -1, bool isLoopback = true)
+        public async Task<IActionResult> SourceHLS(int videoIndex = -1, int audioIndex = -1, int subtitleIndex = -1, bool subtitleIsLocal = false, bool isLoopback = true, string? modifierId = null)
         {
-            return Content(await GenerateSourceHLS(this.State(), videoIndex, audioIndex, new ProxySettings(isLoopback)), "application/x-mpegurl");
+            return Content(await GenerateSourceHLS(this.State(), videoIndex, audioIndex, subtitleIndex, subtitleIsLocal, new ProxySettings(isLoopback), modifierId), "application/x-mpegurl");
         }
 
-        public static async Task<string> GenerateSourceHLS(WindowState state, int videoManifest, int audioManifest, ProxySettings? proxySettings = null)
+        public static async Task<string> GenerateSourceHLS(WindowState state, int videoManifest, int audioManifest, int subtitleIndex, bool subtitleIsLocal, ProxySettings? proxySettings = null, string? modifierId = null)
         {
             if (videoManifest < 0 && audioManifest < 0 && videoManifest != -999)
                 throw new Exception("No manifest index provided");
 
-            Parsers.HLS.IHLSPlaylist? playlist = null;
             (var sourceVideo, var sourceAudio, _) = GetSources(state, videoManifest, audioManifest, -1, false, false, false);
-            
-            if(sourceVideo is HLSManifestSource hlsVideoSource)
+
+            string hlsUrl;
+            IRequestModifier? modifier = null;
+
+            if (sourceVideo is HLSManifestSource hv)
             {
-                var requestModifier = hlsVideoSource?.GetRequestModifier();
-
-                if (proxySettings != null && proxySettings.Value.ProxyAddress != null && !proxySettings.Value.IsLoopback)
-                    playlist = await ProxyController.GenerateProxiedHLS(hlsVideoSource.Url, true, $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}", state, requestModifier);
-                else
-                    playlist = await ProxyController.GenerateProxiedHLS(hlsVideoSource.Url, true, $"{GrayjayServer.Instance.BaseUrl}", state, requestModifier);            
+                hlsUrl = hv.Url;
+                modifier = hv.GetRequestModifier();
             }
-            else if(sourceAudio is HLSManifestAudioSource hlsAudioSource)
+            else if (sourceAudio is HLSManifestAudioSource ha)
             {
-                var requestModifier = hlsAudioSource?.GetRequestModifier();
-
-                if (proxySettings != null && proxySettings.Value.ProxyAddress != null && !proxySettings.Value.IsLoopback)
-                    playlist = await ProxyController.GenerateProxiedHLS(hlsAudioSource.Url, true, $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}", state, requestModifier);
-                else
-                    playlist = await ProxyController.GenerateProxiedHLS(hlsAudioSource.Url, true, $"{GrayjayServer.Instance.BaseUrl}", state, requestModifier);
+                hlsUrl = ha.Url;
+                modifier = ha.GetRequestModifier();
             }
+            else
+                throw new Exception("Expected HLS video or audio manifest source.");
 
-            if (playlist == null)
-                throw new Exception("No manifest");
+            var headers = new Grayjay.Engine.Models.HttpHeaders();
+            var res = ModifierHttp.GetBytes(new ManagedHttpClient(), hlsUrl, modifier, headers);
+            if (!res.IsOk)
+                throw new InvalidDataException($"Failed to fetch manifest [{res.Code}]");
 
+            var finalUrl = res.FinalUrl;
+            var body = Encoding.UTF8.GetString(res.Bytes);
+            var baseUri = GetBaseUri(state, proxySettings);
+            if (string.IsNullOrEmpty(modifierId) && modifier != null)
+                modifierId = ProxyController.GetOrCreateModifierId(state, modifier, finalUrl);
 
-            return playlist.GenerateM3U8();
+            try
+            {
+                var master = Parsers.HLS.ParseMasterPlaylist(body, finalUrl);
+                ProxyController.ProxyHLSMasterPlaylist(baseUri, master, proxyMedia: true, modifierId: modifierId, windowId: state.WindowID);
+                if (subtitleIndex < 0)
+                    return master.GenerateM3U8();
+
+                var existingGroup = master.VariantPlaylistsRefs
+                    .Select(v => v.StreamInfo?.Subtitles)
+                    .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && !s.Equals("NONE", StringComparison.OrdinalIgnoreCase));
+
+                var subsGroupId = string.IsNullOrWhiteSpace(existingGroup) ? "gj-subs" : existingGroup;
+                var subsPlaylist =
+                    $"{baseUri}/Details/SubtitleHLS?subtitleIndex={subtitleIndex}"
+                    + $"&subtitleIsLocal={subtitleIsLocal}"
+                    + $"&windowId={state.WindowID}"
+                    + (!string.IsNullOrEmpty(modifierId) ? $"&modifierId={Uri.EscapeDataString(modifierId)}" : "");
+
+                master.MediaRenditions.Add(new Parsers.HLS.MediaRendition(
+                    type: "SUBTITLES",
+                    uri: subsPlaylist,
+                    groupId: subsGroupId,
+                    language: null,
+                    name: "Subtitles",
+                    isDefault: true,
+                    isAutoSelect: true,
+                    isForced: false
+                ));
+
+                foreach (var vref in master.VariantPlaylistsRefs)
+                {
+                    if (vref.StreamInfo == null)
+                        continue;
+
+                    if (string.IsNullOrWhiteSpace(vref.StreamInfo.Subtitles) || vref.StreamInfo.Subtitles.Equals("NONE", StringComparison.OrdinalIgnoreCase))
+                        vref.StreamInfo.Subtitles = subsGroupId;
+                }
+
+                return master.GenerateM3U8();
+            }
+            catch
+            {
+                if (subtitleIndex < 0)
+                {
+                    return (await ProxyController.GenerateProxiedHLS(finalUrl, proxyMedia: true, baseUri: baseUri, state: state, modifier: modifier, modifierId: modifierId)).GenerateM3U8();
+                }
+
+                var subsGroupId = "gj-subs";
+                var subsPlaylist =
+                    $"{baseUri}/Details/SubtitleHLS?subtitleIndex={subtitleIndex}"
+                    + $"&subtitleIsLocal={subtitleIsLocal}"
+                    + $"&windowId={state.WindowID}"
+                    + (!string.IsNullOrEmpty(modifierId) ? $"&modifierId={Uri.EscapeDataString(modifierId)}" : "");
+
+                var proxiedVariant =
+                    $"{baseUri}/proxy/HLS?url={HttpUtility.UrlEncode(finalUrl)}&proxyMedia=true"
+                    + (!string.IsNullOrEmpty(modifierId) ? $"&modifierId={Uri.EscapeDataString(modifierId)}" : "")
+                    + $"&windowId={state.WindowID}";
+
+                int? bw = null;
+                string? reso = null;
+                string? codecs = null;
+
+                if (sourceVideo != null)
+                {
+                    var t = sourceVideo.GetType();
+                    if (t.GetProperty("Bitrate")?.GetValue(sourceVideo) is int bwi) bw = bwi;
+                    if (t.GetProperty("Codec")?.GetValue(sourceVideo) is string c) codecs = c;
+
+                    var w = t.GetProperty("Width")?.GetValue(sourceVideo) as int?;
+                    var h = t.GetProperty("Height")?.GetValue(sourceVideo) as int?;
+                    if (w.HasValue && h.HasValue && w.Value > 0 && h.Value > 0)
+                        reso = $"{w.Value}x{h.Value}";
+                }
+
+                var wrapped = new Parsers.HLS.MasterPlaylist(
+                    version: 3,
+                    variantPlaylistsRefs: new List<Parsers.HLS.VariantPlaylistReference>
+                    {
+                        new Parsers.HLS.VariantPlaylistReference(
+                            proxiedVariant,
+                            new Parsers.HLS.StreamInfo(
+                                bandwidth: bw,
+                                resolution: reso,
+                                codecs: codecs,
+                                frameRate: null,
+                                videoRange: null,
+                                audio: null,
+                                video: null,
+                                subtitles: subsGroupId,
+                                closedCaptions: null
+                            )
+                        )
+                    },
+                    mediaRenditions: new List<Parsers.HLS.MediaRendition>
+                    {
+                        new Parsers.HLS.MediaRendition(
+                            type: "SUBTITLES",
+                            uri: subsPlaylist,
+                            groupId: subsGroupId,
+                            language: null,
+                            name: "Subtitles",
+                            isDefault: true,
+                            isAutoSelect: true,
+                            isForced: false
+                        )
+                    },
+                    sessionDataList: new List<Parsers.HLS.SessionData>(),
+                    independentSegments: true
+                );
+
+                return wrapped.GenerateM3U8();
+            }
         }
 
         [HttpGet]
@@ -1108,7 +1178,7 @@ namespace Grayjay.ClientServer.Controllers
                         CanRetry = false
                     });
                 if (video.Live is HLSManifestSource)
-                    return DirectHLSUrlSource(state, videoIndex, -1, new ProxySettings(true));
+                    return DirectHLSUrlSource(state, videoIndex, -1, subtitleIndex, subtitleIsLocal, proxySettings ?? new ProxySettings(true), null);
                 else throw new DialogException(new ExceptionModel()
                 {
                     Title = "Livestream type not supported",
@@ -1118,7 +1188,12 @@ namespace Grayjay.ClientServer.Controllers
             }
 
             (var sourceVideo, var sourceAudio, var sourceSubtitle) = GetSources(state, videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal);
-            bool hasRequestModifier = (sourceVideo as JSSource)?.HasRequestModifier is true || (sourceAudio as JSSource)?.HasRequestModifier is true;
+            if (subtitleIndex >= 0 && sourceVideo is HLSManifestSource)
+                return DirectHLSUrlSource(state, videoIndex, -1, subtitleIndex, subtitleIsLocal, proxySettings ?? new ProxySettings(true), null);
+
+            if (subtitleIndex >= 0 && sourceAudio is HLSManifestAudioSource)
+                return DirectHLSUrlSource(state, -1, audioIndex, subtitleIndex, subtitleIsLocal, proxySettings ?? new ProxySettings(true), null);
+                
             if (sourceVideo != null && (sourceAudio != null || sourceSubtitle != null))
             {
                 if (!(sourceVideo is DashManifestRawSource das && sourceAudio is DashManifestRawAudioSource daus))
@@ -1143,7 +1218,7 @@ namespace Grayjay.ClientServer.Controllers
                 if (sourceVideo is VideoUrlSource vus)
                     return DirectVideoUrlSource(vus, videoIndex, videoIsLocal, proxySettings);
                 else if (sourceVideo is HLSManifestSource)
-                    return DirectHLSUrlSource(state, videoIndex, -1, new ProxySettings(true));
+                    return DirectHLSUrlSource(state, videoIndex, -1, subtitleIndex, subtitleIsLocal, proxySettings ?? new ProxySettings(true), null);
                 else if (sourceVideo is LocalVideoSource lvs)
                     return LocalVideoSource(state, lvs);
                 else if (sourceVideo is DashManifestRawSource das)
@@ -1173,7 +1248,7 @@ namespace Grayjay.ClientServer.Controllers
                 if (sourceAudio is AudioUrlSource aus)
                     return DirectAudioUrlSource(aus, audioIndex, audioIsLocal, proxySettings);
                 else if (sourceAudio is HLSManifestAudioSource)
-                    return DirectHLSUrlSource(state, -1, audioIndex, new ProxySettings(true));
+                    return DirectHLSUrlSource(state, -1, audioIndex, subtitleIndex, subtitleIsLocal, proxySettings ?? new ProxySettings(true), null);
                 else if (sourceAudio is LocalAudioSource las)
                     return LocalAudioSource(state, las);
                 else
@@ -1276,27 +1351,47 @@ namespace Grayjay.ClientServer.Controllers
             };
         }
 
-        private static SourceDescriptor DirectHLSUrlSource(WindowState state, int videoIndex = -1, int audioIndex = -1, ProxySettings? proxySettings = null)
+        private static SourceDescriptor DirectHLSUrlSource(WindowState state, int videoIndex = -1, int audioIndex = -1, int subtitleIndex = -1, bool subtitleIsLocal = false, ProxySettings? proxySettings = null, string? modifierId = null)
         {
             (var sourceVideo, var sourceAudio, _) = GetSources(state, videoIndex, audioIndex, -1, false, false, false);
+            if (subtitleIndex >= 0)
+            {
+                return new SourceDescriptor(
+                    $"/details/SourceHLS?videoIndex={videoIndex}&audioIndex={audioIndex}"
+                    + $"&subtitleIndex={subtitleIndex}&subtitleIsLocal={subtitleIsLocal}"
+                    + $"&isLoopback={proxySettings?.IsLoopback ?? true}"
+                    + $"&windowId={state.WindowID}"
+                    + (!string.IsNullOrEmpty(modifierId) ? $"&modifierId={Uri.EscapeDataString(modifierId)}" : ""),
+                    "application/vnd.apple.mpegurl",
+                    videoIndex, audioIndex, subtitleIndex,
+                    false, false, subtitleIsLocal
+                );
+            }
 
             if (sourceVideo is HLSManifestSource hlsm)
             {
                 if (proxySettings != null && proxySettings.Value.ShouldProxySources(sourceVideo, sourceAudio))
                 {
-                    return new SourceDescriptor($"/details/SourceHLS?videoIndex={videoIndex}&isLoopback={proxySettings?.IsLoopback ?? true}&windowId={state.WindowID}", "application/vnd.apple.mpegurl", videoIndex, -1, -1, false, false, false);
+                    return new SourceDescriptor(
+                        $"/details/SourceHLS?videoIndex={videoIndex}&isLoopback={proxySettings?.IsLoopback ?? true}&windowId={state.WindowID}",
+                        "application/vnd.apple.mpegurl",
+                        videoIndex, -1, -1, false, false, false
+                    );
                 }
-                else
-                    return new SourceDescriptor(hlsm.Url, "application/vnd.apple.mpegurl", videoIndex, -1, -1, false, false, false);
+                return new SourceDescriptor(hlsm.Url, "application/vnd.apple.mpegurl", videoIndex, -1, -1, false, false, false);
             }
-            else if (sourceAudio is HLSManifestAudioSource hlsa)
+
+            if (sourceAudio is HLSManifestAudioSource hlsa)
             {
                 if (proxySettings != null && proxySettings.Value.ShouldProxySources(sourceVideo, sourceAudio))
                 {
-                    return new SourceDescriptor($"/details/SourceHLS?audioIndex={audioIndex}&videoIndex=-1&isLoopback={proxySettings?.IsLoopback ?? true}&windowId={state.WindowID}", "application/vnd.apple.mpegurl", -1, audioIndex, -1, false, false, false);
+                    return new SourceDescriptor(
+                        $"/details/SourceHLS?audioIndex={audioIndex}&videoIndex=-1&isLoopback={proxySettings?.IsLoopback ?? true}&windowId={state.WindowID}",
+                        "application/vnd.apple.mpegurl",
+                        -1, audioIndex, -1, false, false, false
+                    );
                 }
-                else
-                    return new SourceDescriptor(hlsa.Url, "application/vnd.apple.mpegurl", -1, audioIndex, -1, false, false, false);
+                return new SourceDescriptor(hlsa.Url, "application/vnd.apple.mpegurl", -1, audioIndex, -1, false, false, false);
             }
 
             throw new Exception("Expected either HLS audio or video source.");
@@ -1385,6 +1480,158 @@ namespace Grayjay.ClientServer.Controllers
                 AudioIsLocal = audioIsLocal;
                 SubtitleIsLocal = subtitleIsLocal;
             }
+        }
+
+        private static string GetBaseUri(WindowState state, ProxySettings? proxySettings)
+        {
+            if (proxySettings != null && proxySettings.Value.ExposeLocalAsAny && proxySettings.Value.ProxyAddress != null)
+                return $"http://{proxySettings.Value.ProxyAddress.ToUrlAddress()}:{GrayjayCastingServer.Instance.BaseUri!.Port}";
+
+            return GrayjayServer.Instance.BaseUrl;
+        }
+
+        private static string BuildSubtitleUrl(WindowState state, int subtitleIndex, bool subtitleIsLocal, ProxySettings? proxySettings, string? modifierId = null)
+        {
+            var baseUri = GetBaseUri(state, proxySettings);
+            var url = $"{baseUri}/Details/Subtitle?subtitleIndex={subtitleIndex}"
+                + $"&subtitleIsLocal={subtitleIsLocal}"
+                + $"&windowId={state.WindowID}";
+
+            if (!string.IsNullOrEmpty(modifierId))
+                url += $"&modifierId={Uri.EscapeDataString(modifierId)}";
+
+            return url;
+        }
+
+        public static async Task<(byte[] Bytes, string ContentType)> GetSubtitleBytesAsync(WindowState state, int subtitleIndex, bool subtitleIsLocal, string? modifierId = null)
+        {
+            if (subtitleIsLocal)
+            {
+                var local = EnsureLocal(state);
+                var src = local.SubtitleSources[subtitleIndex];
+                var ct = string.IsNullOrWhiteSpace(src.Format) ? "text/vtt" : src.Format!;
+                var bytes = await System.IO.File.ReadAllBytesAsync(src.FilePath);
+                return (bytes, ct);
+            }
+
+            var video = EnsureVideo(state);
+            var srcRemote = video.Subtitles[subtitleIndex];
+            var contentType = string.IsNullOrWhiteSpace(srcRemote.Format) ? "text/vtt" : srcRemote.Format!;
+
+            var uri = srcRemote.GetSubtitlesUri();
+            if (uri == null)
+                uri = new Uri(srcRemote.Url);
+
+            if (uri.Scheme.Equals("file", StringComparison.OrdinalIgnoreCase))
+            {
+                var bytes = await System.IO.File.ReadAllBytesAsync(uri.LocalPath);
+                return (bytes, contentType);
+            }
+
+            IRequestModifier? modifier = null;
+            if (!string.IsNullOrEmpty(modifierId))
+                DetailsState.Modifiers.TryGetValue(modifierId, out modifier);
+
+            if (modifier != null)
+            {
+                var headers = new Grayjay.Engine.Models.HttpHeaders();
+                var res = ModifierHttp.GetBytes(new ManagedHttpClient(), uri.ToString(), modifier, headers);
+                if (!res.IsOk)
+                    throw new InvalidDataException($"Failed to fetch subtitle [{res.Code}]");
+
+                return (res.Bytes, contentType);
+            }
+
+            using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true });
+            var b = await client.GetByteArrayAsync(uri);
+            return (b, contentType);
+        }
+
+        private static double? TryGetVideoDurationSeconds(WindowState state)
+        {
+            var v = state.DetailsState.VideoLoaded;
+            if (v == null)
+                return null;
+
+            object? videoObj = v;
+            foreach (var name in new[] { "DurationSeconds", "Duration" })
+            {
+                var p = videoObj.GetType().GetProperty(name);
+                if (p != null)
+                {
+                    var val = p.GetValue(videoObj);
+                    if (val is int i) return i;
+                    if (val is long l) return l;
+                    if (val is double d) return d;
+                    if (val is float f) return f;
+                }
+            }
+
+            var innerVideo = v.GetType().GetProperty("Video")?.GetValue(v);
+            if (innerVideo != null)
+            {
+                foreach (var name in new[] { "DurationSeconds", "Duration" })
+                {
+                    var p = innerVideo.GetType().GetProperty(name);
+                    if (p != null)
+                    {
+                        var val = p.GetValue(innerVideo);
+                        if (val is int i) return i;
+                        if (val is long l) return l;
+                        if (val is double d) return d;
+                        if (val is float f) return f;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string GenerateSubtitleMediaPlaylist(string subtitleUrl, double durationSeconds)
+        {
+            if (durationSeconds <= 0)
+                durationSeconds = 60;
+
+            var targetDuration = Math.Max(1, (int)Math.Ceiling(durationSeconds));
+            var dur = durationSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return
+                "#EXTM3U\n" +
+                "#EXT-X-VERSION:3\n" +
+                $"#EXT-X-TARGETDURATION:{targetDuration}\n" +
+                "#EXT-X-MEDIA-SEQUENCE:0\n" +
+                $"#EXTINF:{dur},\n" +
+                subtitleUrl + "\n" +
+                "#EXT-X-ENDLIST\n";
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Subtitle(int subtitleIndex, bool subtitleIsLocal = false, string? modifierId = null)
+        {
+            Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+            var state = this.State();
+            var (bytes, ct) = await GetSubtitleBytesAsync(state, subtitleIndex, subtitleIsLocal, modifierId);
+            return File(bytes, ct);
+        }
+
+        [HttpGet]
+        public IActionResult SubtitleHLS(int subtitleIndex, bool subtitleIsLocal = false, string? modifierId = null)
+        {
+            Response.Headers["Access-Control-Allow-Origin"] = "*";
+
+            var state = this.State();
+
+            var baseUri = $"{Request.Scheme}://{Request.Host.Value}";
+            var subtitleUrl =
+                $"{baseUri}/Details/Subtitle?subtitleIndex={subtitleIndex}"
+                + $"&subtitleIsLocal={subtitleIsLocal}"
+                + $"&windowId={state.WindowID}"
+                + (!string.IsNullOrEmpty(modifierId) ? $"&modifierId={Uri.EscapeDataString(modifierId)}" : "");
+
+            var dur = TryGetVideoDurationSeconds(state) ?? 86400.0;
+            var m3u8 = GenerateSubtitleMediaPlaylist(subtitleUrl, dur);
+
+            return Content(m3u8, "application/x-mpegurl");
         }
     }
 }
