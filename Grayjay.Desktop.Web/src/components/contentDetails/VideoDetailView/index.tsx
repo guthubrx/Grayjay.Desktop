@@ -82,6 +82,7 @@ import LiveChatState, { LiveRaidEvent } from "../../../state/StateLiveChat"
 import { useFocus } from "../../../FocusProvider";
 import ControllerOverlay from "../../ControllerOverlay";
 import { useCasting } from "../../../contexts/Casting";
+import { SearchBackend } from "../../../backend/SearchBackend";
 
 const SCOPE_ID = "video-detail-view";
 
@@ -1409,7 +1410,14 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         }}>
                             <TransparentIconButton icon={ic_chevron_down} onClick={() => minimize()} style={{"flex-shrink":0, "width": "40px", "height": "40px"}} />
                             <Show when={false /*Search from video=>search seems fundamentally broken*/}>
-                                <SearchBar onSearch={(q, c) => {navigate("/web/search?q=" + encodeURIComponent(q) + "&type=" + c);minimize(); }} style={{ "flex-grow": 1, "max-width": "700px", "margin-left": "24px" }} defaultSearchType={ContentType.MEDIA} />
+                                <SearchBar onSearch={async (q, c) => {
+                                    if (await SearchBackend.isContentDetailsUrl(q)) {
+                                        video?.actions.openVideoByUrl(q);
+                                    } else {
+                                        navigate("/web/search?q=" + encodeURIComponent(q) + "&type=" + c);
+                                        minimize(); 
+                                    }
+                                }} style={{ "flex-grow": 1, "max-width": "700px", "margin-left": "24px" }} defaultSearchType={ContentType.MEDIA} />
                             </Show>
                             <div style="flex-grow: 1"></div>
                             <TransparentIconButton icon={ic_close} onClick={() => close()} style={{"flex-shrink":0, "width": "40px", "height": "40px"}} />

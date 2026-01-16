@@ -717,6 +717,16 @@ namespace Grayjay.Desktop.POC.Port.States
         public static GrayjayPlugin GetContentClient(string url) 
             => GetContentClientOrNull(url) ?? throw new NoPlatformClientException($"No client enabled that supports this content url ({url})");
 
+        public static bool IsContentDetailsUrl(string url)
+        {
+            GrayjayPlugin[] arr = null;
+            ClientsLock(() =>
+            {
+                arr = _enabledClients.ToArray();
+            });
+            return arr?.Any(x => x.IsContentDetailsUrl(url)) ?? false;
+        }
+
         public static GrayjayPlugin GetChannelClientOrNull(string url)
         {
             Stopwatch w = Stopwatch.StartNew();

@@ -30,6 +30,10 @@ export abstract class SearchBackend {
         return await Backend.GET("/search/SearchSuggestions?query=" + encodeURIComponent(query)) as string[];
     }
 
+    static async isContentDetailsUrl(url: string): Promise<boolean> {
+        return await Backend.GET("/search/IsContentDetailsUrl?url=" + encodeURIComponent(url)) as boolean;
+    }
+
     static async previousSearches(): Promise<string[]> {
         return await Backend.GET("/search/PreviousSearches") as string[];
     }

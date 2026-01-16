@@ -93,13 +93,14 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     };
     const openVideoByUrl = async (url: string, time?: Duration, videoState?: VideoState) => { 
         const desiredVideoState = videoState ?? VideoState.Maximized;
+        if (state() !== desiredVideoState)
+            setState(desiredVideoState);
         const videoLoadResult = await DetailsBackend.videoLoad(url);
         batch(() => {
             setIndex(0);
             setStartTime(time);
             setQueue([ videoLoadResult.video ]);
-            if (state() !== desiredVideoState)
-                setState(desiredVideoState);
+
         });
     };
     const sq = (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState) => { 

@@ -18,6 +18,7 @@ import { ContentType } from '../../../backend/models/ContentType';
 import ScrollContainer from '../../containers/ScrollContainer';
 import { useFocus } from '../../../FocusProvider';
 import { Direction } from '../../../nav';
+import { useVideo } from '../../../contexts/VideoProvider';
 
 interface SearchBarProps {
   placeholder?: string;
@@ -40,6 +41,7 @@ interface SearchBarProps {
 const SearchBar: Component<SearchBarProps> = (props) => {
   const navigate = useNavigate();
   const focus = useFocus();
+  const video = useVideo();
 
   const buttonStyle: JSX.CSSProperties = {
     "border-radius": "6px",
@@ -123,19 +125,24 @@ const SearchBar: Component<SearchBarProps> = (props) => {
 
   const searchFor = async (query: string, type?: ContentType) => {
     setSuggestionsVisible(false);
-    const currentPath = window.location.pathname;
-    let searchParams = new URLSearchParams(window.location.search);
-    
-    if (currentPath === "/web/search") {
-      searchParams.set("q", query);
-      searchParams.set("type", (type ?? ContentType.MEDIA).toString());
+
+    if (await SearchBackend.isContentDetailsUrl(query)) {
+        video?.actions.openVideoByUrl(query);
     } else {
-      searchParams = new URLSearchParams();
-      searchParams.append("q", query);
-      searchParams.append("type", (type ?? ContentType.MEDIA).toString());
+      const currentPath = window.location.pathname;
+      let searchParams = new URLSearchParams(window.location.search);
+      
+      if (currentPath === "/web/search") {
+        searchParams.set("q", query);
+        searchParams.set("type", (type ?? ContentType.MEDIA).toString());
+      } else {
+        searchParams = new URLSearchParams();
+        searchParams.append("q", query);
+        searchParams.append("type", (type ?? ContentType.MEDIA).toString());
+      }
+      
+      navigate("/web/search?" + searchParams.toString(), {});
     }
-    
-    navigate("/web/search?" + searchParams.toString(), {});
     props.onSearch?.(query, type);
     await SearchBackend.addPreviousSearch(query);
   };

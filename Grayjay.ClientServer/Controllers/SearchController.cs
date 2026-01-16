@@ -65,6 +65,13 @@ namespace Grayjay.ClientServer.Controllers
             return Ok(StatePlatform.SearchSuggestions(query));
         }
 
+
+        [HttpGet]
+        public ActionResult<bool> IsContentDetailsUrl(string url)
+        {
+            return Ok(StatePlatform.IsContentDetailsUrl(url));
+        }
+
         [HttpGet]
         public ActionResult RemoveAllPreviousSearches()
         {
