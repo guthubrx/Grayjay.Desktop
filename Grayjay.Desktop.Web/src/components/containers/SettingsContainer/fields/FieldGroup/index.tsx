@@ -5,6 +5,7 @@ import { ISettingsField } from '../../../../../backend/models/settings/SettingsO
 import { ISettingsFieldGroup } from '../../../../../backend/models/settings/fields/SettingsFieldGroup';
 import SettingsContainer, { SettingsContainerParent } from '../..';
 import Field from '../Field';
+import { Direction } from '../../../../../nav';
 
 interface FieldGroupProps {
     container?: SettingsContainerParent,
@@ -13,6 +14,11 @@ interface FieldGroupProps {
     value: any,
     showAdvanced?: boolean,
     onBack?: () => boolean
+    focusableGroupOpts?: {
+        groupId?: string;
+        groupType?: "grid" | "horizontal" | "vertical";
+        groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    }
 }
 
 const FieldGroup: Component<FieldGroupProps> = (props) => {
@@ -35,7 +41,8 @@ const FieldGroup: Component<FieldGroupProps> = (props) => {
                         onFieldChanged={(field: ISettingsField, newVal: any)=>props.onFieldChanged && props.onFieldChanged(field, newVal)}
                         showAdvanced={props.showAdvanced}
                         isSubField={true}
-                        onBack={props.onBack} />
+                        onBack={props.onBack}
+                        focusableGroupOpts={props.focusableGroupOpts} />
                 }</For>
             </div>
         </div>

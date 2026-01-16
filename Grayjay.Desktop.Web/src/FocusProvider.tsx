@@ -51,7 +51,7 @@ export interface FocusAPI {
     setNodeOptions: (id: string, opts: Partial<FocusableOptions>) => void;
     navigate: (dir: Direction, inputSource: InputSource) => void;
     press: (kind: Press, inputSource: InputSource) => void;
-    focusFirstInScope: (scopeId: string, isDefaultFocus: boolean) => void;
+    focusFirstInScope: (scopeId: string, isDefaultFocus: boolean, autoPressSource?: InputSource) => void;
     setActiveScope: (id: string | null) => void;
     getActiveScope: Accessor<string | null>;
     resolveScopeId: (el: HTMLElement) => string | null;
@@ -198,16 +198,26 @@ export function FocusProvider(props: { children: JSX.Element }) {
         return true;
     }
 
-    function focusCandidate(node: NodeEntry, dir?: Direction) {
+    function maybeAutoPressOnFocus(node: NodeEntry, inputSource: InputSource) {
+        if (inputSource === "pointer") return;
+        if (node.opts.autoPressOnFocus !== true) return;
+
+        queueMicrotask(() => {
+            const cur = currentFocused();
+            if (!cur || cur.id !== node.id) return;
+            press("press", inputSource);
+        });
+    }
+
+    function focusCandidate(node: NodeEntry, dir?: Direction, autoPressSource?: InputSource) {
         try {
             node.el.scrollIntoView({ block: "nearest", inline: "nearest" });
         } catch {}
 
         const cont = nearestScrollContainer(node.el);
         if (!isPartiallyVisibleInContainer(node.el, cont)) scrollIntoViewWithin(cont, node.el, dir);
-        focusNode(node);
+        focusNode(node, autoPressSource);
     }
-
 
     function setScopeMode(id: string, mode: 'off' | 'on' | 'trap') {
         console.info("setScopeMode", {id, mode});
@@ -1045,7 +1055,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
         scope.hadFocus = true;
     }
 
-    function focusNode(node?: NodeEntry) {
+    function focusNode(node?: NodeEntry, autoPressSource?: InputSource) {
         if (!node) return;
 
         console.info("focusNode", node);
@@ -1056,6 +1066,11 @@ export function FocusProvider(props: { children: JSX.Element }) {
         node.el.focus();
         setFocusedNode(node);
         rememberGroupLast(node);
+
+
+        if (autoPressSource) {
+            maybeAutoPressOnFocus(node, autoPressSource);
+        }
     }
 
     function findScopeForNavigation(): ScopeEntry | undefined {
@@ -1086,7 +1101,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
         setLastInputSource(inputSource);
 
         if (!focused) {
-            focusFirstInScope(scope.id, false);
+            focusFirstInScope(scope.id, false, inputSource);
             return;
         }
 
@@ -1095,7 +1110,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
         if (focused.scope === scope.id) {
             const gnext = neighborInGroup(scope.id, focused, dir);
             if (gnext) {
-                focusCandidate(gnext, dir);
+                focusCandidate(gnext, dir, inputSource);
                 return;
             }
         }
@@ -1117,7 +1132,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
             if (next) {
                 next = maybeEnterRememberedGroup(focused, next);
-                focusCandidate(next, dir);
+                focusCandidate(next, dir, inputSource);
                 return;
             }
 
@@ -1141,7 +1156,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
             if (target) {
                 target = maybeEnterRememberedGroup(focused, target);
-                focusCandidate(target);
+                focusCandidate(target, undefined, inputSource);
                 return;
             }
 
@@ -1159,7 +1174,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
                 let cand = spatialNext(focused.el, dir, parent.id, focused);
                 if (cand) {
                     cand = maybeEnterRememberedGroup(focused, cand);
-                    focusCandidate(cand, dir);
+                    focusCandidate(cand, dir, inputSource);
                     return;
                 }
             } else {
@@ -1167,7 +1182,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
                 if (list.length) {
                     let cand = dir === 'next' ? list[0] : list[list.length - 1];
                     cand = maybeEnterRememberedGroup(focused, cand);
-                    focusCandidate(cand);
+                    focusCandidate(cand, undefined, inputSource);
                     return;
                 }
             }
@@ -1250,7 +1265,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
         return false;
     }
 
-    function focusFirstInScope(scopeId: string, isAutoFocus: boolean) {
+    function focusFirstInScope(scopeId: string, isAutoFocus: boolean, autoPressSource?: InputSource) {
         const s = index.scopes.get(scopeId);
         console.info("focusFirstInScope", { scopeId, isAutoFocus, s });
 
@@ -1258,7 +1273,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
         if (s.hadFocus && s.activeNode) {
             const last = index.nodes.get(s.activeNode);
             if (last && isGroupSelectable(last)) {
-                focusCandidate(last);
+                focusCandidate(last, undefined, autoPressSource);
                 return;
             }
         }
@@ -1267,7 +1282,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
         if (el && isFocusable(el)) {
             const n = findNodeFromElement(el);
             if (n && n.scope === scopeId) {
-                focusNode(n);
+                focusNode(n, autoPressSource);
                 return;
             }
         }
@@ -1275,11 +1290,10 @@ export function FocusProvider(props: { children: JSX.Element }) {
         const first = sweepCandidates(scopeId)[0];
         if (first && isGroupSelectable(first)) {
             const chosen = maybeEnterRememberedGroup(undefined, first);
-            focusCandidate(chosen);
+            focusCandidate(chosen, undefined, autoPressSource);
             return;
         }
     }
-
 
     function resolveScopeId(el: HTMLElement): string | null {
         let cur: HTMLElement | null = el;

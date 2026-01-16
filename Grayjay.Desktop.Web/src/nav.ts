@@ -20,6 +20,7 @@ export interface FocusableOptions {
     groupEscapeDirs?: Direction[];
     groupEscapeTo?: Partial<Record<Direction, string[]>>;
     groupRememberLast?: boolean;
+    autoPressOnFocus?: boolean;
     navAnchor?: NavAnchor;
     onPress?: (el: HTMLElement, inputSource: InputSource) => void;
     onPressLabel?: string;

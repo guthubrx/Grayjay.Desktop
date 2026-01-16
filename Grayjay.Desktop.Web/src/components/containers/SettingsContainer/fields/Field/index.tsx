@@ -99,13 +99,15 @@ const Field: Component<FieldProps> = (props) => {
                             container={props.container}
                             onFieldChanged={onChanged}
                             showAdvanced={props.showAdvanced}
-                            onBack={props.onBack} />
+                            onBack={props.onBack}
+                            focusableGroupOpts={props.focusableGroupOpts} />
                     </Match>
                     <Match when={props.field.type == "group_flat"}>
                         <FieldGroup field={props.field as ISettingsFieldGroup} value={props.parentObject}
                             container={props.container}
                             onFieldChanged={onChanged}
-                            onBack={props.onBack} />
+                            onBack={props.onBack}
+                            focusableGroupOpts={props.focusableGroupOpts} />
                     </Match>
                     <Match when={props.field.type == "toggle"}>
                         <FieldToggle field={props.field as ISettingsFieldToggle} value={parseBool(props.parentObject[props.field.property])} 

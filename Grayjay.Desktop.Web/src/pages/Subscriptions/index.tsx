@@ -330,9 +330,27 @@ const SubscriptionsPage: Component = () => {
                 <div style="flex-grow: 1"></div>
                 <div class={styles.bannerButtons}>
                   <Button text="Create a subscription group" color="linear-gradient(267deg, #01D6E6 -100.57%, #0182E7 90.96%)" focusColor="linear-gradient(267deg, #00eeffff -100.57%, #0091ffff 90.96%)"
-                    onClick={() => newSubscriptionGroup()} focusableOpts={{ onPress: () => newSubscriptionGroup() }} />
+                    onClick={() => newSubscriptionGroup()} focusableOpts={{ 
+                      onPress: () => newSubscriptionGroup(),
+                      groupEscapeTo: {
+                        down: ['filters'],
+                        up: ['creators']
+                      },
+                      groupId: 'subgroups',
+                      groupType: 'horizontal',
+                      groupIndices: [0]
+                    }} />
                   <Button text="Dismiss" color="transparant" focusColor="#FFFFFF22" style={{ border: "1px solid rgba(1, 155, 231, 0)", "margin-left": "16px" }} 
-                    onClick={() => dismissSubscriptionGroups()} focusableOpts={{ onPress: () => dismissSubscriptionGroups() }} />
+                    onClick={() => dismissSubscriptionGroups()} focusableOpts={{ 
+                      onPress: () => dismissSubscriptionGroups(),
+                      groupEscapeTo: {
+                        down: ['filters'],
+                        up: ['creators']
+                      },
+                      groupId: 'subgroups',
+                      groupType: 'horizontal',
+                      groupIndices: [1]
+                    }} />
                 </div>
               </div>
             </Show>
