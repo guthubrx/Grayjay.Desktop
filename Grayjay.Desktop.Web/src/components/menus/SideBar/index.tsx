@@ -35,7 +35,7 @@ import StateGlobal from '../../../state/StateGlobal';
 import { createResourceDefault } from '../../../utility';
 import { LocalBackend } from '../../../backend/LocalBackend';
 import { Portal } from 'solid-js/web';
-import { FocusableOptions } from '../../../nav';
+import { Direction, FocusableOptions } from '../../../nav';
 import { focusScope } from '../../../focusScope'; void focusScope;
 import { focusable } from "../../../focusable"; void focusable;
 import { useFocus } from '../../../FocusProvider';
@@ -96,17 +96,18 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
     action?: () => any;
     onRightClick?: () => void;
     autoPressOnFocus?: boolean;
+    groupEscapeTo?: Partial<Record<Direction, string[]>>;
   };
   
-  const homeBtn: ButtonItem = { icon: home, name: 'Home', path: '/web/home', getSelected: createMemo(() => location.pathname === '/web/home' || location.pathname === '/web/index.html'), autoPressOnFocus: true };
-  const subscriptionsBtn: ButtonItem = { icon: subscriptions, name: 'Subscriptions', path: '/web/subscriptions', getSelected: createMemo(() => location.pathname === '/web/subscriptions'), autoPressOnFocus: true };
-  const creatorsBtn: ButtonItem = { icon: creators, name: 'Creators', path: '/web/creators', getSelected: createMemo(() => location.pathname === '/web/creators'), autoPressOnFocus: true };
-  const playlistsBtn: ButtonItem = { icon: playlists, name: 'Playlists', path: '/web/playlists', getSelected: createMemo(() => location.pathname === '/web/playlists'), autoPressOnFocus: true };
-  const watchLaterBtn: ButtonItem = { icon: iconWatchLater, name: 'Watch Later', path: '/web/watchLater', getSelected: createMemo(() => location.pathname === '/web/watchLater'), autoPressOnFocus: true };
-  const sourcesBtn: ButtonItem = { icon: iconSources, name: 'Sources', path: '/web/sources', getSelected: createMemo(() => location.pathname === '/web/sources'), autoPressOnFocus: true };
-  const downloadsBtn: ButtonItem = { icon: download, name: 'Downloads', path: '/web/downloads', getSelected: createMemo(() => location.pathname === '/web/downloads'), autoPressOnFocus: true };
-  const historyBtn: ButtonItem = { icon: history, name: 'History', path: '/web/history', getSelected: createMemo(() => location.pathname === '/web/history'), autoPressOnFocus: true };
-  const syncBtn: ButtonItem = { icon: iconSync, name: 'Sync', path: '/web/sync', getSelected: createMemo(() => location.pathname === '/web/sync'), autoPressOnFocus: true };
+  const homeBtn: ButtonItem = { icon: home, name: 'Home', path: '/web/home', getSelected: createMemo(() => location.pathname === '/web/home' || location.pathname === '/web/index.html'), autoPressOnFocus: false };
+  const subscriptionsBtn: ButtonItem = { icon: subscriptions, name: 'Subscriptions', path: '/web/subscriptions', getSelected: createMemo(() => location.pathname === '/web/subscriptions'), autoPressOnFocus: false };
+  const creatorsBtn: ButtonItem = { icon: creators, name: 'Creators', path: '/web/creators', getSelected: createMemo(() => location.pathname === '/web/creators'), autoPressOnFocus: false };
+  const playlistsBtn: ButtonItem = { icon: playlists, name: 'Playlists', path: '/web/playlists', getSelected: createMemo(() => location.pathname === '/web/playlists'), autoPressOnFocus: false };
+  const watchLaterBtn: ButtonItem = { icon: iconWatchLater, name: 'Watch Later', path: '/web/watchLater', getSelected: createMemo(() => location.pathname === '/web/watchLater'), autoPressOnFocus: false };
+  const sourcesBtn: ButtonItem = { icon: iconSources, name: 'Sources', path: '/web/sources', getSelected: createMemo(() => location.pathname === '/web/sources'), autoPressOnFocus: false, groupEscapeTo: { right: ['sources'] } };
+  const downloadsBtn: ButtonItem = { icon: download, name: 'Downloads', path: '/web/downloads', getSelected: createMemo(() => location.pathname === '/web/downloads'), autoPressOnFocus: false };
+  const historyBtn: ButtonItem = { icon: history, name: 'History', path: '/web/history', getSelected: createMemo(() => location.pathname === '/web/history'), autoPressOnFocus: false };
+  const syncBtn: ButtonItem = { icon: iconSync, name: 'Sync', path: '/web/sync', getSelected: createMemo(() => location.pathname === '/web/sync'), autoPressOnFocus: false };
   const newWindowBtn: ButtonItem = { icon: iconPlus, name: 'New Window', action: () => WindowBackend.startWindow(), getSelected: createMemo(() => false) };
   const closeWindowBtn: ButtonItem = { icon: iconExitToApp, name: 'Close', action: () => WindowBackend.closeWindow(), getSelected: createMemo(() => false) };
   const maximizeVideoBtn: ButtonItem = { icon: iconFitScreen, name: 'Expand Video', action: () => video?.actions.setState(VideoState.Maximized), getSelected: createMemo(() => false) };
@@ -124,7 +125,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
     if (focus?.isControllerMode() === true && video?.state() === VideoState.Minimized) {
       list.push(maximizeVideoBtn);
     }
-    
+
     if (focus?.isControllerMode() !== true) {
       list.push(newWindowBtn);
     } else {
@@ -305,7 +306,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                   groupEscapeDirs: ['right'],
                   groupRememberLast: true,
                   onPress: () => press(),
-                  autoPressOnFocus: btn.autoPressOnFocus
+                  autoPressOnFocus: btn.autoPressOnFocus,
+                  groupEscapeTo: btn.groupEscapeTo
                 }}
                 onFocus={globalFocus}
                 onBlur={globalBlur}

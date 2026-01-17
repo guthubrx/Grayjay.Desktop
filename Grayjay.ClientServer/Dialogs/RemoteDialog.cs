@@ -32,17 +32,28 @@ namespace Grayjay.ClientServer.Dialogs
         {
             _dialog?.UpdateData(this);
         }
-        public void Close()
+        public async Task CloseAsync()
         {
-            _dialog?.Close();
+            var dlg = _dialog;
             _dialog = null;
+            if (dlg != null)
+            {
+                try
+                {
+                    await dlg.Close().ConfigureAwait(false);
+                }
+                catch
+                {
+                    
+                }
+                dlg.Dispose();
+            }
         }
-
 
         [DialogMethod("close")]
         public void Close(CustomDialog dialog, JsonElement parameter)
         {
-            Close();
+            _ = CloseAsync();
         }
 
         public class DialogMethodAttribute: Attribute

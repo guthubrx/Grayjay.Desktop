@@ -5,7 +5,7 @@ import iconClose from '../../assets/icons/icon24_close.svg';
 import UIOverlay from '../../state/UIOverlay';
 
 import iconCheck from '../../assets/icons/icon_checkmark.svg'
-import { positiveOrQ, resolutionOrUnknown, toHumanBitrate, uuidv4 } from '../../utility';
+import { createResourceDefault, positiveOrQ, resolutionOrUnknown, toHumanBitrate, uuidv4 } from '../../utility';
 import ButtonFlex from '../../components/buttons/ButtonFlex';
 import Button from '../../components/buttons/Button';
 import { DownloadBackend } from '../../backend/DownloadBackend';
@@ -27,7 +27,7 @@ interface SourceItem {
 }
 const OverlayDownloadDialog: Component<OverlayDownloadDialogProps> = (props: OverlayDownloadDialogProps) => {
 
-  const [sources$, sourcesResource] = createResource(async ()=>{
+  const [sources$, sourcesResource] = createResourceDefault(async ()=>{
     return await UIOverlay.catchDialogExceptions<IDownloadSources>(async ()=>{
       return await DownloadBackend.loadDownloadSources(props.url);
     }, ()=>{

@@ -13,7 +13,7 @@ import UIOverlay from '../../state/UIOverlay';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import VirtualList from '../../components/containers/VirtualList';
 import InputText from '../../components/basics/inputs/InputText';
-import { updateDataArray } from '../../utility';
+import { createResourceDefault, updateDataArray } from '../../utility';
 import { Event1 } from '../../utility/Event';
 import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from '../../focusable'; void focusable;
@@ -343,13 +343,13 @@ const OverlayFilePicker: Component<OverlayFilePickerProps> = (props) => {
   });
 
   const [fileFilter, setFileFilter] = createSignal<number>(0);
-  const [quickAccess] = createResource(async () => {
+  const [quickAccess] = createResourceDefault(async () => {
     const res = await fetch('/Local/QuickAccess');
     if (!res.ok) throw new Error(await res.text());
     return (await res.json()) as QuickAccessRow[];
   });
 
-  const [files] = createResource(
+  const [files] = createResourceDefault(
     () => ({ dir: currentDirectory(), q: search(), filter: fileFilter(), filters: filters(), mode: selectionMode() }),
     async ({ dir, q, filter, filters, mode }) => {
       console.info("query files", {dir,q,filter});

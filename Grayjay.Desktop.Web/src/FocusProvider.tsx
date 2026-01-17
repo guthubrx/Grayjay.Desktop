@@ -264,6 +264,12 @@ export function FocusProvider(props: { children: JSX.Element }) {
         const scope = index.scopes.get(scopeId);
         if (scope) scope.nodes.add(id);
 
+        const trap = topTrap();
+        const cur = currentFocused();
+        if (trap === scopeId && (!cur || !isWithinScope(cur.scope, scopeId))) {
+            queueMicrotask(() => focusFirstInScope(scopeId, true));
+        }
+
         syncTabIndexForNode(entry);
         return id;
     }

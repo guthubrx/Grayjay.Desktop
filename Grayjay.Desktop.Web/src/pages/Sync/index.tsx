@@ -60,7 +60,7 @@ const SyncPage: Component = () => {
   };
 
   const [status$, statusResourceActions] = createResourceDefault(() => [], async () => await SyncBackend.status());
-  const fetchPairingUrlWithRetry = async (timeout = 5000, interval = 500) => {
+  const fetchPairingUrlWithRetry = async (timeout = 5000, interval = 2000) => {
     const start = Date.now();
     while (Date.now() - start < timeout) {
       try {
@@ -69,7 +69,7 @@ const SyncPage: Component = () => {
         statusResourceActions.refetch();
         if (url && url.length > 0) return url;
       } catch (e) {
-        console.warn('getPairingUrl failed, retrying...', e);
+        console.debug('getPairingUrl failed, retrying...', e);
       }
       await new Promise((r) => setTimeout(r, interval));
     }

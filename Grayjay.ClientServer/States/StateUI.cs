@@ -77,7 +77,7 @@ namespace Grayjay.ClientServer.Controllers
             };
             return Dialog(descriptor);
         }
-        public static Task<DialogResponse> Dialog(DialogDescriptor descriptor)
+        public static async Task<DialogResponse> Dialog(DialogDescriptor descriptor)
         {
             var completionResult = new TaskCompletionSource<DialogResponse>();
 
@@ -88,8 +88,10 @@ namespace Grayjay.ClientServer.Controllers
                     descriptor.Actions[res.Button].Action(res);
                 completionResult.SetResult(res);
             });
-            GrayjayServer.Instance?.WebSocket?.Broadcast(descriptor, "Dialog", id)?.Wait();
-            return completionResult.Task;
+            var t = GrayjayServer.Instance?.WebSocket?.Broadcast(descriptor, "Dialog", id);
+            if (t != null)
+                await t;
+            return await completionResult.Task;
         }
 
         public static async Task<DialogResponse> DialogError(string title, string msg, string code = null, Action onOk = null)

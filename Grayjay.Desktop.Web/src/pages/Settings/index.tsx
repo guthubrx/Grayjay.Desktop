@@ -95,14 +95,24 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
             <ScrollContainer wrapperStyle={{"padding-right": "4px"}}>
               <div classList={{[styles.settingsMenuItem]: true, [styles.active]: !filterGroup$()}} onClick={()=>setFilterGroup(undefined)} use:focusable={{
                 onPress: () => setFilterGroup(undefined),
-                onBack: globalBack
+                onBack: globalBack,
+                autoPressOnFocus: true,
+                groupRememberLast: true,
+                groupType: 'vertical',
+                groupId: 'settings-filters',
+                groupIndices: [0]
               }}>
                 All
               </div>
-              <For each={settings$()?.fields?.filter(x=>x.type == 'group') ?? []}>{item => 
+              <For each={settings$()?.fields?.filter(x=>x.type == 'group') ?? []}>{(item, i) => 
                 <div classList={{[styles.settingsMenuItem]: true, [styles.active]: item.property == filterGroup$()}} onClick={()=>setFilterGroup(item.property)} use:focusable={{
                   onPress: () => setFilterGroup(item.property),
-                  onBack: globalBack
+                  onBack: globalBack,
+                  autoPressOnFocus: true,
+                  groupRememberLast: true,
+                  groupType: 'vertical',
+                  groupId: 'settings-filters',
+                  groupIndices: [1 + i()]
                 }}>
                   {item.title}
                 </div>
@@ -110,13 +120,16 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
             </ScrollContainer>
             <div class={styles.bottomMenu}>
               <Show when={hasAdvanced$()}>
-                  <div>
+                  <div use:focusable={{
+                    onPress: () => { setAdvanced(!showAdvanced$()) },
+                    onBack: globalBack
+                  }}>
                     <div style="float: left; line-height: 33px; font-size: 16px; color: #999; margin-left: 3px;">
                       Advanced
                     </div>
                     <div style="text-align: right; margin-right: 10px">
                       <div style="scale: 0.6; display: inline-block">
-                      <Toggle value={showAdvanced$()} onToggle={(val)=>setAdvanced(val)} style=";" />
+                      <Toggle value={showAdvanced$()} onToggle={(val)=>setAdvanced(val)} />
                       </div>
                     </div>
                   </div>

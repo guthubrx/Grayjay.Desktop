@@ -54,6 +54,7 @@ namespace Grayjay.Desktop.CEF
             {
                 var dialog = FilePickerDialog.OpenFolderPicker((v) => taskCompletionSource.SetResult(v.FirstOrDefault()), false, null);
                 await dialog.Show();
+                taskCompletionSource.TrySetResult(null);
                 return await taskCompletionSource.Task;
             }
             catch (Exception e)

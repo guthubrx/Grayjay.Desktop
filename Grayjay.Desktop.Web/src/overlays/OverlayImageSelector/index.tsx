@@ -145,7 +145,7 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
           </div>
           <div class={styles.sectionTitle}>Creator Thumbnails</div>
           <div class={styles.sectionDescription}>Select a creator thumbnail as image</div>
-          <ScrollContainer wrapperStyle={{"max-height": "400px"}}>
+          <ScrollContainer wrapperStyle={{"max-height": "140px"}}>
             <div class={styles.subscriptionsContainer}>
               <For each={subscriptions$()}>{ sub =>
                 <div class={styles.subscription} classList={{[styles.enabled]: isSelectedSubscription(sub.channel.url)}} onClick={()=>selectSubscription(sub.channel.url, sub.channel.thumbnail)} use:focusable={{

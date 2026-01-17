@@ -806,12 +806,12 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         undefined,
                         () => videoPlayerViewHandle$()?.toggleFullscreen?.()
                     ),
-                    new MenuItemButton(
+                    ... video?.state() !== VideoState.Fullscreen ? [ new MenuItemButton(
                         "Cast",
                         ic_cast,
                         undefined,
                         () => openCasting()
-                    )
+                    ) ] : []
                 ] : [],
                 /*
                 {

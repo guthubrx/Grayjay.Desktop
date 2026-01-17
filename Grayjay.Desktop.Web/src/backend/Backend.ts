@@ -21,15 +21,16 @@ export abstract class Backend {
     }
 
     static async GET_text(url: string) {
-        const resp = await fetch(url, {
-            headers: {
-                "WindowID": Globals.WindowID
-            }
-        });
-        if (resp.status != 200)
-            await this.handleException(resp);
-
         try {
+            const resp = await fetch(url, {
+                headers: {
+                    "WindowID": Globals.WindowID
+                }
+            });
+            
+            if (resp.status != 200)
+                await this.handleException(resp);
+
             return await resp.text();
         } catch (e) {
             return undefined;

@@ -6,6 +6,7 @@ import LiveChatState, { LiveDonationEvent, LiveEventType, LiveRaidEvent } from '
 import LiveChatDonationPill from '../LiveChatDonationPill';
 import { Portal } from 'solid-js/web';
 import DonationOverlay from '../DonationOverlay';
+import { focusable } from '../../focusable'; void focusable;
 import RaidOverlay from '../RaidOverlay';
 
 interface LiveChatWindowProps {
@@ -98,7 +99,9 @@ const LiveChatWindow: Component<LiveChatWindowProps> = (props) => {
 
     let scrollContainerRef: HTMLDivElement | undefined;
     return (
-        <div class={styles.container} style={props.style}>
+        <div class={styles.container} style={props.style} use:focusable={{
+
+        }}>
             <div class={styles.containerHeader}>
                 Chat
                 <span style="margin-left:auto; padding-right:14px; font-size:13px; color:rgba(255,255,255,0.5);">

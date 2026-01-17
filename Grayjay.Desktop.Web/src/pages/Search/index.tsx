@@ -154,7 +154,7 @@ const SearchPage: Component = () => {
   return (
     <>
       <div class={styles.container}>
-          <NavigationBar initialText={query$()} defaultSearchType={searchType$()} />
+          <NavigationBar initialText={query$()} defaultSearchType={searchType$()} autoFocusSearch={true} />
           <div style="display: flex; flex-direction: row; align-items: center; margin-bottom: 24px; gap: 24px; margin-left: 24px; margin-right: 24px;">
             <ToggleItemButtonGroup items={[
               { text: "Media", value: ContentType.MEDIA, icon: iconVideos },

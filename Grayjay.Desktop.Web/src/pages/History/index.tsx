@@ -1,4 +1,4 @@
-import { createResource, type Component, createSignal, onMount, createMemo, createEffect, untrack, batch, Match, Switch, Show } from 'solid-js';
+import { createResource, type Component, createSignal, onMount, createMemo, createEffect, untrack, batch, Match, Switch, Show, on } from 'solid-js';
 import { useVideo, VideoState } from '../../contexts/VideoProvider';
 import LoaderContainer from '../../components/basics/loaders/LoaderContainer';
 import { HistoryBackend } from '../../backend/HistoryBackend';
@@ -38,47 +38,45 @@ const HistoryPage: Component = () => {
   const [query$, setQuery] = createSignal<string>();
   const [historyPager$, setHistoryPager] = createSignal<Pager<IHistoryVideo> | undefined>(undefined, { equals: false });
 
-  let initialLoadComplete = false;
-  let isLoading = false;
+  let [initialLoadComplete$, setInitialLoadComplete] = createSignal(false);
+  let [isLoading$, setIsLoading] = createSignal(false);
+  let reqId = 0;
   const updateHistoryPager = async (query?: string) => {
-    if (isLoading) {
-      return;
-    }
-
-    isLoading = true;
+    const myId = ++reqId;
+    setIsLoading(true);
 
     try {
-      console.log("Fetching history", {query});
-      if (query && query.length > 0) {
-        const pager = await HistoryBackend.historySearchPager(query);
-        setHistoryPager(pager);
-      } else {
-        const pager = await HistoryBackend.historyPager();
-        setHistoryPager(pager);
-      }
+      const pager = query && query.length > 0
+        ? await HistoryBackend.historySearchPager(query)
+        : await HistoryBackend.historyPager();
+
+      if (myId !== reqId) return;
+      setHistoryPager(pager);
     } finally {
-      isLoading = false;
-      initialLoadComplete = true;
+      if (myId === reqId) {
+        setIsLoading(false);
+        setInitialLoadComplete(true);
+      }
     }
   };
 
-  createEffect(() => {
-    updateHistoryPager(query$());
-  });
+  createEffect(on(query$, (q) => {
+    void updateHistoryPager(q);
+  }));
 
   async function onScrollEnd() {
-    if (isLoading) {
+    if (isLoading$()) {
       return;
     }
 
-    isLoading = true;
+    setIsLoading(true);
 
     try {
       const historyPager = historyPager$();
       if (historyPager?.hasMore)
         await historyPager?.nextPage();
     } finally {
-      isLoading = false;
+      setIsLoading(false);
     }
   }
 
@@ -198,7 +196,13 @@ const HistoryPage: Component = () => {
               onTextChanged={(newVal) => setQuery(newVal)}
               icon={ic_search}
               showClearButton={true}
-              focusable={true} />
+              focusable={true}
+              focusableGroupOpts={{
+                groupId: 'history-filters',
+                groupIndices: [0],
+                groupType: 'horizontal',
+                groupEscapeTo: { up: ['nav-bar'] }
+              }} />
 
               <CustomButton 
                 icon={ic_trash}
@@ -215,6 +219,10 @@ const HistoryPage: Component = () => {
                     setShow(true);
                   });
                 }} focusableOpts={{
+                  groupId: 'history-filters',
+                  groupIndices: [1],
+                  groupType: 'horizontal',
+                  groupEscapeTo: { up: ['nav-bar'] },
                   onPress: (el) => {
                     contentAnchor.setElement(el);
                     batch(() => {
@@ -225,12 +233,12 @@ const HistoryPage: Component = () => {
                 }} />
           </div>
           <div>
-            <Show when={!historyPager$()?.data?.length && initialLoadComplete && !isLoading}>
+            <Show when={!historyPager$()?.data?.length && initialLoadComplete$() && !isLoading$()}>
               <div style="display: flex; align-items: center; justify-content: center; height: 100%; width: 100%">
                 <img src={no_videos_in_history} style="width: 307px; margin-top: 150px" />
               </div>
             </Show>
-            <Show when={!historyPager$()?.data?.length && (!initialLoadComplete || isLoading)}>
+            <Show when={!historyPager$()?.data?.length && (!initialLoadComplete$() || isLoading$())}>
               <VirtualList 
                 items={new Array(30)}
                 outerContainerRef={scrollContainerRef}
@@ -244,9 +252,9 @@ const HistoryPage: Component = () => {
                 }
               } />
             </Show>
-            <Show when={historyPager$()?.data?.length}>
+            <Show when={historyPager$()?.dataFiltered?.length}>
               <VirtualList 
-                items={historyPager$()?.data}
+                items={historyPager$()?.dataFiltered}
                 addedItems={historyPager$()?.addedFilteredItemsEvent}
                 modifiedItems={historyPager$()?.modifiedFilteredItemsEvent}
                 removedItems={historyPager$()?.removedFilteredItemsEvent}
@@ -287,6 +295,12 @@ const HistoryPage: Component = () => {
                   };
 
                   return (<div class={styles.itemContainer} use:focusable={{
+                    groupId: 'history',
+                    groupEscapeDirs: ['up', 'left'],
+                    groupRememberLast: true,
+                    groupIndices: [index()],
+                    groupType: 'vertical',
+                    groupEscapeTo: { up: ['history-filters'] },
                     onPress: () => openVideo(true),
                     onOptions: (el) => {
                         contentAnchor.setElement(el as HTMLElement);
@@ -329,7 +343,7 @@ const HistoryPage: Component = () => {
                           contentAnchor.setElement(e.target as HTMLElement);
                 
                           batch(() => {
-                            setSettingsContent(historyVideo);
+                            setSettingsContent(historyVideo());
                             setShow(true);
                           });
                         }} 

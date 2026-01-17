@@ -1,8 +1,8 @@
-import { Component, JSX, Show, createEffect, createSignal, mergeProps } from 'solid-js'
+import { Component, JSX, Show, createEffect, createSignal, mergeProps, onMount } from 'solid-js'
 
 import close from '../../../../assets/icons/close_FILL0_wght400_GRAD0_opsz24.svg';
 import styles from './index.module.css';
-import { focusable } from "../../../../focusable";import { FocusableOptions, InputSource } from '../../../../nav';
+import { focusable } from "../../../../focusable";import { Direction, FocusableOptions, InputSource } from '../../../../nav';
  void focusable;
 
 interface InputTextProps {
@@ -29,6 +29,7 @@ interface InputTextProps {
         groupId?: string;
         groupType?: "grid" | "horizontal" | "vertical";
         groupIndices?: (number | undefined)[];
+        groupEscapeTo?: Partial<Record<Direction, string[]>>;
     };
 }
 
@@ -76,7 +77,7 @@ const InputText: Component<InputTextProps> = (props) => {
             props.onSubmit?.("");
         }
     };
-
+    
     return (
         <div ref={rootElement} class={styles.rootElement} style={{
             "width": "100%",
@@ -89,6 +90,7 @@ const InputText: Component<InputTextProps> = (props) => {
             onPress: () => {
                 if (document.activeElement === inputElement) {
                     merged.onSubmit?.(text());
+                    rootElement?.focus();
                 } else {
                     inputElement?.focus();
                 }

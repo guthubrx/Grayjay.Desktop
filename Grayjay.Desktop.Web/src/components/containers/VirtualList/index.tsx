@@ -21,6 +21,7 @@ interface VisibleRange {
 }
 
 const VirtualList: Component<VirtualListProps> = (props) => {
+    const listenerKey = {};
     let containerRef: HTMLDivElement | undefined;
 
     const [totalHeight, setTotalHeight] = createSignal(0);
@@ -75,7 +76,7 @@ const VirtualList: Component<VirtualListProps> = (props) => {
 
         const startRowIndex = Math.floor(scrollOffset / props.itemHeight);
         const startIndex = Math.max(0, Math.min(startRowIndex - overscan, props.items!.length - 1));
-        const endIndex = Math.max(0, Math.min(startRowIndex + elementsInView + overscan, props.items!.length - 1));
+        const endIndex = Math.max(0, Math.min(startRowIndex + elementsInView - 1 + overscan, props.items!.length - 1));
         
         if (props.onEnd) {
             if ((props.items!.length - 1) - endIndex <= (props.notifyEndOnLast ?? 1)) {
@@ -98,120 +99,30 @@ const VirtualList: Component<VirtualListProps> = (props) => {
         onUIEvent();
     });
 
-    const getFreePoolItem = () => {
-        return pool().find(item => item.index() === undefined);
-    };
-
     let lastAddedItems: Event1<{ startIndex: number, endIndex: number }> | undefined;
-    const attachAddedItems = (addedItems: Event1<{ startIndex: number, endIndex: number }> | undefined) => {
-        console.log("attachAddedItems", {lastAddedItems, addedItems});
-
-        lastAddedItems?.unregister(this);
-        addedItems?.registerOne(this, (range) => {
-            console.log("added event triggred", range);
-            const items = props.items;
-    
-            if (items) {
-                batch(() => {
-                    for (let i = range.startIndex; i <= range.endIndex; i++) {
-                        const unassignedPoolItem = getFreePoolItem();
-                        if (unassignedPoolItem) {
-                            unassignedPoolItem.setIndex(i);
-                            unassignedPoolItem.setItem(items[i]);
-                            unassignedPoolItem.setTop(i * props.itemHeight);
-                        }
-                    }
-                });
-            }
-
-            calculateVisibleRange();
-        });
+    const attachAddedItems = (addedItems?: Event1<{ startIndex: number; endIndex: number }>) => {
+        lastAddedItems?.unregister(listenerKey);
+        addedItems?.registerOne(listenerKey, () => untrack(() => calculateVisibleRange()));
         lastAddedItems = addedItems;
     };
     
     let lastRemovedItems: Event1<{ startIndex: number, endIndex: number }> | undefined;
-    const attachRemovedItems = (removedItems: Event1<{ startIndex: number, endIndex: number }> | undefined) => {
-        console.log("attachRemovedItems", {lastRemovedItems, removedItems});
-
-        lastRemovedItems?.unregister(this);
-        removedItems?.registerOne(this, (range) => {
-            console.log("removed event triggered", range);
-            const poolItems = pool();
-            const items = props.items;
-
-            if (items) {
-                batch(() => {
-                    for (const poolItem of poolItems) {
-                        const i = poolItem.index();
-                        if (i !== undefined && ((i >= range.startIndex && i <= range.endIndex) || i >= items.length)) {
-                            poolItem.setIndex(undefined);
-                            poolItem.setItem(undefined);
-                            poolItem.setTop(-1);
-                        }
-                    }
-                });
-            }
-
-            calculateVisibleRange();
-            console.log("removed event finished", range);
-        });
+    const attachRemovedItems = (removedItems?: Event1<{ startIndex: number; endIndex: number }>) => {
+        lastRemovedItems?.unregister(listenerKey);
+        removedItems?.registerOne(listenerKey, () => untrack(() => calculateVisibleRange()));
         lastRemovedItems = removedItems;
     };
     
     let lastModifiedItems: Event1<{ startIndex: number, endIndex: number }> | undefined;
-    const attachModifiedItems = (modifiedItems: Event1<{ startIndex: number, endIndex: number }> | undefined) => {
-        console.log("attachModifiedItems", {lastModifiedItems, modifiedItems});
-
-        lastModifiedItems?.unregister(this);
-        modifiedItems?.registerOne(this, (range) => {
-            console.log("modified event triggered", range);
-            const poolItems = pool();
-            const items = props.items;
-            if (items) {    
-                batch(() => {
-                    for (const poolItem of poolItems) {
-                        const i = poolItem.index();
-                        if (i !== undefined && (i >= range.startIndex && i <= range.endIndex)) {
-                            poolItem.setItem(items[i]);
-                        }
-                    }
-                });
-            }
-
-            calculateVisibleRange();
-        });
+    const attachModifiedItems = (modifiedItems?: Event1<{ startIndex: number; endIndex: number }>) => {
+        lastModifiedItems?.unregister(listenerKey);
+        modifiedItems?.registerOne(listenerKey, () => untrack(() => calculateVisibleRange()));
         lastModifiedItems = modifiedItems;
     };
 
     createEffect(() => attachAddedItems(props.addedItems));
     createEffect(() => attachModifiedItems(props.modifiedItems));
     createEffect(() => attachRemovedItems(props.removedItems));
-    createEffect(() => {
-        console.log("items changed", props.items);
-
-        const poolItems = untrack(pool);
-        const range = untrack(visibleRange);
-
-        if (range) {
-            batch(() => {
-                for (const poolItem of poolItems) {
-                    const i = untrack(poolItem.index);
-                    if (i !== undefined) {
-                        const item = props.items?.[i];
-                        if (i >= range.startIndex && i <= range.endIndex && item) {
-                            poolItem.setItem(item);
-                        } else {
-                            poolItem.setIndex(undefined);
-                            poolItem.setItem(undefined);
-                            poolItem.setTop(-1);
-                        }
-                    }
-                }
-            });
-        }
-        
-        calculateVisibleRange();
-    });
 
     onMount(() => {
         calculateVisibleRange();
@@ -226,92 +137,74 @@ const VirtualList: Component<VirtualListProps> = (props) => {
     });
 
     onCleanup(() => {
-        props.addedItems?.unregister(this);
-        props.modifiedItems?.unregister(this);
-        props.removedItems?.unregister(this);
-        lastAddedItems?.unregister(this);
-        lastModifiedItems?.unregister(this);
-        lastRemovedItems?.unregister(this);
+        props.addedItems?.unregister(listenerKey);
+        props.modifiedItems?.unregister(listenerKey);
+        props.removedItems?.unregister(listenerKey);
+        lastAddedItems?.unregister(listenerKey);
+        lastModifiedItems?.unregister(listenerKey);
+        lastRemovedItems?.unregister(listenerKey);
         resizeObserver.unobserve(props.outerContainerRef!);
         //window.removeEventListener('resize', onUIEvent);
         props.outerContainerRef?.removeEventListener('scroll', onUIEvent);
         resizeObserver.disconnect();
     });
 
+    const clearPoolItem = (p: any) => {
+        p.setIndex(undefined);
+        p.setItem(undefined);
+        p.setTop(-1);
+    };
+
     createEffect(() => {
         const range = visibleRange();
         const items = props.items;
         const poolItems = pool();
-    
-        if (!items || !range) {
-            return;
-        }
+
+        if (!items || !range) return;
+
+        const start = range.startIndex;
+        const end = Math.min(range.endIndex, items.length - 1);
 
         batch(() => {
-            const startIdx = range.startIndex;
-            const endIdx = range.endIndex;
-
-            let previousStartIndex = Infinity;
-            let previousEndIndex = -Infinity;
-            for (const poolItem of poolItems) {
-                const index = untrack(poolItem.index);
-                if (index === undefined) {
-                    continue;
-                }
-        
-                if (index < previousStartIndex)
-                    previousStartIndex = index;
-                if (index > previousEndIndex)
-                    previousEndIndex = index;
-        
-                if (index < startIdx || index > endIdx) {
-                    poolItem.setIndex(undefined);
-                    poolItem.setItem(undefined);
-                    poolItem.setTop(-1);
+            for (const p of poolItems) {
+                const idx = untrack(p.index);
+                if (idx === undefined) continue;
+                if (idx < start || idx > end || idx >= items.length) {
+                    clearPoolItem(p);
                 }
             }
-    
-            if (previousStartIndex === Infinity && previousEndIndex === -Infinity) {
-                const itemCount = Math.min(endIdx - startIdx + 1, props.items?.length ?? 0);
-                if (poolItems.length < itemCount) {
-                    console.error("pool size is not big enough to set all at once", { poolItems, poolItemsLength: poolItems.length, range, itemCount });
-                    return;
-                }
-    
-                console.log("set all", {itemCount});
-                for (let i = 0; i < itemCount; i++) {
-                    const index = i + startIdx;
-                    poolItems[i].setIndex(index);
-                    poolItems[i].setItem(items[index]);
-                    poolItems[i].setTop(index * props.itemHeight);
-                }
-            } else {
-                for (let i = startIdx; i < previousStartIndex; i++) {
-                    console.log("set start", {i});
-                    const unassignedPoolItem = getFreePoolItem();
-                    if (unassignedPoolItem) {
-                        unassignedPoolItem.setIndex(i);
-                        unassignedPoolItem.setItem(items[i]);
-                        unassignedPoolItem.setTop(i * props.itemHeight);
-                    } else {
-                        console.error("pool size is not big enough, no unused items");
+
+            const seen = new Set<number>();
+            for (const p of poolItems) {
+                const idx = untrack(p.index);
+                if (idx === undefined) continue;
+                if (seen.has(idx)) clearPoolItem(p);
+                else seen.add(idx);
+            }
+
+            const byIndex = new Map<number, any>();
+            for (const p of poolItems) {
+                const idx = untrack(p.index);
+                if (idx !== undefined) byIndex.set(idx, p);
+            }
+
+            for (let i = start; i <= end; i++) {
+                let p = byIndex.get(i);
+                if (!p) {
+                    p = poolItems.find(x => untrack(x.index) === undefined);
+                    if (!p) {
+                        console.error("pool size too small", { start, end, poolSize: poolItems.length });
+                        break;
                     }
+                    p.setIndex(i);
                 }
-    
-                for (let i = previousEndIndex + 1; i <= endIdx; i++) {
-                    console.log("set end", {i});
-                    const unassignedPoolItem = getFreePoolItem();
-                    if (unassignedPoolItem) {
-                        unassignedPoolItem.setIndex(i);
-                        unassignedPoolItem.setItem(items[i]);
-                        unassignedPoolItem.setTop(i * props.itemHeight);
-                    } else {
-                        console.error("pool size is not big enough, no unused items");
-                    }
-                }
+
+                p.setItem(items[i]);
+                p.setTop(i * props.itemHeight);
             }
         });
     });
+
     
     return (
         <div ref={containerRef}

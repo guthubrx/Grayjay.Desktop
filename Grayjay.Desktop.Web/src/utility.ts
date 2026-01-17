@@ -460,7 +460,7 @@ export function createResourceDefault<T, S, R>(
     try {
       return await fetcher(source, info);
     } catch (e) {
-      console.error("Fetcher error:", e);
+      console.debug("Fetcher error:", e);
       return defaultValue as T;
     }
   };
