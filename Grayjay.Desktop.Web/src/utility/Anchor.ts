@@ -267,8 +267,8 @@ export default class Anchor {
 
         const spaceTop = bounds.top;
         const spaceBottom = viewportHeight - bounds.bottom;
-        const spaceRightwards = viewportWidth - bounds.left;
-        const spaceLeftwards = bounds.right;
+        const spaceRightwards = viewportWidth - bounds.right;
+        const spaceLeftwards = bounds.left;
         const preferredIsTop = preferred === AnchorStyle.TopLeft || preferred === AnchorStyle.TopRight;
         const preferredIsLeft = preferred === AnchorStyle.TopLeft || preferred === AnchorStyle.BottomLeft;
 

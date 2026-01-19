@@ -231,10 +231,6 @@ const SubscriptionsPage: Component = () => {
       })
     ]
   } as Menu;
-  function setReloadButtonRef(element: HTMLElement) {
-    anchor.setElement(element);
-  }
-
   function newSubscriptionGroup() {
     UIOverlay.overlayNewSubscriptionGroup((group)=>{
       subGroupsResource.refetch();
@@ -277,14 +273,19 @@ const SubscriptionsPage: Component = () => {
     <div class={styles.container}>
       <NavigationBar isRoot={true} childrenAfter={
           <img src={iconRefresh} style={{"margin-left": "24px", "cursor": "pointer", "height": "30px", "width": "30px" }}
-            ref={setReloadButtonRef}
             use:focusable={{ 
-              onPress: () => setShowReloadMenu(true),
+              onPress: (e) => {
+                anchor.setElement(e as HTMLElement);
+                setShowReloadMenu(true);
+              },
               groupId: 'nav-bar',
               groupIndices: [1],
               groupType: 'horizontal'
             }}
-            onClick={()=>{ setShowReloadMenu(true) }} />
+            onClick={(e)=>{ 
+              anchor.setElement(e.currentTarget as HTMLElement);
+              setShowReloadMenu(true); 
+            }} />
       } />
       <ScrollContainer ref={scrollContainerRef}>
         <Show when={subs$() && subs$()!.length > 0}>

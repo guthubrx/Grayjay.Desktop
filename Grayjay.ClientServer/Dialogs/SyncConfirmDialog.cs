@@ -20,14 +20,14 @@ namespace Grayjay.ClientServer.Dialogs
         public void Dialog_Cancel(CustomDialog dialog, JsonElement parameter)
         {
             _callback(false);
-            Close();
+            _ = CloseAsync();
         }
 
         [DialogMethod("confirm")]
         public void Dialog_Confirm(CustomDialog dialog, JsonElement parameter)
         {
             _callback(true);
-            Close();
+            _ = CloseAsync();
         }
     }
 }
