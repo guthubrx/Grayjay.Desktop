@@ -1,6 +1,6 @@
 import { Component, createSignal, onCleanup, onMount, For, JSX, createMemo, createEffect, ErrorBoundary, Accessor, Show, batch, on, untrack } from "solid-js";
 import { Event1 } from "../../../utility/Event";
-import { getNestedOffsetTop } from "../../../utility";
+import { getNestedOffsetTop, getTopInScrollContent } from "../../../utility";
 
 export interface VirtualListProps {
     itemHeight: number;
@@ -45,49 +45,72 @@ const VirtualList: Component<VirtualListProps> = (props) => {
     }));
 
     const [visibleRange, setVisibleRange] = createSignal<VisibleRange>();
-    const updatePoolSize = () => {
-        const boundingRect = props.outerContainerRef?.getBoundingClientRect();
-        if (boundingRect) {
-            const elementsInView = Math.ceil(boundingRect.height / props.itemHeight);
-            const desiredPoolSize = Math.floor(2 * (elementsInView + (props.overscan ?? 1) * 2));
-            if (desiredPoolSize > poolSize()) {
-                console.log("desiredPoolSize larger than pool size, change pool", desiredPoolSize);
-                setPoolSize(desiredPoolSize);
-            }
-        }
+    const updatePoolSize = (elementsInView: number) => {
+        const overscan = props.overscan ?? 1;
+        const desired = Math.ceil((elementsInView + overscan * 2) * 2); // 2x buffer
+        if (desired > poolSize()) setPoolSize(desired);
     };
 
-    const calculateVisibleRange = () => {
-        if (!props.outerContainerRef || !containerRef) return;
+    let endNotifyLen = -1;
+    let endNotifyQueued = false;
 
-        if (!props.items || !props.items.length) {
+    function maybeNotifyEnd(endIndex: number, itemsLen: number) {
+        if (!props.onEnd) return;
+
+        const threshold = props.notifyEndOnLast ?? 1;
+        const nearEnd = (itemsLen - 1) - endIndex <= threshold;
+        if (!nearEnd) return;
+
+        if (endNotifyLen === itemsLen || endNotifyQueued) return;
+
+        endNotifyQueued = true;
+        queueMicrotask(() => {
+            endNotifyQueued = false;
+            endNotifyLen = itemsLen;
+            props.onEnd?.();
+        });
+    }
+
+    const calculateVisibleRange = () => {
+        const outer = props.outerContainerRef;
+        const listEl = containerRef;
+        if (!outer || !listEl) return;
+
+        const items = props.items;
+        if (!items || items.length === 0) {
             batch(() => {
                 setVisibleRange({ startIndex: 0, endIndex: 0 });
                 setTotalHeight(0);
-                updatePoolSize();
+                updatePoolSize(1);
             });
             return;
         }
 
-        const overscan = props.overscan ?? 1;
-        const boundingRect = props.outerContainerRef.getBoundingClientRect();
-        const elementsInView = Math.ceil(boundingRect.height / props.itemHeight);
-        const scrollOffset = props.outerContainerRef.scrollTop - getNestedOffsetTop(containerRef, props.outerContainerRef);
+        const outerRect = outer.getBoundingClientRect();
+        const listRect = listEl.getBoundingClientRect();
+        const listTopInViewport = listRect.top - outerRect.top;
+        const visibleHeightForList = Math.max(0, outerRect.height - Math.max(0, listTopInViewport));
+        const elementsInView = Math.max(1, Math.ceil(visibleHeightForList / props.itemHeight));
+        const listTopInContent = getTopInScrollContent(listEl, outer);
+        const rawScrollOffset = outer.scrollTop - listTopInContent;
+        const scrollOffset = Math.max(0, rawScrollOffset);
 
+        const overscan = props.overscan ?? 1;
         const startRowIndex = Math.floor(scrollOffset / props.itemHeight);
-        const startIndex = Math.max(0, Math.min(startRowIndex - overscan, props.items!.length - 1));
-        const endIndex = Math.max(0, Math.min(startRowIndex + elementsInView - 1 + overscan, props.items!.length - 1));
-        
+        const startIndex = Math.max(0, Math.min(startRowIndex - overscan, items.length - 1));
+        const endIndex = Math.max(0, Math.min(startRowIndex + elementsInView + overscan, items.length - 1));
+        console.log("calculateVisibleRange", {startRowIndex, startIndex, endIndex, elementsInView, scrollOffset});
+
         if (props.onEnd) {
-            if ((props.items!.length - 1) - endIndex <= (props.notifyEndOnLast ?? 1)) {
-                props.onEnd();
+            if ((items.length - 1) - endIndex <= (props.notifyEndOnLast ?? 1)) {
+                maybeNotifyEnd(endIndex, items.length);
             }
         }
 
         batch(() => {
             setVisibleRange({ startIndex, endIndex });
-            updatePoolSize();
-            setTotalHeight((props.items?.length ?? 0) * props.itemHeight);
+            updatePoolSize(elementsInView);
+            setTotalHeight(items.length * props.itemHeight);
         });
     };
 
@@ -95,29 +118,35 @@ const VirtualList: Component<VirtualListProps> = (props) => {
         calculateVisibleRange();
     };
 
-    const resizeObserver = new ResizeObserver(entries => {
-        onUIEvent();
+    const resizeObserver = new ResizeObserver(() => {
+        requestAnimationFrame(onUIEvent);
     });
 
     let lastAddedItems: Event1<{ startIndex: number, endIndex: number }> | undefined;
     const attachAddedItems = (addedItems?: Event1<{ startIndex: number; endIndex: number }>) => {
         lastAddedItems?.unregister(listenerKey);
-        addedItems?.registerOne(listenerKey, () => untrack(() => calculateVisibleRange()));
+        addedItems?.registerOne(listenerKey, (v) => {
+            calculateVisibleRange();
+            console.log("added items", v);
+        });
         lastAddedItems = addedItems;
+        calculateVisibleRange();
     };
     
     let lastRemovedItems: Event1<{ startIndex: number, endIndex: number }> | undefined;
     const attachRemovedItems = (removedItems?: Event1<{ startIndex: number; endIndex: number }>) => {
         lastRemovedItems?.unregister(listenerKey);
-        removedItems?.registerOne(listenerKey, () => untrack(() => calculateVisibleRange()));
+        removedItems?.registerOne(listenerKey, calculateVisibleRange);
         lastRemovedItems = removedItems;
+        calculateVisibleRange();
     };
     
     let lastModifiedItems: Event1<{ startIndex: number, endIndex: number }> | undefined;
     const attachModifiedItems = (modifiedItems?: Event1<{ startIndex: number; endIndex: number }>) => {
         lastModifiedItems?.unregister(listenerKey);
-        modifiedItems?.registerOne(listenerKey, () => untrack(() => calculateVisibleRange()));
+        modifiedItems?.registerOne(listenerKey, calculateVisibleRange);
         lastModifiedItems = modifiedItems;
+        calculateVisibleRange();
     };
 
     createEffect(() => attachAddedItems(props.addedItems));

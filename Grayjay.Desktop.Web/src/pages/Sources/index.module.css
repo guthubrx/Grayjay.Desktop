@@ -45,6 +45,11 @@
     border-radius: 8px;
     border-bottom: 1px solid #1B1B1B;
 }
+
+.source:focus-visible {
+    background-color: #454545;
+}
+
 .source.enabled {
     background-color: #222;
 }

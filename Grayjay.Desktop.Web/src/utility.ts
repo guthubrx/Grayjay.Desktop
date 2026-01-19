@@ -582,6 +582,13 @@ export function getNestedOffsetTop(el: HTMLElement, ancestor: HTMLElement) {
   return offset;
 };
 
+export function getTopInScrollContent(el: HTMLElement, scrollEl: HTMLElement) {
+  const elRect = el.getBoundingClientRect();
+  const scrollRect = scrollEl.getBoundingClientRect();
+  const topInViewport = elRect.top - scrollRect.top;
+  return scrollEl.scrollTop + topInViewport;
+}
+
 export function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }

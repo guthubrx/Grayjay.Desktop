@@ -181,6 +181,12 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
     createEffect(() => attachNoFilteredItems(props.pager?.noFilteredItemsEvent));
     createEffect(() => attachFilterChanged(props.pager?.filterChangedEvent));
 
+    onMount(() => {
+        attachAddedItems(props.pager?.addedFilteredItemsEvent);
+        attachNoFilteredItems(props.pager?.noFilteredItemsEvent);
+        attachFilterChanged(props.pager?.filterChangedEvent);
+    });
+
     onCleanup(() => {
         props.pager?.addedFilteredItemsEvent?.unregister(this);
         props.pager?.noFilteredItemsEvent?.unregister(this);

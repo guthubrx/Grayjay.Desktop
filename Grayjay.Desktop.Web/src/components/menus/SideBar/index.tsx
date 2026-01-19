@@ -96,7 +96,6 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
     action?: () => any;
     onRightClick?: () => void;
     autoPressOnFocus?: boolean;
-    groupEscapeTo?: Partial<Record<Direction, string[]>>;
   };
   
   const homeBtn: ButtonItem = { icon: home, name: 'Home', path: '/web/home', getSelected: createMemo(() => location.pathname === '/web/home' || location.pathname === '/web/index.html'), autoPressOnFocus: false };
@@ -104,7 +103,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   const creatorsBtn: ButtonItem = { icon: creators, name: 'Creators', path: '/web/creators', getSelected: createMemo(() => location.pathname === '/web/creators'), autoPressOnFocus: false };
   const playlistsBtn: ButtonItem = { icon: playlists, name: 'Playlists', path: '/web/playlists', getSelected: createMemo(() => location.pathname === '/web/playlists'), autoPressOnFocus: false };
   const watchLaterBtn: ButtonItem = { icon: iconWatchLater, name: 'Watch Later', path: '/web/watchLater', getSelected: createMemo(() => location.pathname === '/web/watchLater'), autoPressOnFocus: false };
-  const sourcesBtn: ButtonItem = { icon: iconSources, name: 'Sources', path: '/web/sources', getSelected: createMemo(() => location.pathname === '/web/sources'), autoPressOnFocus: false, groupEscapeTo: { right: ['sources'] } };
+  const sourcesBtn: ButtonItem = { icon: iconSources, name: 'Sources', path: '/web/sources', getSelected: createMemo(() => location.pathname === '/web/sources'), autoPressOnFocus: false };
   const downloadsBtn: ButtonItem = { icon: download, name: 'Downloads', path: '/web/downloads', getSelected: createMemo(() => location.pathname === '/web/downloads'), autoPressOnFocus: false };
   const historyBtn: ButtonItem = { icon: history, name: 'History', path: '/web/history', getSelected: createMemo(() => location.pathname === '/web/history'), autoPressOnFocus: false };
   const syncBtn: ButtonItem = { icon: iconSync, name: 'Sync', path: '/web/sync', getSelected: createMemo(() => location.pathname === '/web/sync'), autoPressOnFocus: false };
@@ -263,6 +262,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                 groupIndices: [0],
                 groupType: 'vertical',
                 groupEscapeDirs: ['right'],
+                groupEscapeTo: { right: ['sources'] },
                 groupRememberLast: true,
                 onPress: handleCollapse,
               }}
@@ -307,7 +307,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                   groupRememberLast: true,
                   onPress: () => press(),
                   autoPressOnFocus: btn.autoPressOnFocus,
-                  groupEscapeTo: btn.groupEscapeTo
+                  groupEscapeTo: { right: ['sources'] }
                 }}
                 onFocus={globalFocus}
                 onBlur={globalBlur}
@@ -328,6 +328,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
               groupIndices: [visibleTopButtonCount$() + 1],
               groupEscapeDirs: ['right'],
               groupRememberLast: true,
+              groupEscapeTo: { right: ['sources'] },
               onPress: () => {
                 props?.onMoreOpened?.(); 
                 setMoreOverlayVisible(true);
@@ -386,6 +387,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                   groupEscapeDirs: ['right'],
                   groupIndices: [visibleTopButtonCount$() + 1 + (moreTopButtonCount$() > 0 ? 1 : 0) + i()],
                   groupRememberLast: true,
+                  groupEscapeTo: { right: ['sources'] },
                   onPress: press
                 }}
                 onFocus={globalFocus}
@@ -427,9 +429,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                       focusableOpts={{
                         groupId: 'sidebar-overlay',
                         groupType: 'vertical',
-                        groupIndices: [i()],
-                        groupEscapeDirs: ['right'],
-                        
+                        groupIndices: [i()],                        
                         onPress: press,
                         onBack: () => {
                           if (moreOverlayVisible$()) {

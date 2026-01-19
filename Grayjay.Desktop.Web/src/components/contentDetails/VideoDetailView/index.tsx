@@ -513,6 +513,10 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         video?.actions.setState(VideoState.Minimized);
     };
 
+    const maximize = () => {
+        video?.actions.setState(VideoState.Maximized);
+    };
+
     const onMinimize = (e: MouseEvent) => {
         toggleMinimize();
         e.stopPropagation();
@@ -712,6 +716,12 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     function setVideoPlayerContainerRef(el: HTMLDivElement) {
         setAnchor(new Anchor(el, showSettings$, AnchorStyle.BottomRight));
     }
+
+    createEffect(on(() => video?.state(), (state, prev) => {
+        if (showSettings$() && prev === VideoState.Fullscreen && state !== VideoState.Fullscreen) {
+            setShowSettings(false);
+        }
+    }, { defer: true }));
 
     function handleFullscreenChange(isFullscreen: boolean) {
         if (video?.state() !== VideoState.Closed && video?.state() !== VideoState.Minimized) {
@@ -1546,7 +1556,11 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 }*/
                             }}
                             handleMinimize={() => {
-                                minimize();
+                                if (video?.state() === VideoState.Minimized) {
+                                    maximize();
+                                } else {
+                                    minimize();
+                                }
                             }}
                             leftButtonContainerStyle={isMinimized() ? {
                                 "width": "calc(100% - 48px)"
