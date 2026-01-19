@@ -14,6 +14,7 @@ import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from '../../focusable'; void focusable;
 import { createMutable, unwrap } from 'solid-js/store';
 import { FocusableOptions } from '../../nav';
+import Button from '../../components/buttons/Button';
 
 export interface DialogDescriptor {
   icon?: string,
@@ -204,6 +205,18 @@ const OverlayDialog: Component<OverlayDialogProps> = (props: OverlayDialogProps)
       </div>
     );
   };
+
+  const themeFor = (style?: string) => {
+    switch (style) {
+      case "primary":
+        return { color: "#019BE7" };
+      case "accent":
+        return { color: "#F97066" };
+      case "none":
+      default:
+        return { color: "transparent" };
+    }
+  };
   
   return (
     <Show when={props.dialog}>
@@ -248,7 +261,6 @@ const OverlayDialog: Component<OverlayDialogProps> = (props: OverlayDialogProps)
             "margin-right": "-32px",
             "padding-left": "32px",
             "padding-right": "32px",
-            "margin-bottom": "-32px"
           }}
         >
           <div class={styles.description}>
@@ -317,32 +329,32 @@ const OverlayDialog: Component<OverlayDialogProps> = (props: OverlayDialogProps)
               {(button, i) => {
                 const isPrimary = button.style === "primary";
                 const isAutofocusButton =
-                  !hasAnyInput$() && (
-                    (primaryIndex$() >= 0 ? i() === primaryIndex$() : i() === 0)
-                  );
+                  !hasAnyInput$() && (primaryIndex$() >= 0 ? i() === primaryIndex$() : i() === 0);
+
+                const t = themeFor(button.style);
 
                 return (
-                  <div
-                    class={styles.button}
-                    classList={{
-                      [styles.primary]: isPrimary,
-                      [styles.accent]: button.style == "accent",
-                      [styles.none]: button.style == "none" || !button.style
+                  <Button
+                    text={button.title}
+                    color={t.color}
+                    autofocus={isAutofocusButton}
+                    style={{
+                      flex: "1 0 0",
+                      display: "flex",
+                      "align-items": "center",
+                      "justify-content": "center"
                     }}
-                    tabindex={0}
-                    data-autofocus={isAutofocusButton ? '' : undefined}
                     onClick={(e) => {
-                      pressButton(button);
                       e.preventDefault();
                       e.stopPropagation();
+                      pressButton(button);
                     }}
-                    use:focusable={{
+                    focusableOpts={{
+                      ...(button.focusableOpts ?? {}),
                       onPress: () => pressButton(button),
                       onBack: dialogBack,
                     }}
-                  >
-                    {button.title}
-                  </div>
+                  />
                 );
               }}
             </For>

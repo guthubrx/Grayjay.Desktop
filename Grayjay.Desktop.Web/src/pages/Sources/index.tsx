@@ -27,7 +27,8 @@ import EmptyContentView from '../../components/EmptyContentView';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import { createResourceDefault, swap } from '../../utility';
 import VirtualDragDropList, { DragSession } from '../../components/containers/VirtualDragDropList';
-import { focusable } from '../../focusable'; void focusable;
+import { focusable } from '../../focusable';import Button from '../../components/buttons/Button';
+ void focusable;
 
 const SourcesPage: Component = () => {
   const nav = useNavigate();
@@ -110,6 +111,8 @@ const SourcesPage: Component = () => {
   let scrollContainerRef: HTMLDivElement | undefined;
 
   const enabledCount = createMemo(() => enabledSources$()?.length ?? 0);
+  const disabledCount = createMemo(() => disabledSources$()?.length ?? 0);
+  const actionsBaseIndex = createMemo(() => enabledCount() + disabledCount());
 
   return (
     <div style="height: 100%; overflow: hidden; display: flex; flex-direction: column;">
@@ -209,20 +212,60 @@ const SourcesPage: Component = () => {
                   }
                 </For>
               </div>
-              <div style="margin-top:24px; margin-bottom: 24px;">
-                  <button onClick={[(installSource), null]} 
-                      style="border: 0px; cursor: pointer; padding: 18px; border-radius: 8px; background-color: #019BE7; color: white; font-size: 20px; margin-left: 24px; width: calc(100% - 40px);" use:focusable={{
-                      onPress: installSource
-                    }}>
-                    Install Source
-                  </button>
-                  <button onClick={[()=>{UIOverlay.overlayOfficialPlugins()}, null]} 
-                      style="border: 0px; cursor: pointer; padding: 18px; border-radius: 8px; background-color: #019BE7; color: white; font-size: 20px; margin-left: 24px; margin-top: 10px; width: calc(100% - 40px);" use:focusable={{
-                      onPress: () => UIOverlay.overlayOfficialPlugins()
-                    }}>
-                    Install Official Sources
-                  </button>
+              <div
+                style={{
+                  "margin-top": "24px",
+                  "margin-bottom": "24px",
+                  "padding-left": "24px",
+                  "padding-right": "24px",
+                  display: "flex",
+                  "flex-direction": "column",
+                  gap: "10px",
+                }}
+              >
+                <Button
+                  text="Install Source"
+                  color="#019BE7"
+                  style={{
+                    width: "100%",
+                    height: "56px",
+                    padding: "18px",
+                    display: "flex",
+                    "justify-content": "center",
+                    "align-items": "center",
+                  }}
+                  onClick={() => installSource()}
+                  focusableOpts={{
+                    groupId: "sources",
+                    groupType: "vertical",
+                    groupIndices: [actionsBaseIndex()],
+                    groupRememberLast: true,
+                    onPress: installSource,
+                  }}
+                />
+
+                <Button
+                  text="Install Official Sources"
+                  color="#019BE7"
+                  style={{
+                    width: "100%",
+                    height: "56px",
+                    padding: "18px",
+                    display: "flex",
+                    "justify-content": "center",
+                    "align-items": "center",
+                  }}
+                  onClick={() => UIOverlay.overlayOfficialPlugins()}
+                  focusableOpts={{
+                    groupId: "sources",
+                    groupType: "vertical",
+                    groupIndices: [actionsBaseIndex() + 1],
+                    groupRememberLast: true,
+                    onPress: () => UIOverlay.overlayOfficialPlugins(),
+                  }}
+                />
               </div>
+
             </ScrollContainer>
           </div>
           <div class={styles.panelRight}>
