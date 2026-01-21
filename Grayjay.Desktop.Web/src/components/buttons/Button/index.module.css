@@ -17,9 +17,20 @@
   display: inline-block;
 }
 
+.container:hover {
+  background: var(--btn-bg-focus, #fff);
+  color: var(--btn-text-focus, #141414);
+  outline: unset;
+}
+
+.container:hover .icon {
+  filter: var(--btn-icon-filter-focus, brightness(0) saturate(100%));
+}
+
 .container:focus-visible {
   background: var(--btn-bg-focus, #fff);
   color: var(--btn-text-focus, #141414);
+  outline: unset;
 }
 
 .container:focus-visible .icon {

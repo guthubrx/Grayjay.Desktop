@@ -13,6 +13,7 @@
 .container:focus-visible {
     background: #454545;
     border-radius: 6px;
+    outline: unset;
 }
 .descriptor {
     width: 60%;

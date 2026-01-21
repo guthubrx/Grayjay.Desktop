@@ -65,18 +65,22 @@
 
 .collapse.selected:focus {
     background: rgba(255, 255, 255, 0.15);
+    outline: unset;
 }
 
 .collapse:focus {
   background: rgba(255, 255, 255, 0.055);
+  outline: unset;
 }
 
 .width.selected:focus {
     background: rgba(255, 255, 255, 0.15);
+    outline: unset;
 }
 
 .width:focus {
   background: rgba(255, 255, 255, 0.055);
+  outline: unset;
 }
 
 .containerCollapse {

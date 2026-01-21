@@ -26,10 +26,12 @@
 
 .sideBarButton.selected:focus {
     background: rgba(255, 255, 255, 0.15);
+    outline: unset;
 }
 
 .sideBarButton:focus {
   background: rgba(255, 255, 255, 0.055);
+  outline: unset;
 }
 
 .sideBarButton .icon {

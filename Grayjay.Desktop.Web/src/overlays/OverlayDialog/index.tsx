@@ -214,7 +214,7 @@ const OverlayDialog: Component<OverlayDialogProps> = (props: OverlayDialogProps)
         return { color: "#F97066" };
       case "none":
       default:
-        return { color: "transparent" };
+        return { color: "#2E2E2E" };
     }
   };
   
