@@ -291,7 +291,14 @@ abstract public class StateCasting : IDisposable
             {
                 if (_instance == null) {
                     if (Grayjay.ClientServer.Settings.GrayjaySettings.Instance.Casting.Experimental) {
-                        _instance = new StateCastingExperimental();
+                        try
+                        {
+                            _instance = new StateCastingExperimental();
+                        }
+                        catch
+                        {
+                            _instance = new StateCastingLegacy();    
+                        }
                     } else {
                         _instance = new StateCastingLegacy();
                     }
