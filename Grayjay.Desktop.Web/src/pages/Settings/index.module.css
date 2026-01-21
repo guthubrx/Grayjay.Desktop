@@ -31,23 +31,30 @@
     min-height: 30px;
 }
 
-
-.settingsMenuItem:hover {
-    color: rgba(255, 255, 255, 0.60);
+.advanced {
     height: 46px;
     border-radius: 6px;
-    font-family: Inter;
-    font-size: 16px;
-    font-style: normal;
-    font-weight: 400;
-    display: grid;
-    place-items: start;
-    cursor: pointer;
+    display: flex;
     align-items: center;
-    justify-content: start;
-    padding-left: 18px;
+    padding-left: 16px;
+    padding-right: 16px;
 }
 
+.advanced:focus-visible {
+    background: #454545;
+    border-radius: 6px;
+    outline: unset;
+}
+
+.settingsMenuItem:hover {
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.055);
+}
+
+.settingsMenuItem:focus-visible {
+    background: rgba(255, 255, 255, 0.055);
+    outline: unset;
+}
 
 .settingsMenuItem.active {
     color: #FFF;
@@ -74,7 +81,6 @@
 }
 
 .bottomMenu {
-    width: calc(100% - 20px);
-    padding: 10px;
+    width: 100%;
     flex-shrink: 0;
 }

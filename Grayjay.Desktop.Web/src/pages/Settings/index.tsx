@@ -123,18 +123,17 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
                   <div use:focusable={{
                     onPress: () => { setAdvanced(!showAdvanced$()) },
                     onBack: globalBack
-                  }}>
-                    <div style="float: left; line-height: 33px; font-size: 16px; color: #999; margin-left: 3px;">
+                  }} class={styles.advanced}>
+                    <div style="font-size: 16px; color: #999;">
                       Advanced
                     </div>
-                    <div style="text-align: right; margin-right: 10px">
-                      <div style="scale: 0.6; display: inline-block">
+                    <div style="flex-grow: 1"></div>
+                    <div style="flex-shrink: 0; scale: 0.6">
                       <Toggle value={showAdvanced$()} onToggle={(val)=>setAdvanced(val)} />
-                      </div>
                     </div>
                   </div>
               </Show>
-              <div style="margin-top: 10px; margin-right: 20px;">
+              <div style="margin-top: 10px;">
                 <Button onClick={()=>{UIOverlay.dismiss(); UIOverlay.overlayImportSelect()}} style={{width: '100%'}} text='Import' icon='' focusableOpts={{
                   onPress: () => { UIOverlay.dismiss(); UIOverlay.overlayImportSelect() },
                   onBack: globalBack
