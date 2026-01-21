@@ -221,6 +221,7 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
                     groupId: 'playlist',
                     groupType: 'vertical',
                     groupIndices: [index()],
+                    groupEscapeDirs: ['up', 'left'],
                     onPress: () => {
                       const v = video();
                       if (!v) return;

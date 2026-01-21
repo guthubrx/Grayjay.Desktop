@@ -39,7 +39,6 @@
     font-style: normal;
     font-weight: 300;
     line-height: 16px; /* 114.286% */
-    margin-bottom: 16px;
 }
 .descriptor.isSub .description {
     font-size: 14px;

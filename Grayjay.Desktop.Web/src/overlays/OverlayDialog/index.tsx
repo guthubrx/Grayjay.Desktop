@@ -331,6 +331,7 @@ const OverlayDialog: Component<OverlayDialogProps> = (props: OverlayDialogProps)
                 const isAutofocusButton =
                   !hasAnyInput$() && (primaryIndex$() >= 0 ? i() === primaryIndex$() : i() === 0);
 
+                console.log("@@@@BUTTON", button);
                 const t = themeFor(button.style);
 
                 return (

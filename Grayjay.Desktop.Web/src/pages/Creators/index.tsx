@@ -181,6 +181,7 @@ const CreatorsPage: Component = () => {
                     groupId: 'creators',
                     groupType: 'grid',
                     groupIndices: [row(), col()],
+                    groupEscapeDirs: ['left', 'up'],
                     onPress: () => {
                     const url = item()?.channel?.url;
                     if(url)

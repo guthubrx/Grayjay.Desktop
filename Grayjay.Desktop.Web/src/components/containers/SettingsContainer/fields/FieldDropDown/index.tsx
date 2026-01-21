@@ -1,18 +1,17 @@
-import { Component, Index, Show } from 'solid-js'
+import { Component } from 'solid-js'
 
 import styles from './index.module.css';
 import { ISettingsField } from '../../../../../backend/models/settings/SettingsObject';
-import { ISettingsFieldGroup } from '../../../../../backend/models/settings/fields/SettingsFieldGroup';
-import { ISettingsFieldReadOnly } from '../../../../../backend/models/settings/fields/SettingsFieldReadOnly';
 import { ISettingsFieldDropDown } from '../../../../../backend/models/settings/fields/SettingsFieldDropDown';
 import FieldKey from '../FieldKey';
-import Dropdown from '../../../../basics/inputs/Dropdown';
+import Dropdown, { DropdownApi } from '../../../../basics/inputs/Dropdown';
 import { AnchorStyle } from '../../../../../utility/Anchor';
 import { Direction } from '../../../../../nav';
+import { focusable } from '../../../../../focusable'; void focusable;
 
 interface FieldDropDownProps {
     field: ISettingsFieldDropDown
-    onFieldChanged?: (field: ISettingsField, newVal: number)=>void,
+    onFieldChanged?: (field: ISettingsField, newVal: number) => void,
     value: number,
     isSubField?: boolean,
     onBack?: () => boolean,
@@ -25,18 +24,38 @@ interface FieldDropDownProps {
 }
 
 const FieldDropDown: Component<FieldDropDownProps> = (props) => {
+    let dropdownApi: DropdownApi | undefined;
 
-    function selectedChanged(newVal: any) {
-        console.log(newVal);
-        if(props.onFieldChanged && !isNaN(parseInt(newVal)))
-            props.onFieldChanged(props.field, parseInt(newVal));
+    function selectedChanged(newVal: number) {
+        props.onFieldChanged?.(props.field, newVal);
     }
 
     return (
-        <div class={styles.container}>
+        <div
+            class={styles.container}
+            use:focusable={{
+                ...(props.focusableGroupOpts ?? {}),
+                onPress: () => dropdownApi?.toggle("gamepad"),
+                onBack: () => {
+                    if (dropdownApi?.isOpen()) {
+                        dropdownApi.close("gamepad");
+                        return true;
+                    }
+                    return props.onBack?.() ?? false;
+                }
+            }}
+        >
             <FieldKey field={props.field} isSubField={!!props.isSubField} />
             <div class={styles.value}>
-                <Dropdown options={props.field.options} value={props.value} onSelectedChanged={selectedChanged} anchorStyle={AnchorStyle.BottomRight} onBack={props.onBack} focusableGroupOpts={props.focusableGroupOpts} />
+                <Dropdown
+                    options={props.field.options}
+                    value={props.value}
+                    onSelectedChanged={selectedChanged}
+                    anchorStyle={AnchorStyle.BottomRight}
+                    onBack={props.onBack}
+                    focusable={false}
+                    apiRef={(api) => (dropdownApi = api)}
+                />
             </div>
         </div>
     );

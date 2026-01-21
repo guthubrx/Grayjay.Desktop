@@ -353,6 +353,7 @@ const PlaylistsPage: Component = () => {
                         groupId: 'playlists-filtered',
                         groupType: 'grid',
                         groupIndices: [row(), col()],
+                        groupEscapeDirs: ['left', 'up'],
                         onPress: () => {
                           const playlist = item();
                           if (item()) {

@@ -80,7 +80,7 @@ const DownloadedView: Component<DownloadedViewProps> = (props) => {
         <Show when={props.onSettings}>
           <IconButton icon={more} ref={refMoreButton}
             onClick={() => props.onSettings?.(refMoreButton!, props.downloaded!, "pointer")}
-            style={{position: 'absolute', bottom: '10px', right: '10px' }} />
+            style={{position: 'absolute', bottom: '16px', right: '10px' }} />
         </Show>
     </div>
   )

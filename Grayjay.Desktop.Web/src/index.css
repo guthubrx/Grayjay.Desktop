@@ -20,7 +20,7 @@ code {
 
 :where(body[data-input-source="keyboard"]) :where(*:focus),
 :where(body[data-input-source="gamepad"]) :where(*:focus) {
-  outline: 1px solid #bbb;
+  outline: 2px solid #bbb;
   outline-offset: -1px;
 }
 

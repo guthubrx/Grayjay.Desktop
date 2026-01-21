@@ -9,6 +9,11 @@
     flex-direction: row;
     flex-wrap: nowrap;
 }
+
+.container:focus-visible {
+    background: #454545;
+    border-radius: 6px;
+}
 .descriptor {
     width: 60%;
 }
