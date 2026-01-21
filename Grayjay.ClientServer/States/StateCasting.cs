@@ -291,13 +291,11 @@ abstract public class StateCasting : IDisposable
             {
                 if (_instance == null) {
                     if (Grayjay.ClientServer.Settings.GrayjaySettings.Instance.Casting.Experimental) {
-                        try
-                        {
+                        try {
                             _instance = new StateCastingExperimental();
-                        }
-                        catch
-                        {
-                            _instance = new StateCastingLegacy();    
+                        } catch (Exception e) {
+                            Logger.i(nameof(StateCasting), $"Failed to initialize StateCastingExperimental. Using legacy backend. '{e.Message}': {e.StackTrace}");
+                            _instance = new StateCastingLegacy();
                         }
                     } else {
                         _instance = new StateCastingLegacy();
