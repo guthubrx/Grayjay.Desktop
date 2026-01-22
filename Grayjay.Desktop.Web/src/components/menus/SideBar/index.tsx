@@ -89,13 +89,15 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   });
 
   type ButtonItem = {
-    icon: string;
+    icon?: string;
     name: string;
     getSelected: Accessor<boolean>;
     path?: string;
     action?: () => any;
     onRightClick?: () => void;
     autoPressOnFocus?: boolean;
+    style?: JSX.CSSProperties;
+    styleText?: JSX.CSSProperties;
   };
   
   const homeBtn: ButtonItem = { icon: home, name: 'Home', path: '/web/home', getSelected: createMemo(() => location.pathname === '/web/home' || location.pathname === '/web/index.html'), autoPressOnFocus: false };
@@ -147,7 +149,12 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   const [remainingSpace$, setRemainingSpace] = createSignal<number>(0);
   const [topButtonListHeight$, setTopButtonListHeight] = createSignal<number>(0);
   
-  const buyBtn: ButtonItem = { icon: iconBuy, name: 'Buy Grayjay', path: '/web/buy', getSelected: createMemo(() => location.pathname === '/web/buy') };
+  const buyBtn: ButtonItem = { 
+    icon: iconBuy,
+    name: 'Buy Grayjay', 
+    path: '/web/buy', 
+    getSelected: createMemo(() => location.pathname === '/web/buy')
+  };
   const settingsBtn: ButtonItem = { icon: iconSettings, name: 'Settings', action: () => UIOverlay.overlaySettings(), getSelected: createMemo(() => location.pathname === '/web/settings') };
 
   const bottomButtons$ = createMemo(() => {
@@ -311,6 +318,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                 }}
                 onFocus={globalFocus}
                 onBlur={globalBlur}
+                style={btn.style}
+                styleText={btn.styleText}
               />
             );
           }}
@@ -392,6 +401,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                 }}
                 onFocus={globalFocus}
                 onBlur={globalBlur}
+                style={btn.style}
+                styleText={btn.styleText}
               />
             );
           }}
@@ -443,6 +454,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                       data-more-first={i() === 0 ? "1" : undefined}
                       onFocus={globalFocus}
                       onBlur={globalBlur}
+                      style={btn.style}
+                      styleText={btn.styleText}
                     />
                   );
                 }}

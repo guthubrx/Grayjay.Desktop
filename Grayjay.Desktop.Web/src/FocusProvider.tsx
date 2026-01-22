@@ -1273,9 +1273,8 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
     function focusFirstInScope(scopeId: string, isAutoFocus: boolean, autoPressSource?: InputSource) {
         const s = index.scopes.get(scopeId);
-        console.info("focusFirstInScope", { scopeId, isAutoFocus, s });
-
         if (!s || !isActiveMode(s)) return;
+
         if (s.hadFocus && s.activeNode) {
             const last = index.nodes.get(s.activeNode);
             if (last && isGroupSelectable(last)) {
@@ -1287,15 +1286,16 @@ export function FocusProvider(props: { children: JSX.Element }) {
         const el = s.opts.defaultFocus?.();
         if (el && isFocusable(el)) {
             const n = findNodeFromElement(el);
-            if (n && n.scope === scopeId) {
+            if (n && n.scope === scopeId && isGroupSelectable(n)) {
                 focusNode(n, autoPressSource);
                 return;
             }
         }
 
-        const first = sweepCandidates(scopeId)[0];
-        if (first && isGroupSelectable(first)) {
-            const chosen = maybeEnterRememberedGroup(undefined, first);
+        const list = sweepCandidates(scopeId);
+        const firstSelectable = list.find(isGroupSelectable);
+        if (firstSelectable) {
+            const chosen = maybeEnterRememberedGroup(undefined, firstSelectable);
             focusCandidate(chosen, undefined, autoPressSource);
             return;
         }
@@ -1586,20 +1586,26 @@ export function FocusProvider(props: { children: JSX.Element }) {
     }
 
     function onFocusIn(e: FocusEvent) {
-        const node = findNodeFromElement(e.target as HTMLElement | null);
+        const trap = topTrap();
+        const target = e.target as HTMLElement | null;
+
+        if (trap && target) {
+            const sid = resolveScopeId(target);
+            if (!sid || !isWithinScope(sid, trap)) {
+                queueMicrotask(() => focusFirstInScope(trap, true));
+                return;
+            }
+        }
+
+        const node = findNodeFromElement(target);
         if (!node) return;
+
         const scope = index.scopes.get(node.scope);
         if (!scope) return;
 
-        const trap = topTrap();
-        if (trap && !isWithinScope(node.scope, trap)) {
-            queueMicrotask(() => focusFirstInScope(trap, true));
-            return;
-        }
-
         if (!isActiveMode(scope)) {
-            const target = trap ?? activeScope() ?? firstActiveAncestor(scope.parent) ?? anyActiveScope(scope.id);
-            if (target) queueMicrotask(() => focusFirstInScope(target, true));
+            const targetScope = trap ?? activeScope() ?? firstActiveAncestor(scope.parent) ?? anyActiveScope(scope.id);
+            if (targetScope) queueMicrotask(() => focusFirstInScope(targetScope, true));
             else (e.target as HTMLElement).blur?.();
             return;
         }
@@ -1610,8 +1616,20 @@ export function FocusProvider(props: { children: JSX.Element }) {
     }
 
     function ensureFocusInActiveScope() {
+        const trap = topTrap();
+        const ae = document.activeElement as HTMLElement | null;
+
+        if (trap && ae) {
+            const sid = resolveScopeId(ae);
+            if (!sid || !isWithinScope(sid, trap)) {
+                queueMicrotask(() => focusFirstInScope(trap, true));
+                return;
+            }
+        }
+
         const cur = currentFocused();
         if (!cur) return;
+
         const s = index.scopes.get(cur.scope);
         if (isActiveMode(s)) return;
 

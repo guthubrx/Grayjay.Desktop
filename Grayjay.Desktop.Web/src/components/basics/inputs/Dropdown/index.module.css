@@ -2,13 +2,13 @@
 .selectContainer {
   display: inline-block;
   flex-shrink: 0;
+  border-radius: 6px;
+  border: 1px solid #2E2E2E;
   position: relative;
+  background: #141414;
 }
 
 .select {
-  border-radius: 8px;
-  border: 1px solid #2E2E2E;
-  background: #141414;
   padding-left: 16px;
   padding-right: 16px;
   padding-top: 4px;
@@ -49,11 +49,14 @@
   scrollbar-width: thin;
   scrollbar-color: #555 #333;
   z-index: 999;
+  max-height: 230px;
+  width: 300px;
+  top: calc(100% + 6px);
 }
 
 .optionsContainer.upwards {
   top: auto;
-  bottom: 100%;
+  bottom: calc(100% + 6px);
 }
 
 .optionsContainer::-webkit-scrollbar {
@@ -93,6 +96,11 @@
   position: relative
 }
 
+.option:focus-visible {
+  background-color: #2E2E2E;
+  outline: unset;
+}
+
 .option.hover {
   color: #FFF;
   
@@ -100,6 +108,11 @@
 .option.selected {
   background: #1B1B1B;
   border-radius: 5px;
+}
+
+.option.selected:focus-visible {
+  background-color: #2E2E2E;
+  outline: unset;
 }
 
 .option .selectIcon {

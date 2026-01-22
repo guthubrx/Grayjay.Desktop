@@ -476,7 +476,7 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
               <div></div>
             }>
               <Match when={item.type == "seperator"}>
-                <div style="width: calc(100%); height: 1px; background: #2E2E2E; margin-top: 3px; margin-bottom: 3px;"></div>
+                  <div class={styles.separator}></div>
               </Match>
               <Match when={item.type == "group"}>
                 <div 
