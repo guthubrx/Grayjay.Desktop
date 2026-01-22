@@ -144,7 +144,10 @@ const Dropdown: Component<DropdownProps> = (props) => {
                             <div
                                 class={styles.option}
                                 classList={{ [styles.selected]: selectedIndex$() === i }}
-                                onClick={() => selectionChanged(i)}
+                                onClick={(e) => {
+                                    selectionChanged(i);
+                                    e.stopPropagation();
+                                }}
                                 use:focusable={{
                                     focusInert: createMemo(() => showOptions$().inputSource === "pointer"),
                                     onPress: () => selectionChanged(i),
