@@ -60,6 +60,11 @@ const InputText: Component<InputTextProps> = (props) => {
             !e.repeat &&
             !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
         ) {
+            if (document.activeElement === inputElement) {
+                merged.onSubmit?.(text());
+                rootElement?.focus();
+            }
+
             e.preventDefault();
             props.onSubmit?.(text());
         }

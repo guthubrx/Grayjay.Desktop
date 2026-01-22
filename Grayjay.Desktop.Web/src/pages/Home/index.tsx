@@ -35,13 +35,24 @@ const HomePage: Component = () => {
   return (
     <div class={styles.container}>
         <NavigationBar isRoot={true} childrenAfter={
-          <img src={iconRefresh} style={{"margin-left": "24px", "cursor": "pointer", "height": "30px", "width": "30px" }} 
-            onClick={()=>{ StateGlobal.reloadHome() }} use:focusable={{ 
+          <IconButton
+            icon={iconRefresh}
+            variant="none"
+            shape="circle"
+            width="30px"
+            height="30px"
+            iconInset="0px"
+            style={{ "margin-left": "24px" }}
+            onClick={() => {
+              StateGlobal.reloadHome();
+            }}
+            focusableOpts={{
               groupId: 'nav-bar',
               groupIndices: [1],
               groupType: 'horizontal',
-              onPress: () => StateGlobal.reloadHome() 
-            }} />
+              onPress: () => StateGlobal.reloadHome(),
+            }}
+          />
         } />
         <Show when={homePager.state == 'ready'}>
           <Show when={homePager() && homePager()!.data.length > 0}>

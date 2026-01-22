@@ -6,13 +6,37 @@
     gap: 6px;
 
     border-radius: 26px;
-    background-color: #212122;
+    background: var(--pill-bg, #212122);
+
     padding-left: 16px;
     padding-right: 16px;
 }
 
 .container:hover {
     cursor: pointer;
+    background: var(--pill-bg-focus, #fff);
+    outline: unset;
+}
+
+.container:hover .icon {
+    filter: var(--pill-icon-filter-focus, brightness(0) saturate(100%));
+}
+
+.container:hover .text {
+    color: var(--pill-text-focus, #141414);
+}
+
+.container:focus-visible {
+    background: var(--pill-bg-focus, #fff);
+    outline: unset;
+}
+
+.container:focus-visible .icon {
+    filter: var(--pill-icon-filter-focus, brightness(0) saturate(100%));
+}
+
+.container:focus-visible .text {
+    color: var(--pill-text-focus, #141414);
 }
 
 .icon {
@@ -21,7 +45,7 @@
 }
 
 .text {
-    color: #FFF;
+    color: var(--pill-text, #FFF);
     font-family: Inter;
     font-size: 14px;
     font-style: normal;

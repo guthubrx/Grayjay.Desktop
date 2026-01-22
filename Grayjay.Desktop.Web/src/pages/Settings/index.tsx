@@ -96,7 +96,6 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
               <div classList={{[styles.settingsMenuItem]: true, [styles.active]: !filterGroup$()}} onClick={()=>setFilterGroup(undefined)} use:focusable={{
                 onPress: () => setFilterGroup(undefined),
                 onBack: globalBack,
-                autoPressOnFocus: true,
                 groupRememberLast: true,
                 groupType: 'vertical',
                 groupId: 'settings-filters',
@@ -108,7 +107,6 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
                 <div classList={{[styles.settingsMenuItem]: true, [styles.active]: item.property == filterGroup$()}} onClick={()=>setFilterGroup(item.property)} use:focusable={{
                   onPress: () => setFilterGroup(item.property),
                   onBack: globalBack,
-                  autoPressOnFocus: true,
                   groupRememberLast: true,
                   groupType: 'vertical',
                   groupId: 'settings-filters',

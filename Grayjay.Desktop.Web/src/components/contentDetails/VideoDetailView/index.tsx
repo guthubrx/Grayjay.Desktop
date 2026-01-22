@@ -55,8 +55,6 @@ import loop_inactive from '../../../assets/icons/icon_loop_inactive.svg';
 import loop_active from '../../../assets/icons/icon_loop_active.svg';
 import { RatingTypes } from "../../../backend/models/IRating";
 import RatingView from "../../RatingView";
-import { IChapter } from "../../../backend/models/contentDetails/IChapter";
-import TransparentIconButton from "../../buttons/TransparentIconButton";
 import SearchBar from "../../topbars/SearchBar";
 import { ContentType } from "../../../backend/models/ContentType";
 import DOMPurify from 'dompurify';
@@ -116,6 +114,11 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const video = useVideo();
     const focus = useFocus()!;
     const casting = useCasting()!;
+
+    const exitFullscreen = () => {
+        if (video?.state() === VideoState.Fullscreen)
+            video?.actions?.setState(VideoState.Maximized);
+    };
 
     const [videoLocal$, setVideoLocal] = createSignal<IVideoLocal | undefined>();
     const currentVideo$ = createMemo(() => {
@@ -335,18 +338,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const nvi = nextVideoIndex();
         if (nvi === undefined) {
             console.error("Playback error: " + error, { errorCounter });
-            if (video?.state() === VideoState.Fullscreen || document.fullscreenElement) {
-                try {
-                    videoPlayerViewHandle$()?.toggleFullscreen?.();
-                } catch (e) {
-                    console.warn("toggleFullscreen failed:", e);
-                }
-
-                if (document.fullscreenElement) {
-                    document.exitFullscreen?.().catch?.(() => {});
-                }
-            }
-
+            exitFullscreen();
             setTimeout(() => {
                 UIOverlay.overlayConfirm(
                     { yes: () => reloadMedia() },
@@ -1418,7 +1410,15 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             "margin-bottom": "16px",
                             "align-items": "center"
                         }}>
-                            <TransparentIconButton icon={ic_chevron_down} onClick={() => minimize()} style={{"flex-shrink":0, "width": "40px", "height": "40px"}} />
+                            <IconButton
+                                icon={ic_chevron_down}
+                                variant="ghost"
+                                shape="rounded"
+                                width="40px"
+                                height="40px"
+                                iconInset="12px"
+                                style={{ "flex-shrink": 0 }}
+                                onClick={() => minimize()} />
                             <Show when={false /*Search from video=>search seems fundamentally broken*/}>
                                 <SearchBar onSearch={async (q, c) => {
                                     if (await SearchBackend.isContentDetailsUrl(q)) {
@@ -1430,7 +1430,15 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 }} style={{ "flex-grow": 1, "max-width": "700px", "margin-left": "24px" }} defaultSearchType={ContentType.MEDIA} />
                             </Show>
                             <div style="flex-grow: 1"></div>
-                            <TransparentIconButton icon={ic_close} onClick={() => close()} style={{"flex-shrink":0, "width": "40px", "height": "40px"}} />
+                            <IconButton
+                                icon={ic_close}
+                                variant="ghost"
+                                shape="rounded"
+                                width="40px"
+                                height="40px"
+                                iconInset="12px"
+                                style={{ "flex-shrink": 0 }}
+                                onClick={() => close()} />
                         </div>
                     </div>
                 </Show>
@@ -1841,6 +1849,10 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                                         if (!parent) {
                                                             return;
                                                         }
+                                                        if (parent.object.replyCount <= 0) {
+                                                            return;
+                                                        }
+                                                        console.log("show replies for", parent);
 
                                                         batch(async () => {
                                                             setRepliesParents([ parent.object ]);

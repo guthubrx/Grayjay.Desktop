@@ -1,18 +1,58 @@
 .container {
-    width: 24px;
-    height: 24px;
-    background-color: #212122;
-    border-radius: 50%;
-    display: flex;
-    flex-shrink: 0;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+
+  background: var(--ib-bg, #212122);
 }
 
 .container:hover {
-    cursor: pointer;
+  cursor: pointer;
+  background: var(--ib-bg-focus, #fff);
+  outline: unset;
+}
+
+.container:hover .icon {
+  filter: var(--ib-icon-filter-focus, brightness(0) saturate(100%));
+}
+
+.container:focus-visible {
+  background: var(--ib-bg-focus, #fff);
+  outline: unset;
+}
+
+.container:focus-visible .icon {
+  filter: var(--ib-icon-filter-focus, brightness(0) saturate(100%));
+}
+
+/* shape */
+.circle {
+  border-radius: 50%;
+}
+
+.rounded {
+  border-radius: 6px;
+}
+
+/* variants */
+.solid {
+  --ib-bg: #212122;
+}
+
+.ghost {
+  --ib-bg: rgba(255, 255, 255, 0.065);
+}
+
+.none {
+  --ib-bg: transparent;
 }
 
 .icon {
-    width: calc(100% - 8px);
-    height: calc(100% - 8px);
-    margin: 4px;
+  width: calc(100% - (var(--ib-inset) + var(--ib-inset)));
+  height: calc(100% - (var(--ib-inset) + var(--ib-inset)));
+  margin: var(--ib-inset);
+  display: block;
+  object-fit: contain;
 }

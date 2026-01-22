@@ -5,6 +5,12 @@
     box-sizing: border-box;
 }
 
+.container:focus-visible {
+    background-color: #2e2e2e;
+    border-radius: 6px;
+    outline: unset;
+}
+
 .thumbnailContainer {
     width: 100%;
     display: flex;

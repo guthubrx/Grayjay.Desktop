@@ -100,15 +100,13 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
           <div class={styles.sectionTitle}>Custom Image</div>
           <div class={styles.sectionDescription}>Select a new or previously used custom image</div>
           <div class={styles.horizontalList}>
-            <div class={styles.image} style="background: linear-gradient(267deg, rgb(1, 214, 230) -100.57%, rgb(1, 130, 231) 90.96%); margin-left: 0px;">
-              <div onClick={()=>uploadImage()}
-                  style="width: 100%; height: 100%; display: grid; align-items: center; justify-items: center; cursor: pointer"
-                  use:focusable={{
-                    onActionLabel: 'Finish',
-                    onAction: () => submit(),
-                    onPress: uploadImage,
-                    onBack: globalBack
-                  }}>
+            <div classList={{[styles.image]: true, [styles.addImage]: true}} use:focusable={{
+              onActionLabel: 'Finish',
+              onAction: () => submit(),
+              onPress: uploadImage,
+              onBack: globalBack
+            }}>
+              <div onClick={()=>uploadImage()} style="width: 100%; height: 100%; display: grid; align-items: center; justify-items: center; cursor: pointer">
                 Add Image
               </div>
             </div>

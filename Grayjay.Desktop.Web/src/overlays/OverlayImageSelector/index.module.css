@@ -120,7 +120,16 @@
     overflow: hidden;
     background-size: cover;
     border: 3px solid transparent;
-    background-position: center;;
+    background-position: center;
+}
+.addImage {
+    background: linear-gradient(267deg, rgb(1, 214, 230) -100.57%, rgb(1, 130, 231) 90.96%); 
+    margin-left: 0px;
+}
+.addImage:focus-visible {
+    background: white;
+    color: #141414;
+    outline: unset;
 }
 .image.enabled {
     border: 3px solid white;

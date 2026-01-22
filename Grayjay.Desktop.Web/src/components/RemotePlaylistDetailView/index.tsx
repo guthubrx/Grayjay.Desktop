@@ -14,6 +14,7 @@ import { Pager } from '../../backend/models/pagers/Pager';
 import VirtualList from '../containers/VirtualList';
 import { focusable } from '../../focusable'; void focusable;
 import { IPlatformContent } from '../../backend/models/content/IPlatformContent';
+import IconButton from '../buttons/IconButton';
 
 interface RemotePlaylistDetailViewProps {
   type: string;
@@ -48,20 +49,12 @@ const RemotePlaylistDetailView: Component<RemotePlaylistDetailViewProps> = (prop
         "overflow": "hidden",
         "height": 'unset'
       }}>
-        <div style="display: flex; flex-direction: row; align-items: center; margin-left: 32px; margin-right: 32px; margin-top: 46px;">
+        <div style="display: flex; flex-direction: row; align-items: center; margin-left: 32px; margin-right: 32px; margin-top: 46px; margin-bottom: 16px; gap: 16px;">
           <div style="display: flex; flex-direction: column;">
             <div class={styles.header}>{props.name}</div>
             <div class={styles.metadata}>{props.itemCount ?? 0} {props.itemCount === 1 ? "item" : "items"}</div>
           </div>
           <div style="flex-grow: 1"></div>
-            <img src={iconSettings} style="width: 24px; height: 100%; margin-left: 16px; margin-right: 16px; padding-left: 16px; padding-right: 16px; cursor: pointer;" onClick={(ev) => {
-              props?.onInteract?.();
-            }} use:focusable={{
-              groupId: 'actions',
-              groupType: 'horizontal',
-              groupIndices: [0],
-              onPress: () => props?.onInteract?.()
-            }} />
             <CustomButton
             text="Play all"
             icon={iconPlay}
@@ -81,8 +74,6 @@ const RemotePlaylistDetailView: Component<RemotePlaylistDetailViewProps> = (prop
             icon={iconShuffle}
             style={{
               border: "1px solid #2E2E2E",
-              "margin-left": "16px",
-              "margin-right": "16px",
               "flex-shrink": 0
             }}
             onClick={() => props?.onInteract?.()}
@@ -92,6 +83,23 @@ const RemotePlaylistDetailView: Component<RemotePlaylistDetailViewProps> = (prop
               groupIndices: [2],
               onPress: () => props?.onInteract?.()
             }} />
+          <IconButton
+            icon={iconSettings}
+            variant="none"
+            width="24px"
+            height="24px"
+            iconInset="0px"
+            style={{"flex-shrink": 0}}
+            onClick={() => {
+              props?.onInteract?.();
+            }}
+            focusableOpts={{
+              groupId: 'actions',
+              groupType: 'horizontal',
+              groupIndices: [0],
+              onPress: () => props?.onInteract?.(),
+            }}
+          />
         </div>
         <ScrollContainer ref={scrollContainerRef}>
           <VirtualList outerContainerRef={scrollContainerRef}

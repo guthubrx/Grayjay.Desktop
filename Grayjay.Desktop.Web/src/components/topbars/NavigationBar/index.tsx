@@ -5,12 +5,12 @@ import styles from './index.module.css';
 import { useNavigate } from '@solidjs/router';
 import back from '../../../assets/icons/icon24_back.svg';
 import cast from '../../../assets/icons/icon_32_cast.svg';
-import TransparentIconButton from '../../buttons/TransparentIconButton';
 import SearchBar from '../SearchBar';
 import { useCasting } from '../../../contexts/Casting';
 import { ContentType } from '../../../backend/models/ContentType';
 import { focusable } from '../../../focusable';import { useFocus } from '../../../FocusProvider';
 import { Direction } from '../../../nav';
+import IconButton from '../../buttons/IconButton';
  void focusable;
 
 interface NavigationBarProps {
@@ -33,7 +33,16 @@ const NavigationBar: Component<NavigationBarProps> = (props) => {
   return (
     <div class={styles.containerTopBar} style={{ "margin-left": "24px", "margin-right": "24px", width: "calc(100% - 48px)", ... props.style}}>
       <Show when={canGoBack$()}>
-        <TransparentIconButton icon={back} onClick={() => navigate(-1)} style={{"flex-shrink":0}} />
+        <IconButton
+          icon={back}
+          variant="ghost"
+          shape="rounded"
+          width="48px"
+          height="48px"
+          iconInset="12px"
+          style={{ "flex-shrink": 0 }}
+          onClick={() => navigate(-1)}
+        />      
       </Show>
       <SearchBar id="main-search" style={{ "flex-grow": 1, "max-width": "700px" }} initialText={props.initialText} inputStyle={{ "margin-left": !canGoBack$() ? "0px" : "24px" }} overlayStyle={{ "margin-left": !canGoBack$() ? "0px" : "24px" }} defaultSearchType={props.defaultSearchType} suggestionsVisible={props.suggestionsVisible} focusableGroupOpts={{
         groupId: 'nav-bar',
@@ -50,13 +59,19 @@ const NavigationBar: Component<NavigationBarProps> = (props) => {
         {props.childrenAfter}
       </Show>
 
-      <img src={cast} style={{"margin-left": "24px", "cursor": "pointer" }} onClick={() => casting?.actions.open()} use:focusable={{
-        groupId: 'nav-bar',
-        groupIndices: [props.childrenAfter ? 2 : 1],
-        groupType: 'horizontal',
-        groupEscapeTo: props.groupEscapeTo,
-        onPress: () => casting?.actions.open()
-      }} />
+      <IconButton
+        icon={cast}
+        variant="none"
+        style={{ "margin-left": "24px" }}
+        onClick={() => casting?.actions.open()}
+        focusableOpts={{
+          groupId: 'nav-bar',
+          groupIndices: [props.childrenAfter ? 2 : 1],
+          groupType: 'horizontal',
+          groupEscapeTo: props.groupEscapeTo,
+          onPress: () => casting?.actions.open(),
+        }}
+      />
     </div>
   );
 };

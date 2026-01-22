@@ -288,7 +288,7 @@ const PlaylistsPage: Component = () => {
                 value={filterText()}
                 showClearButton={true}
                 inputContainerStyle={{
-                  "height": "70px", 
+                  "height": "48px",  
                   "background": "#141414"
                 }}
                 onTextChanged={(v) => {
@@ -302,7 +302,7 @@ const PlaylistsPage: Component = () => {
                 small={true}
                 style={{
                   width: '170px',
-                  height: '70px',
+                  height: '48px',
                   'flex-shrink': 0
                 }}
                 onClick={() =>createPlaylist()}

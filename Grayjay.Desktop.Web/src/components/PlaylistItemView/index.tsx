@@ -35,7 +35,7 @@ const PlaylistItemView: Component<PlaylistItemViewProps> = (props) => {
   const editable$ = createMemo(() => props.isEditable ?? true);
 
   return (
-    <div style="display: flex; flex-direction: row; align-items: center; width: 100%; height: 100%; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid #2E2E2E; box-sizing: border-box; background-color: #141414" onClick={() => {{
+    <div class={styles.container} onClick={() => {{
       props.onPlay?.();
     }}} use:focusable={props.focusableOpts}>
       <Show when={props.onDragStart && editable$() && focus?.isControllerMode() !== true} fallback={<div style="width: 12px"></div>}>

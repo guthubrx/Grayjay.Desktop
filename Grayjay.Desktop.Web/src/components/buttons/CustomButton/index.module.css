@@ -1,23 +1,51 @@
 .container {
-    border-radius: 8px;
-    display: flex;
-    height: 48px;
-    padding-left: 20px;
-    padding-right: 20px;
-    font-weight: 300;
-    font-size: 16px;
-    font-family: "Inter";
-    align-items: center;
-    width: fit-content;
-    border: #ff0000b1;
+  border-radius: 8px;
+  display: flex;
+  height: 48px;
+  padding-left: 20px;
+  padding-right: 20px;
+
+  font-weight: 300;
+  font-size: 16px;
+  font-family: "Inter";
+  align-items: center;
+  width: fit-content;
+
+  box-sizing: border-box;
+
+  background: var(--cb-bg, #212122);
+  border: var(--cb-border, none);
+  color: var(--cb-text, #fff);
 }
 
 .container:hover {
-    cursor: pointer;
+  cursor: pointer;
+  background: var(--cb-bg-focus, #fff);
+  color: var(--cb-text-focus, #141414);
+  outline: unset;
+}
+
+.container:hover .icon {
+  filter: var(--cb-icon-filter-focus, brightness(0) saturate(100%));
+}
+
+.container:focus-visible {
+  background: var(--cb-bg-focus, #fff);
+  color: var(--cb-text-focus, #141414);
+  outline: unset;
+}
+
+.container:focus-visible .icon {
+  filter: var(--cb-icon-filter-focus, brightness(0) saturate(100%));
 }
 
 .icon {
-    height: 18px;
-    width: 18px;
-    margin-right: 10px;
+  height: 18px;
+  width: 18px;
+  margin-right: 10px;
+  display: block;
+}
+
+.text {
+  color: inherit;
 }

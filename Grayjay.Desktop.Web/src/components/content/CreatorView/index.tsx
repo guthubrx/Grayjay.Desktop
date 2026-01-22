@@ -5,10 +5,9 @@ import { proxyImage, toHumanSignificantDuration, toHumanTime } from '../../../ut
 import StateGlobal from '../../../state/StateGlobal';
 import SubscribeButton from '../../buttons/SubscribeButton';
 import settings from '../../../assets/icons/icon24_settings.svg';
-import TransparentIconButton from '../../buttons/TransparentIconButton';
-import { SubscriptionsBackend } from '../../../backend/SubscriptionsBackend';
 import { FocusableOptions } from '../../../nav';
 import { focusable } from '../../../focusable';import { useFocus } from '../../../FocusProvider';
+import IconButton from '../../buttons/IconButton';
  void focusable;
 
 interface CreatorViewProps {
@@ -75,11 +74,23 @@ const CreatorView: Component<CreatorViewProps> = (props) => {
         <div style={{"display": "flex", "flex-direction": "row", "align-items": "end"}}>
           <SubscribeButton style={{"margin-top": "12px", "width": "100%"}} small={true} author={props.url} isSubscribedInitialState={props.isSubscribedInitialState} />
           <Show when={props.onSettingsClick}>
-            <TransparentIconButton style={{"margin-left": "4px", "flex-shrink": "0", "width": "42px", "height": "42px"}} icon={settings} onClick={(ev) => {
-              props.onSettingsClick?.(ev.target! as HTMLElement);
-              ev.stopPropagation();
-              ev.preventDefault();
-            }} />
+            <IconButton
+              icon={settings}
+              variant="ghost"
+              shape="rounded"
+              width="42px"
+              height="42px"
+              iconInset="12px"
+              style={{
+                "margin-left": "4px",
+                "flex-shrink": "0",
+              }}
+              onClick={(ev) => {
+                props.onSettingsClick?.(ev.target! as HTMLElement);
+                ev.stopPropagation();
+                ev.preventDefault();
+              }}
+            />
           </Show>
         </div>
       </Show>

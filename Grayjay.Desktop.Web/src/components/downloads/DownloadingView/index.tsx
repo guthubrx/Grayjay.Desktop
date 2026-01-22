@@ -5,7 +5,6 @@ import { getBestThumbnail, positiveOrQ, proxyImage, resolutionOrUnknown, toHuman
 import StateGlobal from '../../../state/StateGlobal';
 import SubscribeButton from '../../buttons/SubscribeButton';
 import settings from '../../../assets/icons/icon24_settings.svg';
-import TransparentIconButton from '../../buttons/TransparentIconButton';
 import { IVideoDownload } from '../../../backend/models/downloads/IVideoDownload';
 import StateWebsocket from '../../../state/StateWebsocket';
 

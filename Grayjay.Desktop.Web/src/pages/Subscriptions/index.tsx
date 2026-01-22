@@ -272,20 +272,28 @@ const SubscriptionsPage: Component = () => {
   return (
     <div class={styles.container}>
       <NavigationBar isRoot={true} childrenAfter={
-          <img src={iconRefresh} style={{"margin-left": "24px", "cursor": "pointer", "height": "30px", "width": "30px" }}
-            use:focusable={{ 
-              onPress: (e) => {
-                anchor.setElement(e as HTMLElement);
-                setShowReloadMenu(true);
-              },
-              groupId: 'nav-bar',
-              groupIndices: [1],
-              groupType: 'horizontal'
-            }}
-            onClick={(e)=>{ 
-              anchor.setElement(e.currentTarget as HTMLElement);
-              setShowReloadMenu(true); 
-            }} />
+        <IconButton
+          icon={iconRefresh}
+          variant="none"
+          shape="circle"
+          width="30px"
+          height="30px"
+          iconInset="0px"
+          style={{ "margin-left": "24px" }}
+          onClick={(e) => {
+            anchor.setElement(e.currentTarget as HTMLElement);
+            setShowReloadMenu(true);
+          }}
+          focusableOpts={{
+            onPress: (el) => {
+              anchor.setElement(el);
+              setShowReloadMenu(true);
+            },
+            groupId: 'nav-bar',
+            groupIndices: [1],
+            groupType: 'horizontal',
+          }}
+        />
       } />
       <ScrollContainer ref={scrollContainerRef}>
         <Show when={subs$() && subs$()!.length > 0}>

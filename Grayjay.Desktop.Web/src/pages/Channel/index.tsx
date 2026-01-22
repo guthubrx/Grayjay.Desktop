@@ -11,7 +11,6 @@ import SkeletonDiv from '../../components/basics/loaders/SkeletonDiv';
 import styles from './index.module.css';
 import StickyShrinkOnScrollContainer from '../../components/containers/StickyShrinkOnScrollContainer';
 import { useShrinkProgress } from '../../contexts/ShrinkProgress';
-import TransparentIconButton from '../../components/buttons/TransparentIconButton';
 import { easeOutExpo } from '../../animation';
 import ButtonGroup from '../../components/ButtonGroup';
 import SubscribeButton from '../../components/buttons/SubscribeButton';
@@ -31,6 +30,7 @@ import { Menus } from '../../Menus';
 import { Portal } from 'solid-js/web';
 import UIOverlay from '../../state/UIOverlay';
 import { useFocus } from '../../FocusProvider';
+import IconButton from '../../components/buttons/IconButton';
 
 interface ChannelTopBarInit {
   hideSubscriptionSettings: () => void;
@@ -129,7 +129,18 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
           <Show when={!focus?.isControllerMode()}>
             <div class={styles.containerChannelButtons}>
               <Show when={subscription$()}>
-                <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} />
+                <IconButton
+                  ref={moreElement}
+                  icon={more}
+                  variant="ghost"
+                  shape="rounded"
+                  width="42px"
+                  height="42px"
+                  iconInset="12px"
+                  onClick={(ev) =>
+                    showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)
+                  }
+                />
               </Show>
               <SubscribeButton small={true} author={props.authorUrl} style={{"width": "110px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
             </div>
@@ -138,9 +149,21 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
         <Show when={focus?.isControllerMode()}>
           <div class={styles.containerChannelButtons}>
             <Show when={subscription$()}>
-              <TransparentIconButton ref={moreElement} icon={more} style={{"width": "42px", "height": "42px"}} onClick={(ev) => showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)} focusableOpts={{
+              <IconButton
+                ref={moreElement}
+                icon={more}
+                variant="ghost"
+                shape="rounded"
+                width="42px"
+                height="42px"
+                iconInset="12px"
+                onClick={(ev) =>
+                  showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)
+                }
+                focusableOpts={{
                   onPress: (el) => showSubscriptionSettings(el, subscription$()!)
-                }} />
+                }}
+              />
             </Show>
             <SubscribeButton small={true} author={props.authorUrl} style={{"width": "300px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
           </div>

@@ -51,8 +51,18 @@ const PostDetailView: Component = () => {
   return (
     <div class={styles.container}>
         <NavigationBar isRoot={false} childrenAfter={
-          <img src={iconRefresh} style={{"margin-left": "24px", "cursor": "pointer", "height": "30px", "width": "30px" }} 
-            onClick={()=>{ detailResources.refetch() }} />
+          <IconButton
+            icon={iconRefresh}
+            variant="none"
+            shape="circle"
+            width="30px"
+            height="30px"
+            iconInset="0px"
+            style={{ "margin-left": "24px" }}
+            onClick={() => {
+              detailResources.refetch();
+            }}
+          />
         } />
         <Show when={details$.state == 'ready'}>
           <Show when={details$()?.post}>
