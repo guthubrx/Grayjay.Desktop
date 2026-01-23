@@ -15,9 +15,10 @@ export interface FocusableOptions {
     disabled?: boolean;
     priority?: number;
     groupId?: string;
-    groupType?: "grid" | "horizontal" | "vertical"; // required for 1D, inferred for 2D
+    groupType?: "grid" | "horizontal" | "vertical" | "spatial"; // required for 1D, inferred for 2D
     groupIndices?: (number | undefined)[]; // 1D: [i], grid: [r,c]
     groupEscapeDirs?: Direction[];
+    groupSpatialFlow?: "horizontal" | "vertical";
     groupEscapeTo?: Partial<Record<Direction, string[]>>;
     groupRememberLast?: boolean;
     autoPressOnFocus?: boolean;

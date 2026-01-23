@@ -584,7 +584,12 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         return { width, height };
     });
 
-    const theatrePinned = createMemo(() => video?.theatrePinned() && focus?.lastInputSource() === "pointer");
+    const theatrePinned = createMemo(() => video?.theatrePinned() && focus?.isControllerMode() === true);
+    createEffect(on(() => focus.isControllerMode(), (src) => {
+        if (src === true && video?.theatrePinned?.()) {
+            video?.actions?.setTheatrePinned(false);
+        }
+    }));
     const minimumMaximumHeight = createMemo(() => {
         var newMinimumMaximum;
         if (mode() === VideoMode.Theatre) {

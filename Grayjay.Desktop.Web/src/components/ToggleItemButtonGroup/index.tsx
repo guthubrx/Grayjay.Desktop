@@ -1,7 +1,8 @@
-import { Component, For, JSX, Show, createEffect, createSignal } from 'solid-js'
+import { Component, For, JSX, Show, createEffect, createMemo, createSignal } from 'solid-js'
 
 import { focusable } from "../../focusable";  void focusable;
 import styles from './index.module.css';
+import { Direction, FocusableOptions } from '../../nav';
 
 export interface ToggleButtonGroupItem {
     text: string;
@@ -14,6 +15,12 @@ interface ToggleItemButtonGroupProps {
     items?: ToggleButtonGroupItem[];
     onValueChanged?: (item: any) => void;
     style?: JSX.CSSProperties;
+    focusable?: boolean;
+    onBack?: FocusableOptions["onBack"];
+    focusableGroupOpts?: {
+        groupId?: string;
+        groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    };
 };
 
 const ToggleItemButtonGroup: Component<ToggleItemButtonGroupProps> = (props) => {
@@ -23,14 +30,9 @@ const ToggleItemButtonGroup: Component<ToggleItemButtonGroupProps> = (props) => 
     });
 
     const toggleItem = (item: ToggleButtonGroupItem) => {
-        if (selectedItem() != item.value) {
-            setSelectedItem(item.value);
-        } else {
-            setSelectedItem(undefined);
-        }
-
-        if (props.onValueChanged)
-            props.onValueChanged(selectedItem());
+        const next = selectedItem() !== item.value ? item.value : undefined;
+        setSelectedItem(next);
+        props.onValueChanged?.(next);
     };
 
     return (
@@ -40,11 +42,17 @@ const ToggleItemButtonGroup: Component<ToggleItemButtonGroupProps> = (props) => 
                     <Show when={i() > 0}>
                         <div style="height: 100%; width: 1px; background-color: #454545;"></div>
                     </Show>
-                    <div class={styles.containerButton} classList={{ [styles.active]: item.value == selectedItem() }} onClick={() => toggleItem(item)} use:focusable={{
-                        onPress: () => toggleItem(item)
-                    }}>
+                    <div class={styles.containerButton} classList={{ [styles.active]: item.value == selectedItem() }} onClick={() => toggleItem(item)} use:focusable={props.focusable ? {
+                        onPress: () => toggleItem(item),
+                        onBack: props.onBack,
+                        groupType: 'spatial',
+                        groupIndices: [i()],
+                        groupRememberLast: true,
+                        groupEscapeDirs: ['up', 'down'],
+                        ... props.focusableGroupOpts
+                    } : undefined}>
                         <Show when={item.icon}>
-                            <img src={item.icon} style="width: 16px; height: 16px; flex-shrink: 0;" />
+                            <img src={item.icon} class={styles.icon} />
                         </Show>
                         <div>{item.text}</div>
                     </div>

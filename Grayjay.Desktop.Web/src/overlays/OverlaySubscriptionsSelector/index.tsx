@@ -46,8 +46,10 @@ const OverlaySubscriptionsSelector: Component<OverlaySubscsriptionsSelectorDialo
     }
 
     const dialogBack = () => {
-      if (props.preventDismiss) return false;
-      UIOverlay.dismiss();
+      if(!props.preventDismiss)
+        UIOverlay.dismiss();
+      if(props.onResult)
+        props.onResult([]);
       return true;
     };
 

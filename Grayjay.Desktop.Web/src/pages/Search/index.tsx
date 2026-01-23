@@ -151,6 +151,16 @@ const SearchPage: Component = () => {
 
   let scrollContainerRef: HTMLDivElement | undefined;
 
+  const handleBack = () => {
+    if (filtersDialogVisible$()) {
+      setFiltersDialogVisible(false);
+      return true;
+    }
+    return false;
+  };
+
+  const filterGroupId = (i: number) => `filter-group-${i}`;
+
   return (
     <>
       <div class={styles.container}>
@@ -163,7 +173,7 @@ const SearchPage: Component = () => {
             ]} defaultSelectedValue={searchType$()} onValueChanged={(v) => {
               setSearchType(v);
               performSearch(v, sortBy$(), filterValues$(), enabledSources$());
-            }} />
+            }} focusable={true} />
             <Show when={searchType$() === ContentType.MEDIA}>
               <CustomButton text='Filters' icon={iconFilters} border='1px solid #2E2E2E' style={{"height": "44px" }} onClick={() => setFiltersDialogVisible(true)} focusableOpts={{
                 onPress: () => setFiltersDialogVisible(true)
@@ -188,23 +198,31 @@ const SearchPage: Component = () => {
                 <div style="display: flex; align-items: center; width: 100%;">
                   <div class={styles.filtersDialogTitle}>Filters</div>
                   <div style="flex-grow: 1"></div>
-                  <IconButton icon={iconClose} height='24px' width='24px' style={{ "margin-left": "24px" }} onClick={() => setFiltersDialogVisible(false)} focusableOpts={{
-                    onPress: () => setFiltersDialogVisible(false),
-                    onBack: () => setFiltersDialogVisible(false)
-                  }} />
+                  <IconButton icon={iconClose} height='24px' width='24px' style={{ "margin-left": "24px" }} onClick={() => setFiltersDialogVisible(false)} />
                 </div>
                 <ScrollContainer ref={filtersScrollContainerRef} wrapperStyle={{ "width": "100%" }} scrollToTopButton={false}>
                   <div class={styles.filterHeader}>Select sources</div>
                   <ToggleItemBigButtonGroupMulti items={sourceFilters$()} defaultSelectedValues={enabledSources$()} onValueChanged={(items) => {
                     setEnabledSources(items);
                     filtersChanged = true; 
+                  }} focusable={true} onBack={handleBack} focusableGroupOpts={{
+                    groupId: 'select-sources',
+                    groupEscapeTo: {
+                      down: ['sort-by', filterGroupId(0)]
+                    }
                   }} />
                   <Show when={sortItems$() && sortItems$()?.length}>
                     <div class={styles.filterHeader}>Sort by</div>
                     <ToggleItemButtonGroup items={sortItems$()} defaultSelectedValue={sortBy$()} onValueChanged={(item) => {
                       setSortBy(item);
                       filtersChanged = true;
-                    }} />
+                    }} focusable={true} onBack={handleBack} focusableGroupOpts={{
+                    groupId: 'sort-by',
+                    groupEscapeTo: {
+                      up: ['select-sources'],
+                      down: [filterGroupId(0)]
+                    }
+                  }} />
                   </Show>
                   <For each={commonCapabilities$()?.filters}>{(item, i) => {
                     const items$ = createMemo(() => item.filters.map<ToggleButtonGroupItem>(v => {
@@ -223,11 +241,23 @@ const SearchPage: Component = () => {
                           <ToggleItemButtonGroup items={items$()} defaultSelectedValue={selectedValue$()} onValueChanged={(v) => {
                             setFilterValues({ ... filterValues$(), [item.id ?? item.name]: v ? [ v ] : [] });
                             filtersChanged = true;
+                          }} focusable={true} onBack={handleBack} focusableGroupOpts={{
+                            groupId: filterGroupId(i()),
+                            groupEscapeTo: {
+                              up: i() === 0 ? ['sort-by', 'select-sources'] : [filterGroupId(i() - 1), 'sort-by', 'select-sources'],
+                              down: i() < commonCapabilities$()!.filters!.length - 1 ? [filterGroupId(i() + 1)] : undefined
+                            }
                           }} />
                         }>
                           <ToggleItemButtonGroupMulti items={items$()} defaultSelectedValues={selectedValue$()} onValueChanged={(v) => {
                             setFilterValues({ ... filterValues$(), [item.id ?? item.name]: v });
                             filtersChanged = true;
+                          }} focusable={true} onBack={handleBack} focusableGroupOpts={{
+                            groupId: filterGroupId(i()),
+                            groupEscapeTo: {
+                              up: i() === 0 ? ['sort-by', 'select-sources'] : [filterGroupId(i() - 1), 'sort-by', 'select-sources'],
+                              down: i() < commonCapabilities$()!.filters!.length - 1 ? [filterGroupId(i() + 1)] : undefined
+                            }
                           }} />
                         </Show>
                       </>

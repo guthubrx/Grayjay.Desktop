@@ -90,7 +90,6 @@ const OverlaySubscriptionGroupEditDialog: Component<OverlaySubscriptionGroupEdit
         </Show>
         <Show when={stateView$() == 2}>
           <OverlaySubscriptionsSelector 
-            preventDismiss={true}
             title='Subscription Group Subscriptions' 
             description='Select the subscriptions to add to your subscription groups'
             ignore={props.subscriptionGroup.urls ?? []}

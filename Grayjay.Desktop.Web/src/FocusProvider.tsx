@@ -536,8 +536,10 @@ export function FocusProvider(props: { children: JSX.Element }) {
     }
 
 
-    function spatialNext(from: HTMLElement, dir: Direction, scopeId: string, fromNode?: NodeEntry): NodeEntry | undefined {
-        const baseAll = candidatesInScope(scopeId).filter(n => n.el !== from);
+    function spatialNext(from: HTMLElement, dir: Direction, scopeId: string, fromNode?: NodeEntry, groupOnly = false): NodeEntry | undefined {
+        const baseAll = candidatesInScope(scopeId)
+            .filter(n => n.el !== from)
+            .filter(n => !groupOnly || !fromNode || ((n.opts as any)?.groupId && (n.opts as any).groupId === (fromNode.opts as any)?.groupId));
         if (!baseAll.length) return;
         if (dir === "next" || dir === "prev") return;
 
@@ -892,22 +894,8 @@ export function FocusProvider(props: { children: JSX.Element }) {
         if (!groupId || !Array.isArray(gi0)) return;
 
         const cont0 = nearestScrollContainer(focused.el);
-        if (gi0.length === 1) {
-            const i0 = gi0[0];
-            if (!Number.isInteger(i0)) return;
 
-            const axis: "horizontal" | "vertical" | undefined = o0.groupType;
-            if (axis !== "horizontal" && axis !== "vertical") return;
-
-            const step =
-                dir === "next" ? 1 :
-                dir === "prev" ? -1 :
-                axis === "horizontal" ? (dir === "right" ? 1 : dir === "left" ? -1 : 0) :
-                axis === "vertical" ? (dir === "down" ? 1 : dir === "up" ? -1 : 0) :
-                0;
-
-            if (step === 0) return;
-
+        const neighborByLinearIndex = (axisFilter: "horizontal" | "vertical" | "spatial", i0: number, step: 1 | -1): NodeEntry | undefined => {
             let best: NodeEntry | undefined;
             let bestI = step > 0 ? Infinity : -Infinity;
 
@@ -921,7 +909,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
                 const gi: any[] | undefined = o.groupIndices;
                 if (!Array.isArray(gi) || gi.length !== 1) continue;
-                if (o.groupType !== axis) continue;
+                if (o.groupType !== axisFilter) continue;
 
                 const i = gi[0];
                 if (!Number.isInteger(i)) continue;
@@ -937,12 +925,54 @@ export function FocusProvider(props: { children: JSX.Element }) {
             }
 
             return best;
+        };
+
+        if (gi0.length === 1) {
+            const i0 = gi0[0];
+            if (!Number.isInteger(i0)) return;
+
+            const axis: "horizontal" | "vertical" | "spatial" | undefined = o0.groupType;
+
+            if (axis === "spatial") {
+                const flow: "horizontal" | "vertical" = (o0 as any).groupSpatialFlow ?? "horizontal";
+
+                const step =
+                    dir === "next" ? 1 :
+                    dir === "prev" ? -1 :
+                    flow === "horizontal" ? (dir === "right" ? 1 : dir === "left" ? -1 : 0) :
+                    flow === "vertical" ? (dir === "down" ? 1 : dir === "up" ? -1 : 0) :
+                    0;
+
+                if (step !== 0) {
+                    return neighborByLinearIndex("spatial", i0, (step > 0 ? 1 : -1));
+                }
+
+                if (dir === "up" || dir === "down" || dir === "left" || dir === "right") {
+                    return spatialNext(focused.el, dir, scopeId, focused, true);
+                }
+
+                return;
+            }
+
+            if (axis !== "horizontal" && axis !== "vertical") return;
+
+            const step =
+                dir === "next" ? 1 :
+                dir === "prev" ? -1 :
+                axis === "horizontal" ? (dir === "right" ? 1 : dir === "left" ? -1 : 0) :
+                axis === "vertical" ? (dir === "down" ? 1 : dir === "up" ? -1 : 0) :
+                0;
+
+            if (step === 0) return;
+
+            return neighborByLinearIndex(axis, i0, (step > 0 ? 1 : -1));
         }
 
         if (gi0.length === 2) {
             const r0 = gi0[0];
             const c0 = gi0[1];
             if (!Number.isInteger(r0) || !Number.isInteger(c0)) return;
+
             if (dir === "left" || dir === "right") {
                 let best: NodeEntry | undefined;
                 let bestC = dir === "right" ? Infinity : -Infinity;
@@ -1002,7 +1032,10 @@ export function FocusProvider(props: { children: JSX.Element }) {
                     if (!isGroupSelectable(n)) continue;
 
                     const colDist = Math.abs(c - c0);
-                    if (rowDelta < bestRowDelta || (rowDelta === bestRowDelta && (colDist < bestColDist || (colDist === bestColDist && c > bestC)))) {
+                    if (
+                        rowDelta < bestRowDelta ||
+                        (rowDelta === bestRowDelta && (colDist < bestColDist || (colDist === bestColDist && c > bestC)))
+                    ) {
                         best = n;
                         bestRowDelta = rowDelta;
                         bestColDist = colDist;

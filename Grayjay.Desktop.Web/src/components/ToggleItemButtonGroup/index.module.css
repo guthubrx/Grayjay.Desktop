@@ -33,3 +33,27 @@
     background: rgba(255, 255, 255, 0.06);
     color: #FFF;
 }
+
+.containerButton:hover {
+  cursor: pointer;
+  background: white;
+  color: #141414;
+}
+
+.containerButton:hover .icon {
+  filter: var(--ib-icon-filter-focus, brightness(0) saturate(100%));
+}
+
+.icon {
+    width: 16px; height: 16px; flex-shrink: 0;
+}
+
+.containerButton:focus-visible {
+  background: white;
+  color: #141414;
+  outline: unset;
+}
+
+.containerButton:focus-visible .icon {
+    filter: var(--ib-icon-filter-focus, brightness(0) saturate(100%));
+}
