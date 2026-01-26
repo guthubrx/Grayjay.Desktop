@@ -1,0 +1,22 @@
+Improvements:
+ - Allow casting of HLS + subtitle
+ - Added support for pasting video URL into search bar to open video
+ - Improved controller support
+ - Added Advanced settings toggle to reduce clutter
+ - Improved styling
+ - User agent used for captcha now passed to plugin through bridge.captchaUserAgent
+ - Headers more accurately processed
+
+Fixes:
+ - Fixes for request modifiers to grayjay casting server
+ - Fixed httpimp support on MacOS
+ - Fixed Experimental casting backend support for Debian bullseye based distros
+ - Automatic fallback to legacy on failing to create StateCastingExperimental
+ - Added fix for anchor reload.
+ - Implemented VC redist to MSI installer
+ - Fixed HLS being rerequested for Nebula
+ - Fixed desktop captcha flow when not using mobile emulation
+ - Fixed ParseAttributes to better deal with more complicated input
+ - Fixed cast load being invoked too many times
+ - Fix for consistent seeking behaviour
+ - Fix for resume at
