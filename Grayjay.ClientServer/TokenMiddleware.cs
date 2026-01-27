@@ -9,6 +9,10 @@ namespace Grayjay.ClientServer
         private readonly RequestDelegate _next;
         private readonly GrayjayServer _server;
 
+        private List<PathString> _excludedPaths = new List<PathString>()
+        {
+            new PathString("/Developer")
+        };
         private HashSet<string> _excluded = new HashSet<string>()
         {
 
@@ -22,7 +26,7 @@ namespace Grayjay.ClientServer
 
         public async Task InvokeAsync(HttpContext context)
         {
-            if (_server.UseTokenSecurity && !_excluded.Contains(context.Request.Path) && !context.Request.Path.ToString().ToLower().StartsWith("/developer/"))
+            if (_server.UseTokenSecurity && !_excluded.Contains(context.Request.Path) && !_excludedPaths.Any(x=>context.Request.Path.StartsWithSegments(x)))
             {
                 string token = context.Request.Headers["_token"];
                 if(token == null || !_server.HasToken(token))
