@@ -296,6 +296,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                   groupEscapeDirs: ['right'],
                   groupEscapeTo: { right: ['sources'] },
                   groupRememberLast: true,
+                  groupExitDirs: ["right"],
                   onPress: handleCollapse,
                 }}
                 onClick={handleCollapse}
@@ -340,7 +341,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                     groupRememberLast: true,
                     onPress: () => press(),
                     autoPressOnFocus: btn.autoPressOnFocus,
-                    groupEscapeTo: { right: ['sources'] }
+                    groupEscapeTo: { right: ['sources'] },
+                    groupExitDirs: ["right"],
                   }}
                   onFocus={globalFocus}
                   onBlur={globalBlur}
@@ -365,6 +367,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                 groupEscapeDirs: ['right'],
                 groupRememberLast: true,
                 groupEscapeTo: { right: ['sources'] },
+                groupExitDirs: ["right"],
                 onPress: () => {
                   props?.onMoreOpened?.(); 
                   setMoreOverlayVisible(true);
@@ -425,6 +428,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                     groupIndices: [visibleTopButtonCount$() + 1 + (moreTopButtonCount$() > 0 ? 1 : 0) + i()],
                     groupRememberLast: true,
                     groupEscapeTo: { right: ['sources'] },
+                    groupExitDirs: ["right"],
                     onPress: press
                   }}
                   onFocus={globalFocus}

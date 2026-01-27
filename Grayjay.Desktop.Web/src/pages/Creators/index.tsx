@@ -123,7 +123,7 @@ const CreatorsPage: Component = () => {
       <Show when={subs$() && subs$()!.length > 0}>
         <ScrollContainer ref={scrollContainerRef}>
           <div class={styles.containerFilters}>
-            <SettingsDropdown label="Sources" valueString={valueString$()} style={{"max-width": "200px"}} anchorStyle={AnchorStyle.BottomLeft} menu={{
+            <SettingsDropdown menuStyle={{"max-height": "200px"}} label="Sources" valueString={valueString$()} style={{"max-width": "200px"}} anchorStyle={AnchorStyle.BottomLeft} menu={{
               items: StateGlobal.sources$()?.map(i => new MenuItemCheckbox({
                 isSelected: true,
                 name: i.name,

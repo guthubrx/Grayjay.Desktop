@@ -256,7 +256,6 @@ export function FocusProvider(props: { children: JSX.Element }) {
     }
 
     function registerNode(el: HTMLElement, scopeId: string, opts: FocusableOptions) {
-        console.log("registerNode", el);
         const id = uid("node");
         const entry: NodeEntry = { id, el, scope: scopeId, opts: { priority: 0, ...opts } };
         index.nodes.set(id, entry);
@@ -285,7 +284,6 @@ export function FocusProvider(props: { children: JSX.Element }) {
     function unregisterNode(id: string) {
         const rec = index.nodes.get(id);
         if (!rec) return;
-        console.trace("unregisterNode", rec.el);
 
         index.nodeByEl.delete(rec.el);
         index.nodes.delete(id);
@@ -537,16 +535,32 @@ export function FocusProvider(props: { children: JSX.Element }) {
         return firstInGroup(candidate.scope, toGroup, candidate.el) ?? candidate;
     }
 
+    function groupExitForced(node: NodeEntry | undefined, dir: Direction): boolean {
+        if (!node) return false;
+        const o: any = node.opts;
+        const gid: string | undefined = o?.groupId;
+        if (!gid) return false;
+
+        const dirs: any = o?.groupExitDirs;
+        return Array.isArray(dirs) && dirs.includes(dir);
+    }
+
     function spatialNext(from: HTMLElement, dir: Direction, scopeId: string, fromNode?: NodeEntry, groupOnly = false): NodeEntry | undefined {
-        const baseAll = candidatesInScope(scopeId)
+        let baseAll = candidatesInScope(scopeId)
             .filter(n => n.el !== from)
             .filter(n => !groupOnly || !fromNode || ((n.opts as any)?.groupId && (n.opts as any).groupId === (fromNode.opts as any)?.groupId));
         if (!baseAll.length) return;
         if (dir === "next" || dir === "prev") return;
 
         const fromGroupId = (fromNode?.opts as any)?.groupId as string | undefined;
+        const forceExit = groupExitForced(fromNode, dir);
         const escapeOk = groupEscapeAllowed(fromNode, dir);
         const targets = groupEscapeTargets(fromNode, dir);
+
+        if (forceExit && fromGroupId) {
+            baseAll = baseAll.filter(n => ((n.opts as any)?.groupId as string | undefined) !== fromGroupId);
+            if (!baseAll.length && !targets?.length) return;
+        }
 
         const fromRect = from.getBoundingClientRect();
         const anchor = (fromNode?.opts as any)?.navAnchor;
@@ -600,24 +614,22 @@ export function FocusProvider(props: { children: JSX.Element }) {
                 : intervalOverlap(r.top, r.bottom, navContRect.top, navContRect.bottom) >= COLUMN_OVERLAP_PX;
         };
 
-const BEAM_MIN = 44;
-const BEAM_PAD = 12;
-const BEAM_SCALE = 1.0;
+        const BEAM_MIN = 44;
+        const BEAM_PAD = 12;
+        const BEAM_SCALE = 1.0;
 
-const spanLeft = cx0 - fromRect.left;
-const spanRight = fromRect.right - cx0;
-const spanUp = cy0 - fromRect.top;
-const spanDown = fromRect.bottom - cy0;
+        const spanLeft = cx0 - fromRect.left;
+        const spanRight = fromRect.right - cx0;
+        const spanUp = cy0 - fromRect.top;
+        const spanDown = fromRect.bottom - cy0;
 
-const leftExtent  = Math.max(BEAM_MIN / 2, spanLeft  * BEAM_SCALE) + BEAM_PAD;
-const rightExtent = Math.max(BEAM_MIN / 2, spanRight * BEAM_SCALE) + BEAM_PAD;
-const upExtent    = Math.max(BEAM_MIN / 2, spanUp    * BEAM_SCALE) + BEAM_PAD;
-const downExtent  = Math.max(BEAM_MIN / 2, spanDown  * BEAM_SCALE) + BEAM_PAD;
-
-const beam = isVertical
-  ? { left: cx0 - leftExtent, right: cx0 + rightExtent }
-  : { top: cy0 - upExtent, bottom: cy0 + downExtent };
-
+        const leftExtent = Math.max(BEAM_MIN / 2, spanLeft * BEAM_SCALE) + BEAM_PAD;
+        const rightExtent = Math.max(BEAM_MIN / 2, spanRight * BEAM_SCALE) + BEAM_PAD;
+        const upExtent = Math.max(BEAM_MIN / 2, spanUp * BEAM_SCALE) + BEAM_PAD;
+        const downExtent = Math.max(BEAM_MIN / 2, spanDown * BEAM_SCALE) + BEAM_PAD;
+        const beam = isVertical
+        ? { left: cx0 - leftExtent, right: cx0 + rightExtent }
+        : { top: cy0 - upExtent, bottom: cy0 + downExtent };
 
         const hitsBeam = (r: DOMRect) => {
             return isVertical
@@ -736,50 +748,42 @@ const beam = isVertical
             const RELAX_OVERLAP = 0.20;
             const MAX_ANGLE_TAN = Math.tan(65 * Math.PI / 180);
 
-function verticalPool(cands: Cand[]) {
-  // Use beam window instead of fromRect left/right
-  const beamW = (beam as any).right - (beam as any).left;
+            function verticalPool(cands: Cand[]) {
+                const beamW = (beam as any).right - (beam as any).left;
+                const strict = cands.filter(c =>
+                    (intervalOverlap((beam as any).left, (beam as any).right, c.r.left, c.r.right) /
+                    Math.min(beamW || 1, c.r.width || 1)) >= STRICT_OVERLAP
+                );
+                if (strict.length) return strict;
 
-  const strict = cands.filter(c =>
-    (intervalOverlap((beam as any).left, (beam as any).right, c.r.left, c.r.right) /
-      Math.min(beamW || 1, c.r.width || 1)) >= STRICT_OVERLAP
-  );
-  if (strict.length) return strict;
+                const relaxed = cands.filter(c =>
+                    (intervalOverlap((beam as any).left, (beam as any).right, c.r.left, c.r.right) /
+                    Math.min(beamW || 1, c.r.width || 1)) >= RELAX_OVERLAP
+                );
+                if (relaxed.length) return relaxed;
 
-  const relaxed = cands.filter(c =>
-    (intervalOverlap((beam as any).left, (beam as any).right, c.r.left, c.r.right) /
-      Math.min(beamW || 1, c.r.width || 1)) >= RELAX_OVERLAP
-  );
-  if (relaxed.length) return relaxed;
+                const beamHits = cands.filter(c => hitsBeam(c.r));
+                if (beamHits.length) return beamHits;
+                return cands.filter(c => Math.abs(c.cx) <= Math.abs(c.cy) * MAX_ANGLE_TAN);
+            }
 
-  const beamHits = cands.filter(c => hitsBeam(c.r));
-  if (beamHits.length) return beamHits;
+            function horizontalPool(cands: Cand[]) {
+                const beamH = (beam as any).bottom - (beam as any).top;
+                const strict = cands.filter(c =>
+                    (intervalOverlap((beam as any).top, (beam as any).bottom, c.r.top, c.r.bottom) /
+                    Math.min(beamH || 1, c.r.height || 1)) >= STRICT_OVERLAP
+                );
+                if (strict.length) return strict;
+                const relaxed = cands.filter(c =>
+                    (intervalOverlap((beam as any).top, (beam as any).bottom, c.r.top, c.r.bottom) /
+                    Math.min(beamH || 1, c.r.height || 1)) >= RELAX_OVERLAP
+                );
+                if (relaxed.length) return relaxed;
 
-  return cands.filter(c => Math.abs(c.cx) <= Math.abs(c.cy) * MAX_ANGLE_TAN);
-}
-
-function horizontalPool(cands: Cand[]) {
-  // Use beam window instead of fromRect top/bottom
-  const beamH = (beam as any).bottom - (beam as any).top;
-
-  const strict = cands.filter(c =>
-    (intervalOverlap((beam as any).top, (beam as any).bottom, c.r.top, c.r.bottom) /
-      Math.min(beamH || 1, c.r.height || 1)) >= STRICT_OVERLAP
-  );
-  if (strict.length) return strict;
-
-  const relaxed = cands.filter(c =>
-    (intervalOverlap((beam as any).top, (beam as any).bottom, c.r.top, c.r.bottom) /
-      Math.min(beamH || 1, c.r.height || 1)) >= RELAX_OVERLAP
-  );
-  if (relaxed.length) return relaxed;
-
-  const beamHits = cands.filter(c => hitsBeam(c.r));
-  if (beamHits.length) return beamHits;
-
-  return cands.filter(c => Math.abs(c.cy) <= Math.abs(c.cx) * MAX_ANGLE_TAN);
-}
-
+                const beamHits = cands.filter(c => hitsBeam(c.r));
+                if (beamHits.length) return beamHits;
+                return cands.filter(c => Math.abs(c.cy) <= Math.abs(c.cx) * MAX_ANGLE_TAN);
+            }
 
             function chooseAxisPool(cands: Cand[]) {
                 return isVertical ? verticalPool(cands) : horizontalPool(cands);
@@ -1177,7 +1181,8 @@ function horizontalPool(cands: Cand[]) {
 
         if ((focused.opts.onDirection?.(focused.el, dir, inputSource) ?? false) === true) return;
 
-        if (focused.scope === scope.id) {
+        const forceExit = groupExitForced(focused, dir);
+        if (!forceExit && focused.scope === scope.id) {
             const gnext = neighborInGroup(scope.id, focused, dir);
             if (gnext) {
                 focusCandidate(gnext, dir, inputSource);

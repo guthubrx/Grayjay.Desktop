@@ -13,6 +13,8 @@ export interface SettingsDropdownProps {
     anchorStyle?: AnchorStyle;
     label?: string;
     style?: JSX.CSSProperties;
+    settingsMenuStyle?: JSX.CSSProperties;
+    menuStyle?: JSX.CSSProperties;
     valueString?: string;
     focusable?: boolean;
 };
@@ -64,7 +66,7 @@ const SettingsDropdown: Component<SettingsDropdownProps> = (props) => {
           </div>
       </div>
       <Portal>
-        <SettingsMenu menu={props.menu} anchor={anchor} show={showMenu$()} onHide={hideMenu} ignoreGlobal={[selectElement]} inputSource={menuInputSource$()} />
+        <SettingsMenu menu={props.menu} anchor={anchor} show={showMenu$()} onHide={hideMenu} ignoreGlobal={[selectElement]} inputSource={menuInputSource$()} style={props.menuStyle} menuStyle={props.settingsMenuStyle} />
       </Portal>
     </>
   );
