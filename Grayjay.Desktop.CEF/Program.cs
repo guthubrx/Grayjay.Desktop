@@ -473,7 +473,7 @@ namespace Grayjay.Desktop
             server = new GrayjayServer((!isServer && cef != null ? new CEFWindowProvider(cef) : null), 
                 isHeadless, 
                 isServer,
-                disableSecurity && (isHeadless || isServer));
+                !(disableSecurity && (isHeadless || isServer)));
             if (window != null)
             {
                 var windowWrapped = new CEFWindowProvider.Window(window);
