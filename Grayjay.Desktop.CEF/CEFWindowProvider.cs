@@ -8,6 +8,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -40,7 +41,7 @@ namespace Grayjay.Desktop.CEF
             );
 
             await window.SetDevelopmentToolsEnabledAsync(true);
-            await window.LoadUrlAsync($"{GrayjayServer.Instance.BaseUrl}/web/index.html");
+            await window.LoadUrlAsync($"{GrayjayServer.Instance.BaseUrl}{GrayjayServer.Instance.GetIndexUrl()}");
             await window.WaitForExitAsync(CancellationToken.None);
 
             return new Window(window);
@@ -474,6 +475,24 @@ namespace Grayjay.Desktop.CEF
                 };
                 _proxyHandlers.AddOrUpdate(url, ipcHandle, (x,v) => { return ipcHandle; });
                 await _window.AddUrlToProxyAsync(url, cancellationToken);
+            }
+
+            public async Task SetRequestModifier(Func<WindowRequest, WindowRequest> handler)
+            {
+                await _window.SetModifyRequestsAsync(true, false, CancellationToken.None);
+                _window.SetRequestModifier((window, req) =>
+                {
+                    var result = handler(new WindowRequest()
+                    {
+                        Url = req.Url,
+                        Headers = req.Headers,
+                        Method = req.Method
+                    });
+                    req.Url = result.Url;
+                    req.Headers = result.Headers;
+                    req.Method = result.Method;
+                    return req;
+                });
             }
         }
     }

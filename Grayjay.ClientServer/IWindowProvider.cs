@@ -1,4 +1,5 @@
 ﻿
+
 namespace Grayjay.ClientServer
 {
     public interface IWindowProvider
@@ -15,6 +16,7 @@ namespace Grayjay.ClientServer
         event Action OnClosed;
 
         Task SetRequestProxyAsync(string url, Func<WindowRequest, Task<WindowResponse>> handler, CancellationToken cancellationToken = default);
+        Task SetRequestModifier(Func<WindowRequest, WindowRequest> handler);
 
         Task CloseAsync(CancellationToken cancellationToken = default);
     }

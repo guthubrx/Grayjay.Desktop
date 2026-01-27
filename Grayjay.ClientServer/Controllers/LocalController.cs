@@ -17,6 +17,7 @@ namespace Grayjay.ClientServer.Controllers
         [HttpGet]
         public IActionResult Open(string uri)
         {
+            uri.IsHttpUrlOrThrow();
             if (string.IsNullOrEmpty(uri))
                 throw new BadHttpRequestException("Missing uri");
 

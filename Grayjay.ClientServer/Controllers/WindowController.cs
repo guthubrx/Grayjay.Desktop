@@ -22,17 +22,18 @@ namespace Grayjay.ClientServer.Controllers
         {
             if (GrayjayServer.Instance.WindowProvider != null && !GrayjayServer.Instance.HeadlessMode)
             {
-                await GrayjayServer.Instance.WindowProvider.CreateWindowAsync(
-                    url: $"{GrayjayServer.Instance.BaseUrl}/web/index.html",
+                var window = await GrayjayServer.Instance.WindowProvider.CreateWindowAsync(
+                    url: $"{GrayjayServer.Instance.BaseUrl}{GrayjayServer.Instance.GetIndexUrl()}",
                     title: "Grayjay (Sub)",
                     minimumWidth: 900,
                     minimumHeight: 550,
                     preferredWidth: 1300,
                     preferredHeight: 950
                 );
+                await GrayjayServer.Instance.RegisterTokenWindow(window);
             }
             else if (!GrayjayServer.Instance.ServerMode)
-                OSHelper.OpenUrl($"{GrayjayServer.Instance.BaseUrl}/web/index.html");
+                OSHelper.OpenUrl($"{GrayjayServer.Instance.BaseUrl}{GrayjayServer.Instance.GetIndexUrl()}");
         }
 
         [HttpGet]

@@ -246,6 +246,7 @@ namespace Grayjay.Desktop
 
             bool isHeadless = args?.Contains("--headless") ?? false;
             bool isServer = args?.Contains("--server") ?? false;
+            bool disableSecurity = args?.Contains("--ignore-security") ?? false;
             bool isFullscreen = args?.Contains("--fullscreen") ?? false;
             double? scaleFactor = args?.FirstOrDefault(a => a.StartsWith("--scale-factor=")) is string s && double.TryParse(s["--scale-factor=".Length..], out var v) ? v : null;
             StateApp.InputSource = args?.FirstOrDefault(a => a.StartsWith("--input-source="))?["--input-source=".Length..];
@@ -379,8 +380,28 @@ namespace Grayjay.Desktop
                 }
                 Logger.i(nameof(Program), $"Main: Starting DotCefProcess finished ({startWindowWatch.ElapsedMilliseconds}ms)");
             }
+            GrayjayServer server = null;
+            DotCefWindow ? window = null;
+            var modifierToken = Guid.NewGuid().ToString();
+            if(isHeadless || isServer)
+            {
+                if (disableSecurity)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("You disabled security (using --ignore-security, this may expose your Grayjay instance to remote invocation");
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Headless and Server mode have temporarily been disabled due to security reasons");
+                    Console.WriteLine("If you would like to ignore this warning, you can choose to start Grayjay with the --ignore-security parameter");
+                    Console.ResetColor();
+                    Console.ReadLine();
+                    return;
+                }
+            }
 
-            DotCefWindow? window = null;
             if (cef != null && !isHeadless && !isServer)
             {
                 Stopwatch startWindowWatch = Stopwatch.StartNew();
@@ -396,6 +417,7 @@ namespace Grayjay.Desktop
                     appId: "com.futo.grayjay.desktop",
                     fullscreen: isFullscreen
                 );
+                await window.SetModifyRequestsAsync(true, false);
                 if (scaleFactor != null && scaleFactor != 1.0)
                 {
                     window.OnLoadEnd += async (url) =>
@@ -444,10 +466,16 @@ namespace Grayjay.Desktop
             //StatePlatform.EnableClient(youtube.Config.ID).Wait();
             //Logger.i(nameof(Program), $"Main: EnableClient finished ({watch.ElapsedMilliseconds}ms)");
 
+            var windowWrapped = new CEFWindowProvider.Window(window);
+
             CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            GrayjayServer server = new GrayjayServer((!isServer && cef != null ? new CEFWindowProvider(cef) : null), 
+            server = new GrayjayServer((!isServer && cef != null ? new CEFWindowProvider(cef) : null), 
                 isHeadless, 
-                isServer);
+                isServer,
+                disableSecurity && (isHeadless || isServer));
+            if(window != null)
+                await server.RegisterTokenWindow(windowWrapped);
+
             _ = Task.Run(async () =>
             {
                 try
@@ -464,6 +492,7 @@ namespace Grayjay.Desktop
                     cancellationTokenSource.Cancel();
                 }
             });
+            server.RegisterToken(modifierToken);
 
             watch.Restart();
 
