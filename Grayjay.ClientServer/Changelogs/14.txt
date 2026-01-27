@@ -1,4 +1,8 @@
+Features
+ - Security system to limit communication with backend to Grayjay UI windows
+
 Improvements:
+ - Various sanitization of input to improve security
  - Allow casting of HLS + subtitle
  - Added support for pasting video URL into search bar to open video
  - Improved controller support
