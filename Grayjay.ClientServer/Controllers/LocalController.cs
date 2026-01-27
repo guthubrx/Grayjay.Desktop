@@ -1,4 +1,5 @@
-﻿using Grayjay.Desktop.POC;
+﻿using Grayjay.ClientServer.States;
+using Grayjay.Desktop.POC;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using System;
@@ -17,6 +18,9 @@ namespace Grayjay.ClientServer.Controllers
         [HttpGet]
         public IActionResult Open(string uri)
         {
+            if (!uri.StartsWith("https://"))
+                throw new BadHttpRequestException($"Only allow opening https, can't open {uri}");
+
             if (string.IsNullOrEmpty(uri))
                 throw new BadHttpRequestException("Missing uri");
 

@@ -40,7 +40,6 @@ interface PlaylistDetailViewProps {
   onShuffleAll: (videoState?: VideoState) => void;
   onDragEnd: () => void;
   onRemove: (video: IPlatformVideo) => void;
-  onDownload: (video: IPlatformVideo) => void;
   onPlay: (video: IPlatformVideo, videoState?: VideoState) => void;
   onAddToQueue: (video: IPlatformVideo) => void;
   refetch?: () => void;
@@ -73,7 +72,7 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
         new MenuItemButton("Add to playlist", iconAddToPlaylist, undefined, async () => {
           await UIOverlay.overlayAddToPlaylist(content, () => props.refetch?.());
         }),
-        new MenuItemButton("Download", iconDownload, undefined, () => props.onDownload(content)),
+        new MenuItemButton("Download", iconDownload, undefined, () => UIOverlay.overlayDownload(content.url)),
         ... (isEditable$() ? [ 
           new MenuSeperator(),
           new MenuItemButton("Remove", iconTrash, undefined, () => props.onRemove(content)) 

@@ -93,7 +93,8 @@ const OverlaySubscriptionGroupEditDialog: Component<OverlaySubscriptionGroupEdit
             title='Subscription Group Subscriptions' 
             description='Select the subscriptions to add to your subscription groups'
             ignore={props.subscriptionGroup.urls ?? []}
-            onResult={(selected) => addSubscriptions(selected)} />
+            onResult={(selected) => addSubscriptions(selected)}
+            preventDismiss={true} />
         </Show>
         <Show when={stateView$() == 3}>
           <div class={styles.container} use:focusScope={{

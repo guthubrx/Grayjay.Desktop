@@ -152,13 +152,13 @@ export interface SettingsMenuProps {
   anchor?: Anchor,
   show: boolean,
   style?: JSX.CSSProperties,
+  menuStyle?: JSX.CSSProperties,
   onHide?: () => void,
   ignoreGlobal?: (HTMLElement | undefined)[],
   inputSource?: InputSource
 };
 const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) => {
     let containerRef: HTMLDivElement | undefined;
-
 
     const isMenuFullyInView = (el: HTMLElement): boolean => {
       if (typeof window === "undefined") return true;
@@ -443,12 +443,14 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
     };
 
     const groupId = uuidv4();
+
+    console.info("menu style", props.menuStyle);
   
     return (
       <Show when={props.show}>
       <div 
-        class={styles.menu} 
-        ref={containerRef} 
+        class={styles.menu}
+        ref={containerRef}
         style={{ ...(anchorStyle$() ?? {}), ...props.style }}
         use:focusScope={{
           initialMode: 'trap'
@@ -459,7 +461,8 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
           "flex-direction": "row",
           "width": "100%",
           "align-items": "center",
-          "cursor": (menuStack$().length > 1 ? "pointer" : undefined)
+          "cursor": (menuStack$().length > 1 ? "pointer" : undefined),
+          ...props.menuStyle
         }} onClick={menuStack$().length > 1 ? settingsMenuBack : undefined}>
           <Show when={menuStack$().length > 1}>
             <img src={chevron_back} style="width: 16px; height: 16px; flex-shrink: 0" />

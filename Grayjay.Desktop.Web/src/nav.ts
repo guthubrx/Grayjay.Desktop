@@ -20,6 +20,7 @@ export interface FocusableOptions {
     groupEscapeDirs?: Direction[];
     groupSpatialFlow?: "horizontal" | "vertical";
     groupEscapeTo?: Partial<Record<Direction, string[]>>;
+    groupExitDirs?: Direction[];
     groupRememberLast?: boolean;
     autoPressOnFocus?: boolean;
     navAnchor?: NavAnchor;
