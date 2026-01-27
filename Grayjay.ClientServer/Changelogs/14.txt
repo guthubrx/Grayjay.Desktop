@@ -1,3 +1,6 @@
+NOTE: Headless/Server modes have been disabled by default for now.
+It is not recommended, as it does allow for external invocation of Grayjay endpoints, but you can bypass it by using --ignore-security
+
 Features
  - Security system to limit communication with backend to Grayjay UI windows
 
