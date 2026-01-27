@@ -22,7 +22,7 @@ namespace Grayjay.ClientServer
 
         public async Task InvokeAsync(HttpContext context)
         {
-            if (_server.UseTokenSecurity && !_excluded.Contains(context.Request.Path))
+            if (_server.UseTokenSecurity && !_excluded.Contains(context.Request.Path) && !context.Request.Path.ToString().ToLower().StartsWith("/developer/"))
             {
                 string token = context.Request.Headers["_token"];
                 if(token == null || !_server.HasToken(token))

@@ -401,6 +401,8 @@ namespace Grayjay.ClientServer.Controllers
 
             var isLoggedIn = _testPluginAuth.Item2 != null && _testPluginAuth.Item1 == _testPlugin?.ID;
 
+            if (_testPlugin == null)
+                return BadRequest();
             return Ok(new
             {
                 IsLoggedIn = isLoggedIn,
