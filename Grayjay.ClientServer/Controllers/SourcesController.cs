@@ -411,21 +411,6 @@ namespace Grayjay.ClientServer.Controllers
         }
 
 
-        //TODO: Remove before deploy
-        [HttpGet]
-        public IActionResult InstallTemp(string url)
-        {
-            try
-            {
-                return Ok(StatePlugins.InstallPlugin(url));
-            }
-            catch(Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
-        }
-
-
         [HttpGet]
         public PluginConfig[] OfficialPlugins()
         {

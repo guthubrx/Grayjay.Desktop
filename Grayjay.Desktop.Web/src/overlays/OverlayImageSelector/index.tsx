@@ -98,18 +98,20 @@ const OverlayImageSelector: Component<OverlayImageSelectorDialogProps> = (props:
         </div>
         <div style="margin-left: 15px;">
           <div class={styles.sectionTitle}>Custom Image</div>
-          <div class={styles.sectionDescription}>Select a new or previously used custom image</div>
+          <div class={styles.sectionDescription}>Select custom image from the /custom_images/ directory</div>
           <div class={styles.horizontalList}>
+              <Show when={false}>
             <div classList={{[styles.image]: true, [styles.addImage]: true}} use:focusable={{
               onActionLabel: 'Finish',
               onAction: () => submit(),
               onPress: uploadImage,
               onBack: globalBack
             }}>
-              <div onClick={()=>uploadImage()} style="width: 100%; height: 100%; display: grid; align-items: center; justify-items: center; cursor: pointer">
-                Add Image
-              </div>
+                <div onClick={()=>uploadImage()} style="width: 100%; height: 100%; display: grid; align-items: center; justify-items: center; cursor: pointer">
+                  Add Image
+                </div>
             </div>
+            </Show>
             <div class={styles.image}
                 onClick={()=>selectUrl(imageUrl$())}
                 style={{"background-image": "url(" + imageUrl$() + ")"}}

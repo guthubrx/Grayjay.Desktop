@@ -8,6 +8,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -27,7 +28,7 @@ namespace Grayjay.Desktop.CEF
             _cef = process;
         }
 
-        public async Task<IWindow> CreateWindowAsync(string url, string title, int preferredWidth, int preferredHeight, int minimumWidth, int minimumHeight)
+        public async Task<IWindow> CreateWindowAsync(string url, string title, int preferredWidth, int preferredHeight, int minimumWidth, int minimumHeight, Func<IWindow, Task> beforeLoad = null)
         {
             var window = await _cef.CreateWindowAsync(
                 url: "about:blank",
@@ -39,11 +40,12 @@ namespace Grayjay.Desktop.CEF
                 iconPath: Utilities.FindFile("grayjay.png")
             );
 
+            var windowResult = new Window(window);
+            if(beforeLoad != null)
+                await beforeLoad(windowResult);
             await window.SetDevelopmentToolsEnabledAsync(true);
-            await window.LoadUrlAsync($"{GrayjayServer.Instance.BaseUrl}/web/index.html");
-            await window.WaitForExitAsync(CancellationToken.None);
-
-            return new Window(window);
+            await window.LoadUrlAsync($"{GrayjayServer.Instance.BaseUrl}{GrayjayServer.Instance.GetIndexUrl()}");
+            return windowResult;
         }
 
 
@@ -474,6 +476,24 @@ namespace Grayjay.Desktop.CEF
                 };
                 _proxyHandlers.AddOrUpdate(url, ipcHandle, (x,v) => { return ipcHandle; });
                 await _window.AddUrlToProxyAsync(url, cancellationToken);
+            }
+
+            public async Task SetRequestModifier(Func<WindowRequest, WindowRequest> handler)
+            {
+                await _window.SetModifyRequestsAsync(true, false, CancellationToken.None);
+                _window.SetRequestModifier((window, req) =>
+                {
+                    var result = handler(new WindowRequest()
+                    {
+                        Url = req.Url,
+                        Headers = req.Headers,
+                        Method = req.Method
+                    });
+                    req.Url = result.Url;
+                    req.Headers = result.Headers;
+                    req.Method = result.Method;
+                    return req;
+                });
             }
         }
     }

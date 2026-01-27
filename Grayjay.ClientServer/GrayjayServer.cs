@@ -10,6 +10,7 @@ using Grayjay.ClientServer.Settings;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Grayjay.Engine.Packages;
+using System.Collections.Concurrent;
 
 namespace Grayjay.ClientServer
 {
@@ -31,12 +32,16 @@ namespace Grayjay.ClientServer
         public Uri? BaseUri { get; private set; } = null;
         public string? BaseUrl { get; private set; } = null;
 
-        public GrayjayServer(IWindowProvider windowProvider = null, bool isHeadlessMode = false, bool isServerMode = false)
+        public bool UseTokenSecurity { get; private set; } = true;
+        private ConcurrentDictionary<string, string> _tokens = new ConcurrentDictionary<string, string>();
+
+        public GrayjayServer(IWindowProvider windowProvider = null, bool isHeadlessMode = false, bool isServerMode = false, bool tokenSecurity = true)
         {
             WindowProvider = windowProvider;
             HeadlessMode = isHeadlessMode;
             ServerMode = isServerMode;
             Instance = this;
+            UseTokenSecurity = tokenSecurity;
         }
 
         public async Task RunServerAsync(string proxyUrl = null, CancellationToken cancellationToken = default)
@@ -95,7 +100,11 @@ namespace Grayjay.ClientServer
                 StartedResetEvent.Set();
             });
 
-            _app.MapGet("/", () => Results.Redirect("/web/index.html"));
+            _app.MapGet("/", () =>
+            {
+                Results.Redirect(GetIndexUrl());
+
+            });
             _app.MapGet("/dev", () => Results.Redirect("/Developer/Index"));
             _app.MapGet("/Developer/source.js", () => Results.Redirect("/Developer/Source"));
             _app.MapGet("/Developer/dev_bridge.js", () => Results.Redirect("/Developer/DevBridge"));
@@ -175,6 +184,7 @@ namespace Grayjay.ClientServer
             if (GrayjaySettings.Instance.Synchronization.Enabled)
                 await StateSync.Instance.StartAsync();
 
+            _app.UseMiddleware<TokenMiddleware>(this);
             _app.UseMiddleware<RequestLoggingMiddleware>();
             Logger.i(nameof(GrayjayServer), $"RunServerAsync: _app.RunAsync(cancellationToken) starting...");
             _ = Task.Run(async () =>
@@ -201,6 +211,41 @@ namespace Grayjay.ClientServer
             await GrayjayCastingServer.StopAsync();
             await _app.StopAsync();
             HttpProxy.Stop();
+        }
+
+
+        public string GetFullIndexUrl()
+        {
+            return $"{GrayjayServer.Instance.BaseUrl}{GrayjayServer.Instance.GetIndexUrl()}";
+        }
+        public string GetIndexUrl()
+        {
+            return "/web/index.html";
+        }
+        public bool HasToken(string token)
+        {
+            return _tokens.ContainsKey(token);
+        }
+        public string GetToken(string id)
+        {
+            return _tokens.FirstOrDefault(x => x.Value == id).Key;
+        }
+        public void RegisterToken(string token)
+        {
+            _tokens.TryAdd(token, null);
+        }
+
+        public async Task RegisterTokenWindow(IWindow window)
+        {
+            var modifierToken = Guid.NewGuid().ToString();
+            RegisterToken(modifierToken);
+            await window.SetRequestModifier((req) =>
+            {
+                var uri = new Uri(req.Url);
+                if (uri.Authority == GrayjayServer.Instance.BaseUri?.Authority)
+                    req.Headers["_token"] = new List<string>() { modifierToken.ToString() };
+                return req;
+            });
         }
     }
 }

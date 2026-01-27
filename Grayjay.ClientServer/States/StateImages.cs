@@ -43,7 +43,7 @@ namespace Grayjay.ClientServer.States
             if (id == null)
                 return null;
             if(HasImage(id))
-                return "/Images/GetCachedImage?id=" + HttpUtility.UrlEncode(id);
+                return "/Images/GetCachedImage?id=" + HttpUtility.UrlEncode(id.SanitizeFileName());
             return null;
         }
 
@@ -56,9 +56,10 @@ namespace Grayjay.ClientServer.States
 
         public static async Task<string> StoreImageUrl(string url, string id = null)
         {
+            url.IsHttpUrlOrThrow();
             using (HttpClient client = new HttpClient())
             {
-                id = id ?? Guid.NewGuid().ToString();
+                id = id?.SanitizeFileName() ?? Guid.NewGuid().ToString();
                 string path = GetFilePath(id);
                 byte[] buffer = new byte[4096];
                 using (Stream str = await client.GetStreamAsync(url))
@@ -78,6 +79,7 @@ namespace Grayjay.ClientServer.States
         }
         public static async Task<string> StoreImageUrlOrKeep(string url, string imageId = null)
         {
+            url.IsHttpUrlOrThrow();
             if (IsImageUrl(url))
                 return url;
             var id = await StoreImageUrl(url, imageId);
@@ -89,6 +91,7 @@ namespace Grayjay.ClientServer.States
 
         public static async Task<string> StoreImageUrlOrKeepPassthrough(string url)
         {
+            url.IsHttpUrlOrThrow();
             string urlId = SimpleUrlHash(url.SanitizeFileName());
 
             string existingPath = GetImagePath(urlId);

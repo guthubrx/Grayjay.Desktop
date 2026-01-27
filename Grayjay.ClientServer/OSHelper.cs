@@ -41,6 +41,7 @@ namespace Grayjay.ClientServer
 
         public static void OpenUrl(string uri)
         {
+            uri.IsHttpUrlOrThrow();
 
             if (string.IsNullOrEmpty(uri))
                 throw new BadHttpRequestException("Missing uri");

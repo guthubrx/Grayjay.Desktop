@@ -113,6 +113,15 @@ namespace Grayjay.ClientServer
             }
         }
 
+        public static string IsHttpUrlOrThrow(this string url)
+        {
+            if (string.IsNullOrEmpty(url)) //Null/Empty check should be done by caller if relevant.
+                return url;
+            if (!url.StartsWith("http://") && !url.StartsWith("https://"))
+                throw new ArgumentException("Not an url [" + url + "]");
+            return url;
+        }
+
 
         private const long CountInGbit = 1_000_000_000;
         private const long CountInMbit = 1_000_000;

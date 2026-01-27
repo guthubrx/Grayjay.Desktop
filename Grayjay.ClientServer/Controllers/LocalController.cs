@@ -18,9 +18,7 @@ namespace Grayjay.ClientServer.Controllers
         [HttpGet]
         public IActionResult Open(string uri)
         {
-            if (!uri.StartsWith("https://"))
-                throw new BadHttpRequestException($"Only allow opening https, can't open {uri}");
-
+            uri.IsHttpUrlOrThrow();
             if (string.IsNullOrEmpty(uri))
                 throw new BadHttpRequestException("Missing uri");
 

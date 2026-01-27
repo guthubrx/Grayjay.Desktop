@@ -31,6 +31,7 @@ namespace Grayjay.ClientServer.Controllers
         {
             if (string.IsNullOrEmpty(url))
                 throw new BadHttpRequestException("Missing url");
+            url.IsHttpUrlOrThrow();
 
             using (HttpClient client = new HttpClient())
             {

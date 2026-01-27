@@ -45,37 +45,14 @@ namespace Grayjay.ClientServer.Controllers
             var sub = StateSubscriptions.GetSubscription(subUrl);
             if (sub == null)
                 return NotFound();
+            sub?.Channel?.Thumbnail?.IsHttpUrlOrThrow();
             return await CachePassthrough(sub.Channel.Thumbnail);
-        }
-
-
-        [HttpPost]
-        public async Task<IActionResult> ImageUpload()
-        {
-            if (Request.HasFormContentType)
-            {
-                var formData = await Request.ReadFormAsync();
-                if (!formData.Files.Any())
-                    return BadRequest();
-                var file = formData.Files[0];
-                string name = file.FileName.SanitizeFileName();
-                if (string.IsNullOrEmpty(name))
-                    name = Guid.NewGuid().ToString() + ".png";
-                using (FileStream str = new FileStream(Path.Combine(_imageDirectory.FullName, name), FileMode.Create, FileAccess.Write, FileShare.Delete))
-                {
-                    using (var formFileStream = file.OpenReadStream())
-                        formFileStream.CopyTo(str);
-                }
-                return Ok(JsonSerializer.Serialize(name));
-            }
-            else
-                return BadRequest();
         }
 
         [HttpGet]
         public IActionResult GetCachedImage(string id)
         {
-            var imagePath = StateImages.GetImagePath(id);
+            var imagePath = StateImages.GetImagePath(id.SanitizeFileName());
             if (imagePath != null)
                 return PhysicalFile(imagePath, "image/png");
             return null;
@@ -86,6 +63,7 @@ namespace Grayjay.ClientServer.Controllers
         {
             try
             {
+                url?.IsHttpUrlOrThrow();
                 string path = await StateImages.StoreImageUrlOrKeepPassthrough(url);
                 Logger.i(nameof(ImagesController), $"Loading image from cache for [{url}]");
                 return PhysicalFile(path, "image/png");
