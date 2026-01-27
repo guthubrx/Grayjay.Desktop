@@ -69,6 +69,7 @@ interface VideoProps {
 export type VideoPlayerViewHandle = {
     toggleMute: () => void;
     toggleFullscreen: () => void;
+    seek(time: Duration): Promise<void>;
 };
 
 const VideoPlayerView: Component<VideoProps> = (props) => {
@@ -1129,7 +1130,8 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
 
         props.onReady?.({
             toggleFullscreen: toggleFullscreen,
-            toggleMute: toggleVolume
+            toggleMute: toggleVolume,
+            seek
         });
     });
 

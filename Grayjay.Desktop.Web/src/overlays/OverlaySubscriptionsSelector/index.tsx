@@ -38,6 +38,19 @@ const OverlaySubscriptionsSelector: Component<OverlaySubscsriptionsSelectorDialo
       setSelected([...selected]);
     }
 
+    const [query$, setQuery] = createSignal('');
+    const filteredSubscriptions$ = createMemo(() => {
+      const subs = subscriptions$() ?? [];
+      const q = query$().trim().toLowerCase();
+      if (!q) return subs;
+
+      return subs.filter((sub) => {
+        const name = (sub.channel?.name ?? '').toLowerCase();
+        const url  = (sub.channel?.url ?? '').toLowerCase();
+        return name.includes(q) || url.includes(q);
+      });
+    });
+
     function submit(){
       if(!props.preventDismiss)
         UIOverlay.dismiss();
@@ -84,15 +97,16 @@ const OverlaySubscriptionsSelector: Component<OverlaySubscsriptionsSelectorDialo
         <div>
           <div style="margin-top: 30px;">
             <InputText 
-              placeholder='Search for videos or creators'
+              placeholder='Search for creators'
               style={{"margin": "10px"}} 
               focusable={true}
-              onBack={dialogBack} 
+              onBack={dialogBack}
+              onTextChanged={(v) => setQuery(v)}
             />
           </div>
           <ScrollContainer wrapperStyle={{"max-height": "400px"}}>
             <div class={styles.subscriptionsContainer}>
-              <For each={subscriptions$()}>{ (sub, i) =>
+              <For each={filteredSubscriptions$()}>{ (sub, i) =>
                 <div 
                   class={styles.subscription} 
                   classList={{[styles.enabled]: selected$().indexOf(sub.channel.url) >= 0}} 

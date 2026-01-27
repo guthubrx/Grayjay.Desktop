@@ -306,6 +306,7 @@ const SubscriptionsPage: Component = () => {
                   classList={{[styles.active]: selectedCreators$().indexOf(sub.channel.url) >= 0}} 
                   use:focusable={{
                     groupEscapeTo: {
+                      left: ['sidebar'],
                       down: ['subgroups', 'filters']
                     },
                     groupId: 'creators',
@@ -342,6 +343,7 @@ const SubscriptionsPage: Component = () => {
                     onClick={() => newSubscriptionGroup()} focusableOpts={{ 
                       onPress: () => newSubscriptionGroup(),
                       groupEscapeTo: {
+                        left: ['sidebar'],
                         down: ['filters'],
                         up: ['creators']
                       },
@@ -353,6 +355,7 @@ const SubscriptionsPage: Component = () => {
                     onClick={() => dismissSubscriptionGroups()} focusableOpts={{ 
                       onPress: () => dismissSubscriptionGroups(),
                       groupEscapeTo: {
+                        left: ['sidebar'],
                         down: ['filters'],
                         up: ['creators']
                       },
@@ -372,6 +375,7 @@ const SubscriptionsPage: Component = () => {
                     onClick={() => (subGroup.id === selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id)}
                     use:focusable={{
                       groupEscapeTo: {
+                        left: ['sidebar'],
                         down: ['filters'],
                         up: ['creators']
                       },
@@ -401,6 +405,7 @@ const SubscriptionsPage: Component = () => {
                   onClick={() => newSubscriptionGroup()}
                   use:focusable={{ 
                     groupEscapeTo: {
+                      left: ['sidebar'],
                       down: ['filters'],
                       up: ['creators']
                     },
@@ -424,6 +429,7 @@ const SubscriptionsPage: Component = () => {
                     onClick={()=>toggleFilter(i())}
                     use:focusable={{
                       groupEscapeTo: {
+                        left: ['sidebar'],
                         up: ['subgroups', 'creators']
                       },
                       groupId: 'filters',

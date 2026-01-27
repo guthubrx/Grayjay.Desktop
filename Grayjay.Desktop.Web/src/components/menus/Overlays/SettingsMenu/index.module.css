@@ -56,7 +56,7 @@
 
 .menuItem {
     position: relative;
-    height: 20px;
+    height: 48px;
     padding-top: 10px;
     padding-bottom: 10px;
     padding-left: calc(15px + var(--menu-pad));

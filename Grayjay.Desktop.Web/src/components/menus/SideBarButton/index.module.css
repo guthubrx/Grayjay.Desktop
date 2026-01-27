@@ -37,6 +37,7 @@
 .sideBarButton .icon {
     height: 22px;
     width: 22px;
+    flex-shrink: 0;
     margin-left: 14px;
     margin-top: 4px;
     opacity: 0.8;

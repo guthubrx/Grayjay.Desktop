@@ -256,6 +256,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
     }
 
     function registerNode(el: HTMLElement, scopeId: string, opts: FocusableOptions) {
+        console.log("registerNode", el);
         const id = uid("node");
         const entry: NodeEntry = { id, el, scope: scopeId, opts: { priority: 0, ...opts } };
         index.nodes.set(id, entry);
@@ -284,6 +285,7 @@ export function FocusProvider(props: { children: JSX.Element }) {
     function unregisterNode(id: string) {
         const rec = index.nodes.get(id);
         if (!rec) return;
+        console.trace("unregisterNode", rec.el);
 
         index.nodeByEl.delete(rec.el);
         index.nodes.delete(id);
@@ -535,7 +537,6 @@ export function FocusProvider(props: { children: JSX.Element }) {
         return firstInGroup(candidate.scope, toGroup, candidate.el) ?? candidate;
     }
 
-
     function spatialNext(from: HTMLElement, dir: Direction, scopeId: string, fromNode?: NodeEntry, groupOnly = false): NodeEntry | undefined {
         const baseAll = candidatesInScope(scopeId)
             .filter(n => n.el !== from)
@@ -548,22 +549,21 @@ export function FocusProvider(props: { children: JSX.Element }) {
         const targets = groupEscapeTargets(fromNode, dir);
 
         const fromRect = from.getBoundingClientRect();
-
-        const FRONT_EPS = 4;
-        function inFrontOfDirection(r: DOMRect, dir: Direction) {
-            switch (dir) {
-                case "left": return r.right <= fromRect.left + FRONT_EPS;
-                case "right": return r.left >= fromRect.right - FRONT_EPS;
-                case "up": return r.bottom <= fromRect.top + FRONT_EPS;
-                case "down": return r.top >= fromRect.bottom - FRONT_EPS;
-                default: return true;
-            }
-        }
-
         const anchor = (fromNode?.opts as any)?.navAnchor;
         const a0 = navAnchorPoint(fromRect, dir, anchor);
         const cx0 = a0.x;
         const cy0 = a0.y;
+
+        const FRONT_EPS = 4;
+        function inFrontOfDirection(r: DOMRect, dir: Direction) {
+            switch (dir) {
+                case "left": return r.right <= cx0 + FRONT_EPS;
+                case "right": return r.left >= cx0 - FRONT_EPS;
+                case "up": return r.bottom <= cy0 + FRONT_EPS;
+                case "down": return r.top >= cy0 - FRONT_EPS;
+                default: return true;
+            }
+        }
 
         const navContainer = nearestScrollContainer(from);
         const navContRect = containerViewportRect(navContainer);
@@ -600,19 +600,24 @@ export function FocusProvider(props: { children: JSX.Element }) {
                 : intervalOverlap(r.top, r.bottom, navContRect.top, navContRect.bottom) >= COLUMN_OVERLAP_PX;
         };
 
-        const BEAM_MIN = 44;
-        const BEAM_PAD = 12;
-        const BEAM_SCALE = 1.0;
+const BEAM_MIN = 44;
+const BEAM_PAD = 12;
+const BEAM_SCALE = 1.0;
 
-        const beam = isVertical
-            ? {
-                left: cx0 - Math.max(BEAM_MIN / 2, fromRect.width * BEAM_SCALE / 2) - BEAM_PAD,
-                right: cx0 + Math.max(BEAM_MIN / 2, fromRect.width * BEAM_SCALE / 2) + BEAM_PAD,
-            }
-            : {
-                top: cy0 - Math.max(BEAM_MIN / 2, fromRect.height * BEAM_SCALE / 2) - BEAM_PAD,
-                bottom: cy0 + Math.max(BEAM_MIN / 2, fromRect.height * BEAM_SCALE / 2) + BEAM_PAD,
-            };
+const spanLeft = cx0 - fromRect.left;
+const spanRight = fromRect.right - cx0;
+const spanUp = cy0 - fromRect.top;
+const spanDown = fromRect.bottom - cy0;
+
+const leftExtent  = Math.max(BEAM_MIN / 2, spanLeft  * BEAM_SCALE) + BEAM_PAD;
+const rightExtent = Math.max(BEAM_MIN / 2, spanRight * BEAM_SCALE) + BEAM_PAD;
+const upExtent    = Math.max(BEAM_MIN / 2, spanUp    * BEAM_SCALE) + BEAM_PAD;
+const downExtent  = Math.max(BEAM_MIN / 2, spanDown  * BEAM_SCALE) + BEAM_PAD;
+
+const beam = isVertical
+  ? { left: cx0 - leftExtent, right: cx0 + rightExtent }
+  : { top: cy0 - upExtent, bottom: cy0 + downExtent };
+
 
         const hitsBeam = (r: DOMRect) => {
             return isVertical
@@ -621,11 +626,12 @@ export function FocusProvider(props: { children: JSX.Element }) {
         };
 
         const primaryGap = (r: DOMRect): number => {
-            if (dir === "down") return Math.max(0, r.top - fromRect.bottom);
-            if (dir === "up") return Math.max(0, fromRect.top - r.bottom);
-            if (dir === "right") return Math.max(0, r.left - fromRect.right);
-            return Math.max(0, fromRect.left - r.right);
+            if (dir === "down") return Math.max(0, r.top - cy0);
+            if (dir === "up") return Math.max(0, cy0 - r.bottom);
+            if (dir === "right") return Math.max(0, r.left - cx0);
+            /* left */ return Math.max(0, cx0 - r.right);
         };
+
 
         const pickFrom = (pool: NodeEntry[], force = false): NodeEntry | undefined => {
             if (!pool.length) return;
@@ -730,25 +736,50 @@ export function FocusProvider(props: { children: JSX.Element }) {
             const RELAX_OVERLAP = 0.20;
             const MAX_ANGLE_TAN = Math.tan(65 * Math.PI / 180);
 
-            function verticalPool(cands: Cand[]) {
-                const strict = cands.filter(c => (intervalOverlap(fromRect.left, fromRect.right, c.r.left, c.r.right) / Math.min(fromRect.width, c.r.width || 1)) >= STRICT_OVERLAP);
-                if (strict.length) return strict;
-                const relaxed = cands.filter(c => (intervalOverlap(fromRect.left, fromRect.right, c.r.left, c.r.right) / Math.min(fromRect.width, c.r.width || 1)) >= RELAX_OVERLAP);
-                if (relaxed.length) return relaxed;
-                const beamHits = cands.filter(c => hitsBeam(c.r));
-                if (beamHits.length) return beamHits;
-                return cands.filter(c => Math.abs(c.cx) <= Math.abs(c.cy) * MAX_ANGLE_TAN);
-            }
+function verticalPool(cands: Cand[]) {
+  // Use beam window instead of fromRect left/right
+  const beamW = (beam as any).right - (beam as any).left;
 
-            function horizontalPool(cands: Cand[]) {
-                const strict = cands.filter(c => (intervalOverlap(fromRect.top, fromRect.bottom, c.r.top, c.r.bottom) / Math.min(fromRect.height, c.r.height || 1)) >= STRICT_OVERLAP);
-                if (strict.length) return strict;
-                const relaxed = cands.filter(c => (intervalOverlap(fromRect.top, fromRect.bottom, c.r.top, c.r.bottom) / Math.min(fromRect.height, c.r.height || 1)) >= RELAX_OVERLAP);
-                if (relaxed.length) return relaxed;
-                const beamHits = cands.filter(c => hitsBeam(c.r));
-                if (beamHits.length) return beamHits;
-                return cands.filter(c => Math.abs(c.cy) <= Math.abs(c.cx) * MAX_ANGLE_TAN);
-            }
+  const strict = cands.filter(c =>
+    (intervalOverlap((beam as any).left, (beam as any).right, c.r.left, c.r.right) /
+      Math.min(beamW || 1, c.r.width || 1)) >= STRICT_OVERLAP
+  );
+  if (strict.length) return strict;
+
+  const relaxed = cands.filter(c =>
+    (intervalOverlap((beam as any).left, (beam as any).right, c.r.left, c.r.right) /
+      Math.min(beamW || 1, c.r.width || 1)) >= RELAX_OVERLAP
+  );
+  if (relaxed.length) return relaxed;
+
+  const beamHits = cands.filter(c => hitsBeam(c.r));
+  if (beamHits.length) return beamHits;
+
+  return cands.filter(c => Math.abs(c.cx) <= Math.abs(c.cy) * MAX_ANGLE_TAN);
+}
+
+function horizontalPool(cands: Cand[]) {
+  // Use beam window instead of fromRect top/bottom
+  const beamH = (beam as any).bottom - (beam as any).top;
+
+  const strict = cands.filter(c =>
+    (intervalOverlap((beam as any).top, (beam as any).bottom, c.r.top, c.r.bottom) /
+      Math.min(beamH || 1, c.r.height || 1)) >= STRICT_OVERLAP
+  );
+  if (strict.length) return strict;
+
+  const relaxed = cands.filter(c =>
+    (intervalOverlap((beam as any).top, (beam as any).bottom, c.r.top, c.r.bottom) /
+      Math.min(beamH || 1, c.r.height || 1)) >= RELAX_OVERLAP
+  );
+  if (relaxed.length) return relaxed;
+
+  const beamHits = cands.filter(c => hitsBeam(c.r));
+  if (beamHits.length) return beamHits;
+
+  return cands.filter(c => Math.abs(c.cy) <= Math.abs(c.cx) * MAX_ANGLE_TAN);
+}
+
 
             function chooseAxisPool(cands: Cand[]) {
                 return isVertical ? verticalPool(cands) : horizontalPool(cands);

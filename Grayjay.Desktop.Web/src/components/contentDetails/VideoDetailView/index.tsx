@@ -25,7 +25,7 @@ import PillButton from "../../buttons/PillButton";
 import IconButton from "../../buttons/IconButton";
 import CustomButton from "../../buttons/CustomButton";
 import CommentView from "../../CommentView";
-import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, sanitzeHtml, toHumanNowDiffString, toHumanNowDiffStringMinDay, toHumanNumber, formatAudioSourceName, getDefaultPlaybackSpeed } from "../../../utility";
+import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, sanitzeHtml, toHumanNowDiffString, toHumanNowDiffStringMinDay, toHumanNumber, formatAudioSourceName, getDefaultPlaybackSpeed, formatDuration } from "../../../utility";
 import { DetailsBackend } from "../../../backend/DetailsBackend";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
@@ -81,6 +81,7 @@ import { useFocus } from "../../../FocusProvider";
 import ControllerOverlay from "../../ControllerOverlay";
 import { useCasting } from "../../../contexts/Casting";
 import { SearchBackend } from "../../../backend/SearchBackend";
+import history from '../../../assets/icons/icon_nav_history.svg';
 
 const SCOPE_ID = "video-detail-view";
 
@@ -818,6 +819,12 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         ic_cast,
                         undefined,
                         () => openCasting()
+                    ) ] : [],
+                    ... focus.isControllerMode() && resumePosition$() && resumePosition$()!.as('milliseconds') > 0 ? [ new MenuItemButton(
+                        "Resume at " + formatDuration(resumePosition$()!),
+                        history,
+                        undefined,
+                        () => videoPlayerViewHandle$()?.seek(resumePosition$()!)
                     ) ] : []
                 ] : [],
                 /*

@@ -72,7 +72,22 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
     const base = collapsed();
     return !canToggleCollapse() && inputSource !== 'pointer' && hasSidebarFocus ? false : base;
   });
-  createEffect(() => console.info("sidebar collapse", { isCollapsed: isCollapsed(), sidebarFocused: sidebarFocused$(), collapsed: collapsed() }));
+  const inputSource = createMemo(() => focus?.lastInputSource?.() ?? 'pointer');
+  const autoExpanded = createMemo(() => {
+    return (!canToggleCollapse() && collapsed() && inputSource() !== 'pointer' && sidebarFocused$());
+  });
+  const isLayoutCollapsed = createMemo(() => collapsed());
+  const isVisualCollapsed = createMemo(() => collapsed() && !autoExpanded());
+
+  createEffect(() =>
+    console.info("sidebar collapse", {
+      layoutCollapsed: isLayoutCollapsed(),
+      visualCollapsed: isVisualCollapsed(),
+      autoExpanded: autoExpanded(),
+      sidebarFocused: sidebarFocused$(),
+      collapsed: collapsed(),
+    })
+  );
 
   const [expand$, setExpand] = createSignal(true);
   const [expandType$, setExpandType] = createSignal("subs");
@@ -114,7 +129,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   const maximizeVideoBtn: ButtonItem = { icon: iconFitScreen, name: 'Expand Video', action: () => video?.actions.setState(VideoState.Maximized), getSelected: createMemo(() => false) };
   const delayBtn: ButtonItem = { icon: iconPlus, name: 'Delay', action: () => { WindowBackend.echo('test'); WindowBackend.delay(10000); }, getSelected: createMemo(() => false) };
   const developerBtn: ButtonItem = { icon: iconLink, name: 'Developer', path: '/Developer/Index', getSelected: createMemo(() => location.pathname === '/Developer/Index'), onRightClick: () => LocalBackend.open(`http://${window.location.host}/Developer/Index`) };
-
+  
   const topButtons$ = createMemo(() => {
     let list: ButtonItem[] = [homeBtn, subscriptionsBtn, creatorsBtn, playlistsBtn];
   
@@ -255,215 +270,229 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   };
 
   return (
-    <div class={styles.sidebar} style={props.style} classList={{ [styles.collapsed]: isCollapsed(), ... props.classList }}>
-      <div class={styles.buttonList}>
-        <Show when={canToggleCollapse()}>
-          <div class={styles.containerCollapse}>
-            <img
-              src={isCollapsed() ? ic_sidebarOpen : ic_sidebarClose}
-              class={styles.collapse}
-              alt=""
-              role="button"
-              use:focusable={{ 
-                groupId: 'sidebar',
-                groupIndices: [0],
-                groupType: 'vertical',
-                groupEscapeDirs: ['right'],
-                groupEscapeTo: { right: ['sources'] },
-                groupRememberLast: true,
-                onPress: handleCollapse,
-              }}
-              onClick={handleCollapse}
-            />
-          </div>
-        </Show>
-        <div class={styles.grayjay} oncontextmenu={()=>setDevClicked(devClicked$() + 1)}>
-          <img src={grayjay} />
-          <Show when={!isCollapsed()}>
-            <div style="font-size: 20px; top: 2px; left: 60px; position: absolute;">
-            Grayjay
-            </div>
-          </Show>
-          <Show when={!isCollapsed()}>
-            <div style="font-size: 12px; top: 25px; left: 60px; position: absolute;">
-              Alpha
-            </div>
-          </Show>
-          <Show when={isCollapsed()}>
-            <div style="font-size: 12px; top: 45px; left: 0px; position: absolute; width: 50px; text-align: center;">
-              Alpha
-            </div>
-          </Show>
-        </div>
-        <For each={topButtons$().slice(0, visibleTopButtonCount$())}>
-          {(btn, i) => {
-            const press = () => btn.action ? btn.action() : navigateTo(btn.path!, options);
-            return (
-              <SideBarButton
-                collapsed={isCollapsed()}
-                icon={btn.icon}
-                name={btn.name}
-                selected={btn.getSelected()}
-                onClick={press}
-                onRightClick={btn.onRightClick}
-                focusableOpts={{
+    <div
+      class={styles.sidebar}
+      style={props.style}
+      classList={{
+        [styles.collapsed]: isLayoutCollapsed(),
+        [styles.autoExpanded]: autoExpanded(),
+        ...props.classList,
+      }}
+    >
+      <div class={styles.content}>
+        <div class={styles.buttonList}>
+          <Show when={canToggleCollapse()}>
+            <div class={styles.containerCollapse}>
+              <img
+                src={isCollapsed() ? ic_sidebarOpen : ic_sidebarClose}
+                class={styles.collapse}
+                alt=""
+                role="button"
+                use:focusable={{ 
+                  navAnchor: { x: 'left', y: 'center' },
                   groupId: 'sidebar',
-                  groupType: 'vertical',
-                  groupIndices: [i() + 1],
-                  groupEscapeDirs: ['right'],
-                  groupRememberLast: true,
-                  onPress: () => press(),
-                  autoPressOnFocus: btn.autoPressOnFocus,
-                  groupEscapeTo: { right: ['sources'] }
-                }}
-                onFocus={globalFocus}
-                onBlur={globalBlur}
-                style={btn.style}
-                styleText={btn.styleText}
-              />
-            );
-          }}
-        </For>
-        <Show when={moreTopButtonCount$() > 0}>
-          <SideBarButton
-            collapsed={isCollapsed()}
-            icon={ic_more}
-            name={"More"}
-            selected={false}
-            onClick={() => { props?.onMoreOpened?.(); setMoreOverlayVisible(true); }}
-            focusableOpts={{
-              groupId: 'sidebar',
-              groupType: 'vertical',
-              groupIndices: [visibleTopButtonCount$() + 1],
-              groupEscapeDirs: ['right'],
-              groupRememberLast: true,
-              groupEscapeTo: { right: ['sources'] },
-              onPress: () => {
-                props?.onMoreOpened?.(); 
-                setMoreOverlayVisible(true);
-              }
-            }}
-            onFocus={globalFocus}
-            onBlur={globalBlur}
-          />
-        </Show>
-      </div>
-      <Show when={!isCollapsed() && subscriptions$()?.length && remainingSpace$() > 200 && focus?.isControllerMode() !== true} fallback={<div style="flex-grow:1"></div>}>
-        <div class={styles.buttonListFill}>
-          <div classList={{[styles.expandHeader]: true, [styles.expanded]: expand$()}} onClick={()=>setExpand(!expand$())}>
-              Subscriptions
-              <div class={styles.toggle}>
-                  <img src={iconChevronDown} />
-              </div>
-          </div>
-          <Show when={expand$()}>
-            <div class={styles.expandItems}>
-              <Switch>
-                <Match when={expandType$() == "subs"}>
-                  <ScrollContainer ref={scrollContainerRef}>
-                    <FlexibleArrayList outerContainerRef={scrollContainerRef} 
-                      items={subscriptions$()}
-                      builder={(_, item$) => 
-                        <SideBarCreator onClick={() => {
-                          const author = item$()?.channel;
-                          if (!author) {
-                            return;
-                          }
-                          navigate("/web/channel?url=" + encodeURIComponent(author!.url), { state: { author } });
-                        }} icon={item$()?.channel?.thumbnail} name={item$()?.channel?.name} selected={false} />
-                      } />
-                  </ScrollContainer>
-                </Match>
-              </Switch>
-            </div>
-          </Show>
-        </div>
-      </Show>
-      <div class={styles.buttonListBottom}>
-        <For each={bottomButtons$()}>
-          {(btn, i) => {
-            const press = () => btn.action ? btn.action() : navigateTo(btn.path!, options);
-            return (
-              <SideBarButton
-                collapsed={isCollapsed()}
-                icon={btn.icon}
-                name={btn.name}
-                selected={btn.getSelected()}
-                onClick={press}
-                focusableOpts={{
-                  groupId: 'sidebar',
+                  groupIndices: [0],
                   groupType: 'vertical',
                   groupEscapeDirs: ['right'],
-                  groupIndices: [visibleTopButtonCount$() + 1 + (moreTopButtonCount$() > 0 ? 1 : 0) + i()],
-                  groupRememberLast: true,
                   groupEscapeTo: { right: ['sources'] },
-                  onPress: press
+                  groupRememberLast: true,
+                  onPress: handleCollapse,
                 }}
-                onFocus={globalFocus}
-                onBlur={globalBlur}
-                style={btn.style}
-                styleText={btn.styleText}
+                onClick={handleCollapse}
               />
-            );
-          }}
-        </For>
-      </div>
-      <Portal>
-        <Show when={moreTopButtonCount$() > 0 && moreOverlayVisible$()}>
-          <div style="height: 100%; width: 100%; position: absolute; top: 0px; left: 0px; background-color: #0000009e; z-index: 2" onClick={(ev) => {
-            props?.onMoreClosed?.();
-            setMoreOverlayVisible(false);
-            ev.preventDefault();
-            ev.stopPropagation();
-          }} onMouseMove={(ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          }} use:focusScope={{
-            initialMode: 'trap'
-          }}>
-            <div style="background-color: #141414; width: 200px; height: calc(100% - 20px); border-right: #2a2a2a 1px solid; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
-              <For each={topButtons$().slice(visibleTopButtonCount$(), visibleTopButtonCount$() + moreTopButtonCount$())}>
-                {(btn, i) => {
-                  const press = () => {
-                    props?.onMoreClosed?.();
-                    setMoreOverlayVisible(false);
-                    btn.action ? btn.action() : navigateTo(btn.path!, options);
-                  };
-                  return (
-                    <SideBarButton
-                      collapsed={false}
-                      icon={btn.icon}
-                      name={btn.name}
-                      selected={btn.getSelected()}
-                      onClick={press}
-                      onRightClick={btn.onRightClick}
-                      focusableOpts={{
-                        groupId: 'sidebar-overlay',
-                        groupType: 'vertical',
-                        groupIndices: [i()],                        
-                        onPress: press,
-                        onBack: () => {
-                          if (moreOverlayVisible$()) {
-                            props?.onMoreClosed?.(); 
-                            setMoreOverlayVisible(false); 
-                            return true;
-                          }
-                          return false;
-                        }
-                      }}
-                      data-more-first={i() === 0 ? "1" : undefined}
-                      onFocus={globalFocus}
-                      onBlur={globalBlur}
-                      style={btn.style}
-                      styleText={btn.styleText}
-                    />
-                  );
-                }}
-              </For>
             </div>
+          </Show>
+          <div class={styles.grayjay} oncontextmenu={()=>setDevClicked(devClicked$() + 1)}>
+            <img src={grayjay} />
+            <Show when={!isCollapsed()}>
+              <div style="font-size: 20px; top: 2px; left: 60px; position: absolute;">
+              Grayjay
+              </div>
+            </Show>
+            <Show when={!isCollapsed()}>
+              <div style="font-size: 12px; top: 25px; left: 60px; position: absolute;">
+                Alpha
+              </div>
+            </Show>
+            <Show when={isCollapsed()}>
+              <div style="font-size: 12px; top: 45px; left: 0px; position: absolute; width: 50px; text-align: center;">
+                Alpha
+              </div>
+            </Show>
+          </div>
+          <For each={topButtons$().slice(0, visibleTopButtonCount$())}>
+            {(btn, i) => {
+              const press = () => btn.action ? btn.action() : navigateTo(btn.path!, options);
+              return (
+                <SideBarButton
+                  collapsed={isCollapsed()}
+                  icon={btn.icon}
+                  name={btn.name}
+                  selected={btn.getSelected()}
+                  onClick={press}
+                  onRightClick={btn.onRightClick}
+                  focusableOpts={{
+                    navAnchor: { x: 'left', y: 'center' },
+                    groupId: 'sidebar',
+                    groupType: 'vertical',
+                    groupIndices: [i() + 1],
+                    groupEscapeDirs: ['right'],
+                    groupRememberLast: true,
+                    onPress: () => press(),
+                    autoPressOnFocus: btn.autoPressOnFocus,
+                    groupEscapeTo: { right: ['sources'] }
+                  }}
+                  onFocus={globalFocus}
+                  onBlur={globalBlur}
+                  style={btn.style}
+                  styleText={btn.styleText}
+                />
+              );
+            }}
+          </For>
+          <Show when={moreTopButtonCount$() > 0}>
+            <SideBarButton
+              collapsed={isCollapsed()}
+              icon={ic_more}
+              name={"More"}
+              selected={false}
+              onClick={() => { props?.onMoreOpened?.(); setMoreOverlayVisible(true); }}
+              focusableOpts={{
+                navAnchor: { x: 'left', y: 'center' },
+                groupId: 'sidebar',
+                groupType: 'vertical',
+                groupIndices: [visibleTopButtonCount$() + 1],
+                groupEscapeDirs: ['right'],
+                groupRememberLast: true,
+                groupEscapeTo: { right: ['sources'] },
+                onPress: () => {
+                  props?.onMoreOpened?.(); 
+                  setMoreOverlayVisible(true);
+                }
+              }}
+              onFocus={globalFocus}
+              onBlur={globalBlur}
+            />
+          </Show>
+        </div>
+        <Show when={!isCollapsed() && subscriptions$()?.length && remainingSpace$() > 200 && focus?.isControllerMode() !== true} fallback={<div style="flex-grow:1"></div>}>
+          <div class={styles.buttonListFill}>
+            <div classList={{[styles.expandHeader]: true, [styles.expanded]: expand$()}} onClick={()=>setExpand(!expand$())}>
+                Subscriptions
+                <div class={styles.toggle}>
+                    <img src={iconChevronDown} />
+                </div>
+            </div>
+            <Show when={expand$()}>
+              <div class={styles.expandItems}>
+                <Switch>
+                  <Match when={expandType$() == "subs"}>
+                    <ScrollContainer ref={scrollContainerRef}>
+                      <FlexibleArrayList outerContainerRef={scrollContainerRef} 
+                        items={subscriptions$()}
+                        builder={(_, item$) => 
+                          <SideBarCreator onClick={() => {
+                            const author = item$()?.channel;
+                            if (!author) {
+                              return;
+                            }
+                            navigate("/web/channel?url=" + encodeURIComponent(author!.url), { state: { author } });
+                          }} icon={item$()?.channel?.thumbnail} name={item$()?.channel?.name} selected={false} />
+                        } />
+                    </ScrollContainer>
+                  </Match>
+                </Switch>
+              </div>
+            </Show>
           </div>
         </Show>
-      </Portal>
+        <div class={styles.buttonListBottom}>
+          <For each={bottomButtons$()}>
+            {(btn, i) => {
+              const press = () => btn.action ? btn.action() : navigateTo(btn.path!, options);
+              return (
+                <SideBarButton
+                  collapsed={isCollapsed()}
+                  icon={btn.icon}
+                  name={btn.name}
+                  selected={btn.getSelected()}
+                  onClick={press}
+                  focusableOpts={{
+                    navAnchor: { x: 'left', y: 'center' },
+                    groupId: 'sidebar',
+                    groupType: 'vertical',
+                    groupEscapeDirs: ['right'],
+                    groupIndices: [visibleTopButtonCount$() + 1 + (moreTopButtonCount$() > 0 ? 1 : 0) + i()],
+                    groupRememberLast: true,
+                    groupEscapeTo: { right: ['sources'] },
+                    onPress: press
+                  }}
+                  onFocus={globalFocus}
+                  onBlur={globalBlur}
+                  style={btn.style}
+                  styleText={btn.styleText}
+                />
+              );
+            }}
+          </For>
+        </div>
+        <Portal>
+          <Show when={moreTopButtonCount$() > 0 && moreOverlayVisible$()}>
+            <div style="height: 100%; width: 100%; position: absolute; top: 0px; left: 0px; background-color: #0000009e; z-index: 2" onClick={(ev) => {
+              props?.onMoreClosed?.();
+              setMoreOverlayVisible(false);
+              ev.preventDefault();
+              ev.stopPropagation();
+            }} onMouseMove={(ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+            }} use:focusScope={{
+              initialMode: 'trap'
+            }}>
+              <div style="background-color: #141414; width: 200px; height: calc(100% - 20px); border-right: #2a2a2a 1px solid; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+                <For each={topButtons$().slice(visibleTopButtonCount$(), visibleTopButtonCount$() + moreTopButtonCount$())}>
+                  {(btn, i) => {
+                    const press = () => {
+                      props?.onMoreClosed?.();
+                      setMoreOverlayVisible(false);
+                      btn.action ? btn.action() : navigateTo(btn.path!, options);
+                    };
+                    return (
+                      <SideBarButton
+                        collapsed={false}
+                        icon={btn.icon}
+                        name={btn.name}
+                        selected={btn.getSelected()}
+                        onClick={press}
+                        onRightClick={btn.onRightClick}
+                        focusableOpts={{
+                          groupId: 'sidebar-overlay',
+                          groupType: 'vertical',
+                          groupIndices: [i()],                        
+                          onPress: press,
+                          onBack: () => {
+                            if (moreOverlayVisible$()) {
+                              props?.onMoreClosed?.(); 
+                              setMoreOverlayVisible(false); 
+                              return true;
+                            }
+                            return false;
+                          }
+                        }}
+                        data-more-first={i() === 0 ? "1" : undefined}
+                        onFocus={globalFocus}
+                        onBlur={globalBlur}
+                        style={btn.style}
+                        styleText={btn.styleText}
+                      />
+                    );
+                  }}
+                </For>
+              </div>
+            </div>
+          </Show>
+        </Portal>
+      </div>
     </div>
   );
 };

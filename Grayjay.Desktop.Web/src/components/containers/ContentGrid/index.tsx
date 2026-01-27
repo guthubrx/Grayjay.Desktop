@@ -217,6 +217,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                     groupId: groupId,
                     groupType: 'grid',
                     groupIndices: [row(), col()],
+                    groupEscapeTo: { left: ['sidebar'] },
                     onPress: () => navigate("/web/channel?url=" + encodeURIComponent(creator().url), { state: { author: creator() } }),
                     onBack: () => onBackContentGrid()
                 } as FocusableOptions : undefined} />
@@ -239,6 +240,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                     groupId: groupId,
                     groupType: 'grid',
                     groupIndices: [row(), col()],
+                    groupEscapeTo: { left: ['sidebar'] },
                     onPress: () => navigate("/web/remotePlaylist?url=" + encodeURIComponent(item().url)),
                     onOptions: (e, inputSource) => onSettingsClicked(e, item(), inputSource),
                     onBack: () => onBackContentGrid()
@@ -292,6 +294,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         groupId: groupId,
                                         groupType: 'grid',
                                         groupIndices: [row(), col()],
+                                        groupEscapeTo: { left: ['sidebar'] },
                                         onPress: () => {
                                             const url = item().backendUrl ?? item().url;
                                             if (url)
@@ -320,6 +323,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         groupId: groupId,
                                         groupType: 'grid',
                                         groupIndices: [row(), col()],
+                                        groupEscapeTo: { left: ['sidebar'] },
                                         onPress: () => {
                                             const url = item().backendUrl ?? item().url;
                                             if(url)
@@ -342,6 +346,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         groupId: groupId,
                                         groupType: 'grid',
                                         groupIndices: [row(), col()],
+                                        groupEscapeTo: { left: ['sidebar'] },
                                         onPress: () => {
                                             const url = item().backendUrl ?? item().contentUrl;
                                             if(url) {
@@ -365,6 +370,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         groupId: groupId,
                                         groupType: 'grid',
                                         groupIndices: [row(), col()],
+                                        groupEscapeTo: { left: ['sidebar'] },
                                         onPress: () => {
                                             const url = item().backendUrl ?? item().contentUrl;
                                             if(url) {
