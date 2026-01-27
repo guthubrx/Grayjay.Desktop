@@ -255,6 +255,27 @@ namespace Grayjay.Desktop
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 WindowsAPI.AllocConsole();
 #endif
+            if (isHeadless || isServer)
+            {
+                if (disableSecurity)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("You disabled security (using --ignore-security, this may expose your Grayjay instance to remote invocation");
+                    Debug.WriteLine("You disabled security (using --ignore-security, this may expose your Grayjay instance to remote invocation");
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Headless and Server mode have temporarily been disabled due to security reasons");
+                    Console.WriteLine("If you would like to ignore this warning, you can choose to start Grayjay with the --ignore-security parameter");
+                    Debug.WriteLine("Headless and Server mode have temporarily been disabled due to security reasons");
+                    Debug.WriteLine("If you would like to ignore this warning, you can choose to start Grayjay with the --ignore-security parameter");
+                    Console.ResetColor();
+                    Console.ReadLine();
+                    return;
+                }
+            }
 
             Console.SetOut(new SuppressingTextWriter(Console.Out));
             Console.SetError(new SuppressingTextWriter(Console.Error));
@@ -382,25 +403,6 @@ namespace Grayjay.Desktop
             }
             GrayjayServer server = null;
             DotCefWindow ? window = null;
-            var modifierToken = Guid.NewGuid().ToString();
-            if(isHeadless || isServer)
-            {
-                if (disableSecurity)
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("You disabled security (using --ignore-security, this may expose your Grayjay instance to remote invocation");
-                    Console.ResetColor();
-                }
-                else
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("Headless and Server mode have temporarily been disabled due to security reasons");
-                    Console.WriteLine("If you would like to ignore this warning, you can choose to start Grayjay with the --ignore-security parameter");
-                    Console.ResetColor();
-                    Console.ReadLine();
-                    return;
-                }
-            }
 
             if (cef != null && !isHeadless && !isServer)
             {
@@ -466,15 +468,17 @@ namespace Grayjay.Desktop
             //StatePlatform.EnableClient(youtube.Config.ID).Wait();
             //Logger.i(nameof(Program), $"Main: EnableClient finished ({watch.ElapsedMilliseconds}ms)");
 
-            var windowWrapped = new CEFWindowProvider.Window(window);
 
             CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
             server = new GrayjayServer((!isServer && cef != null ? new CEFWindowProvider(cef) : null), 
                 isHeadless, 
                 isServer,
                 disableSecurity && (isHeadless || isServer));
-            if(window != null)
+            if (window != null)
+            {
+                var windowWrapped = new CEFWindowProvider.Window(window);
                 await server.RegisterTokenWindow(windowWrapped);
+            }
 
             _ = Task.Run(async () =>
             {
@@ -492,7 +496,6 @@ namespace Grayjay.Desktop
                     cancellationTokenSource.Cancel();
                 }
             });
-            server.RegisterToken(modifierToken);
 
             watch.Restart();
 

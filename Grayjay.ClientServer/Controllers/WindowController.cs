@@ -28,9 +28,12 @@ namespace Grayjay.ClientServer.Controllers
                     minimumWidth: 900,
                     minimumHeight: 550,
                     preferredWidth: 1300,
-                    preferredHeight: 950
+                    preferredHeight: 950,
+                    beforeLoad: async (window) =>
+                    {
+                        await GrayjayServer.Instance.RegisterTokenWindow(window);
+                    }
                 );
-                await GrayjayServer.Instance.RegisterTokenWindow(window);
             }
             else if (!GrayjayServer.Instance.ServerMode)
                 OSHelper.OpenUrl($"{GrayjayServer.Instance.BaseUrl}{GrayjayServer.Instance.GetIndexUrl()}");

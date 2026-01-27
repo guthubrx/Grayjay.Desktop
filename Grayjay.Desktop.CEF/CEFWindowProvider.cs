@@ -28,7 +28,7 @@ namespace Grayjay.Desktop.CEF
             _cef = process;
         }
 
-        public async Task<IWindow> CreateWindowAsync(string url, string title, int preferredWidth, int preferredHeight, int minimumWidth, int minimumHeight)
+        public async Task<IWindow> CreateWindowAsync(string url, string title, int preferredWidth, int preferredHeight, int minimumWidth, int minimumHeight, Func<IWindow, Task> beforeLoad = null)
         {
             var window = await _cef.CreateWindowAsync(
                 url: "about:blank",
@@ -40,11 +40,12 @@ namespace Grayjay.Desktop.CEF
                 iconPath: Utilities.FindFile("grayjay.png")
             );
 
+            var windowResult = new Window(window);
+            if(beforeLoad != null)
+                await beforeLoad(windowResult);
             await window.SetDevelopmentToolsEnabledAsync(true);
             await window.LoadUrlAsync($"{GrayjayServer.Instance.BaseUrl}{GrayjayServer.Instance.GetIndexUrl()}");
-            await window.WaitForExitAsync(CancellationToken.None);
-
-            return new Window(window);
+            return windowResult;
         }
 
 
