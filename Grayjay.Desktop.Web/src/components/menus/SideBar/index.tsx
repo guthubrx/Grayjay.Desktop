@@ -453,7 +453,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
             }} use:focusScope={{
               initialMode: 'trap'
             }}>
-              <div style="background-color: #141414; width: 200px; height: calc(100% - 20px); border-right: #2a2a2a 1px solid; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+              <div style="background-color: #141414; width: 260px; height: calc(100% - 20px); border-right: #2a2a2a 1px solid; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
                 <For each={topButtons$().slice(visibleTopButtonCount$(), visibleTopButtonCount$() + moreTopButtonCount$())}>
                   {(btn, i) => {
                     const press = () => {
