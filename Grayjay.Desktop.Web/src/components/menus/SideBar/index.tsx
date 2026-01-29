@@ -66,18 +66,33 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
     setCollapsed(!collapsed());
   };
   const [sidebarFocused$, setSidebarFocused] = createSignal(false);
-  const isCollapsed = createMemo(() => {
-    const inputSource = focus?.lastInputSource?.() ?? 'pointer';
-    const hasSidebarFocus = sidebarFocused$();
-    const base = collapsed();
-    return !canToggleCollapse() && inputSource !== 'pointer' && hasSidebarFocus ? false : base;
-  });
+  const [suppressAutoExpand$, setSuppressAutoExpand] = createSignal(false);
   const inputSource = createMemo(() => focus?.lastInputSource?.() ?? 'pointer');
-  const autoExpanded = createMemo(() => {
-    return (!canToggleCollapse() && collapsed() && inputSource() !== 'pointer' && sidebarFocused$());
+  const canAutoExpand = createMemo(() => {
+    return (
+      !suppressAutoExpand$() &&
+      !canToggleCollapse() &&
+      collapsed() &&
+      inputSource() !== 'pointer' &&
+      sidebarFocused$()
+    );
   });
+
+  const isCollapsed = createMemo(() => {
+    const base = collapsed();
+    return canAutoExpand() ? false : base;
+  });
+
+  const autoExpanded = createMemo(() => canAutoExpand());
   const isLayoutCollapsed = createMemo(() => collapsed());
   const isVisualCollapsed = createMemo(() => collapsed() && !autoExpanded());
+
+  const handleBackToHideAutoExpand = () => {
+    setSuppressAutoExpand(true);
+    return true;
+  };
+
+  createEffect(on(() => location.pathname, () => setSuppressAutoExpand(false)));
 
   createEffect(() =>
     console.info("sidebar collapse", {
@@ -267,6 +282,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   const globalBlur = () => {
     console.info("sidebar globalBlur");
     setSidebarFocused(false);
+    setSuppressAutoExpand(false);
   };
 
   return (
@@ -298,8 +314,11 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                   groupRememberLast: true,
                   groupExitDirs: ["right"],
                   onPress: handleCollapse,
+                  onBack: handleBackToHideAutoExpand
                 }}
                 onClick={handleCollapse}
+                onFocus={globalFocus}
+                onBlur={globalBlur}
               />
             </div>
           </Show>
@@ -343,6 +362,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                     autoPressOnFocus: btn.autoPressOnFocus,
                     groupEscapeTo: { right: ['sources'] },
                     groupExitDirs: ["right"],
+                    onBack: handleBackToHideAutoExpand,
                   }}
                   onFocus={globalFocus}
                   onBlur={globalBlur}
@@ -371,7 +391,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                 onPress: () => {
                   props?.onMoreOpened?.(); 
                   setMoreOverlayVisible(true);
-                }
+                },
+                onBack: handleBackToHideAutoExpand
               }}
               onFocus={globalFocus}
               onBlur={globalBlur}
@@ -429,7 +450,8 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
                     groupRememberLast: true,
                     groupEscapeTo: { right: ['sources'] },
                     groupExitDirs: ["right"],
-                    onPress: press
+                    onPress: press,
+                    onBack: handleBackToHideAutoExpand
                   }}
                   onFocus={globalFocus}
                   onBlur={globalBlur}
