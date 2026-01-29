@@ -442,7 +442,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
         </div>
         <Portal>
           <Show when={moreTopButtonCount$() > 0 && moreOverlayVisible$()}>
-            <div style="height: 100%; width: 100%; position: absolute; top: 0px; left: 0px; background-color: #0000009e; z-index: 2" onClick={(ev) => {
+            <div style="height: 100%; width: 100%; position: absolute; top: 0px; left: 0px; background-color: #0000009e; z-index: 3" onClick={(ev) => {
               props?.onMoreClosed?.();
               setMoreOverlayVisible(false);
               ev.preventDefault();

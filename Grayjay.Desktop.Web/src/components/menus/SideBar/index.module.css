@@ -151,7 +151,7 @@
 
 .sidebar.autoExpanded {
   overflow: visible;
-  z-index: 10;
+  z-index: 2;
   background: transparent;
   border-right: transparent 1px solid;
 }
