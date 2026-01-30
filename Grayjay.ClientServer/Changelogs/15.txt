@@ -1,0 +1,2 @@
+Improvements:
+ - Various UI fixes for controller mode
