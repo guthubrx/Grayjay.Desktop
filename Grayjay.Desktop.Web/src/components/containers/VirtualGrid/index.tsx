@@ -50,7 +50,7 @@ const VirtualGrid: Component<VirtualGridProps> = (props) => {
         const overscan = props.overscan ?? 1;
         const boundingRect = props.outerContainerRef.getBoundingClientRect();
         const containerWidth = boundingRect.width - 40;
-        const itemsPerRow = Math.floor(containerWidth / props.itemWidth);
+        const itemsPerRow = Math.max(1, Math.floor(containerWidth / props.itemWidth));
         const itemWidth = props.autosizeWidth === true ? containerWidth / itemsPerRow : props.itemWidth;
         const itemHeight = props.calculateHeight ? props.calculateHeight(itemWidth) : props.itemHeight ?? itemWidth;
         const rowsInView = Math.ceil(boundingRect.height / itemHeight);
@@ -231,6 +231,11 @@ const VirtualGrid: Component<VirtualGridProps> = (props) => {
         calculateVisibleRange();
     });
 
+    const onScrollHandler = () => {
+        props.onScroll?.();
+        onUIEvent();
+    };
+
     onMount(() => {
         calculateVisibleRange();
         requestAnimationFrame(() => {
@@ -240,10 +245,7 @@ const VirtualGrid: Component<VirtualGridProps> = (props) => {
         //TODO debounce?
         resizeObserver.observe(props.outerContainerRef!);
         //window.addEventListener('resize', onUIEvent);
-        props.outerContainerRef?.addEventListener('scroll', () => {
-            props?.onScroll?.();
-            onUIEvent();
-        });
+        props.outerContainerRef?.addEventListener("scroll", onScrollHandler);
     });
 
     onCleanup(() => {
@@ -255,7 +257,7 @@ const VirtualGrid: Component<VirtualGridProps> = (props) => {
         lastRemovedItems?.unregister(this);
         resizeObserver.unobserve(props.outerContainerRef!);
         //window.removeEventListener('resize', onUIEvent);
-        props.outerContainerRef?.removeEventListener('scroll', onUIEvent);
+        props.outerContainerRef?.removeEventListener("scroll", onScrollHandler);
         resizeObserver.disconnect();
     });
 
@@ -268,20 +270,17 @@ const VirtualGrid: Component<VirtualGridProps> = (props) => {
             const row$ = createMemo(() => {
                 const i = index$();
                 const rp = renderProperties();
-                if (!i) {
-                    return undefined;
-                }
+                if (i === undefined) return undefined;
                 return Math.floor(i / rp.itemsPerRow);
             });
+
             const col$ = createMemo(() => {
                 const i = index$();
-                const row = row$();
                 const rp = renderProperties();
-                if (!i || !row) {
-                    return undefined;
-                }
-                return i - row * rp.itemsPerRow;
+                if (i === undefined) return undefined;
+                return i % rp.itemsPerRow;
             });
+
             const element = props.builder(index$, item$, row$, col$);
             return {
                 top: top$,

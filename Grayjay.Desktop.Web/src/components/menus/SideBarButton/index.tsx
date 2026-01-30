@@ -38,7 +38,9 @@ const SideBarButton: Component<SideBarButtonProps> = (props) => {
       <Show when={props.icon}>
         <img src={props.icon} class={styles.icon} alt="logo" />
       </Show>
-      <div class={styles.text} style={props.styleText}>{props.name}</div>
+      <Show when={!props.collapsed}>
+        <div class={styles.text} style={props.styleText}>{props.name}</div>
+      </Show>
     </div>
   );
 };
