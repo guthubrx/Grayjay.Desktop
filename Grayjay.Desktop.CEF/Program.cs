@@ -5,6 +5,7 @@ using Grayjay.ClientServer.Controllers;
 using Grayjay.ClientServer.Settings;
 using Grayjay.ClientServer.States;
 using Grayjay.Desktop.CEF;
+using Grayjay.Engine.Packages;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -379,6 +380,7 @@ namespace Grayjay.Desktop
                 }
             }
 
+            PackageBrowser.PreInitializeSharedProcess();
             using var cef = !isServer ? new DotCefProcess() : null;
             if (cef != null)
             {
@@ -386,9 +388,7 @@ namespace Grayjay.Desktop
                 var extraArgs = ReconstructArgs(args);
                 Logger.i(nameof(Program), "Extra args: " + extraArgs);
 
-
                 string userDataDirCmd = "--user-data-dir=\"" + Path.Combine(Directories.Temporary, "chrome_" + Guid.NewGuid().ToString()) + "\" ";
-
                 Logger.i(nameof(Program), "Main: Starting DotCefProcess");
                 if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
                     cef.Start("--use-alloy-style --use-native " + userDataDirCmd + extraArgs);
@@ -654,6 +654,7 @@ namespace Grayjay.Desktop
                                         window?.CloseAsync();
                                         server?.StopServer();
                                         cef.Dispose();
+                                        try { PackageBrowser.ShutdownSharedProcess(); } catch { }
                                         Environment.Exit(0);
                                     }, StateUI.ActionStyle.Primary)
                                     }
@@ -721,6 +722,7 @@ namespace Grayjay.Desktop
             await server.StopServer();
 
             StateApp.Shutdown();
+            try { PackageBrowser.ShutdownSharedProcess(); } catch { }
             Logger.DisposeStaticLogger();
         }
     }
