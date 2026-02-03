@@ -169,6 +169,9 @@ namespace Grayjay.Desktop.POC.Port.States
                         throw new InvalidOperationException("No config response");
                     config = PluginConfig.FromJson(configJson);
                     config.SourceUrl = sourceUrl;
+
+                    if (config.ID == StateDeveloper.DEV_ID)
+                        throw new InvalidOperationException("Attempted to make developer plugin persistent, this is not allowed");
                 }
                 catch(Exception ex)
                 {
@@ -199,6 +202,9 @@ namespace Grayjay.Desktop.POC.Port.States
         {
             try
             {
+                if (config.ID == StateDeveloper.DEV_ID)
+                    throw new InvalidOperationException("Attempted to make developer plugin persistent, this is not allowed");
+
                 var existing = GetPlugin(config.ID);
                 if(existing != null)
                 {

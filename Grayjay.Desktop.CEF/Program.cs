@@ -380,10 +380,10 @@ namespace Grayjay.Desktop
                 }
             }
 
-            PackageBrowser.PreInitializeSharedProcess();
             using var cef = !isServer ? new DotCefProcess() : null;
             if (cef != null)
             {
+                PackageBrowser.Process = cef;
                 Stopwatch startWindowWatch = Stopwatch.StartNew();
                 var extraArgs = ReconstructArgs(args);
                 Logger.i(nameof(Program), "Extra args: " + extraArgs);
@@ -654,7 +654,6 @@ namespace Grayjay.Desktop
                                         window?.CloseAsync();
                                         server?.StopServer();
                                         cef.Dispose();
-                                        try { PackageBrowser.ShutdownSharedProcess(); } catch { }
                                         Environment.Exit(0);
                                     }, StateUI.ActionStyle.Primary)
                                     }
@@ -722,7 +721,6 @@ namespace Grayjay.Desktop
             await server.StopServer();
 
             StateApp.Shutdown();
-            try { PackageBrowser.ShutdownSharedProcess(); } catch { }
             Logger.DisposeStaticLogger();
         }
     }
