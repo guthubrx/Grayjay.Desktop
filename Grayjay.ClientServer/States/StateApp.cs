@@ -129,6 +129,8 @@ namespace Grayjay.ClientServer.States
         {
             Stopwatch sw = Stopwatch.StartNew();
 
+            Thread.CurrentThread.Name = "Startup Thread";
+
             _ = Task.Run(async () =>
             {
                 try
@@ -310,7 +312,14 @@ namespace Grayjay.ClientServer.States
             });
 
             Logger.i(nameof(StateApp), "Startup: Initializing Download Cycle");
-            StateDownloads.StartDownloadCycle();
+            ThreadPool.Run(() =>
+            {
+                try
+                {
+                    _ = StateDownloads.StartDownloadCycle();
+                }
+                catch (Exception ex) { }
+            });
 
             if(false) //To verify if async threads are every blocked
                 new Thread(() =>

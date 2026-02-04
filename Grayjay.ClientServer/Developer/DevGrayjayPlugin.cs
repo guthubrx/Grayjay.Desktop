@@ -24,6 +24,8 @@ namespace Grayjay.ClientServer.Developer
         public string DevID { get; set; }
         public string DevScript { get; set; }
 
+        public override bool IsDevPlugin => true;
+
         public DevGrayjayPlugin(PluginDescriptor descriptor, string originalId, string script, string? savedState = null, PluginHttpClient client = null, PluginHttpClient clientAuth = null, string devID = null, Options options = null) : base(descriptor, script, savedState, client, clientAuth, options)
         {
             OriginalID = originalId;

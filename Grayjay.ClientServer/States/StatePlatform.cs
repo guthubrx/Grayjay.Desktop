@@ -279,7 +279,7 @@ namespace Grayjay.Desktop.POC.Port.States
         {
             return CreateDistributedLazyPager(
                 (client) => (excludeClientIds != null ? !excludeClientIds.Contains(client.ID) : true) && (client.Descriptor?.AppSettings?.TabEnabled?.EnableSearch ?? false),
-                (client) => client.FromPool(_mainClientPool).Search(query, type, order, GetClientSpecificFilters(PluginConfigState.FromClient(client).CapabilitiesSearch, filters)),
+                (client) => client.FromPool(_pagerClientPool).Search(query, type, order, GetClientSpecificFilters(PluginConfigState.FromClient(client).CapabilitiesSearch, filters)),
                 (client, task) => new PlatformContentPlaceholder(client.Config)
             );
         }
@@ -287,7 +287,7 @@ namespace Grayjay.Desktop.POC.Port.States
         {
             return CreateDistributedLazyPager(
                 (client) => client.Capabilities.HasChannelSearch && (excludeClientIds != null ? !excludeClientIds.Contains(client.ID) : true),
-                (client) => client.FromPool(_mainClientPool).SearchChannelsAsContent(query),
+                (client) => client.FromPool(_pagerClientPool).SearchChannelsAsContent(query),
                 (client, task) => new PlatformContentPlaceholder(client.Config)
             );
         }
@@ -296,7 +296,7 @@ namespace Grayjay.Desktop.POC.Port.States
             return CreateDistributedLazyPager(
                 (client) => 
                     client.Capabilities.HasSearchPlaylists && (excludeClientIds != null ? !excludeClientIds.Contains(client.ID) : true),
-                (client) => client.FromPool(_mainClientPool).SearchPlaylists(query),
+                (client) => client.FromPool(_pagerClientPool).SearchPlaylists(query),
                 (client, task) => new PlatformContentPlaceholder(client.Config)
             );
         }
@@ -336,7 +336,7 @@ namespace Grayjay.Desktop.POC.Port.States
                     {
                         lock (clientIdsOngoing)
                             clientIdsOngoing.Add(client.Config.ID);
-                        return client.FromPool(_mainClientPool).GetHome();
+                        return client.FromPool(_pagerClientPool).GetHome();
                     }));
                 });
 
@@ -361,7 +361,7 @@ namespace Grayjay.Desktop.POC.Port.States
                         {
                             try
                             {
-                                var result = client.FromPool(_mainClientPool).GetHome();
+                                var result = client.FromPool(_pagerClientPool).GetHome();
 
                                 var pager = (modifier != null) ? 
                                     new ModifyPager<PlatformContent>(result, (x) => modifier != null ? modifier(x) : x) :
@@ -402,7 +402,7 @@ namespace Grayjay.Desktop.POC.Port.States
 
         public static PlatformChannel GetChannel(string url)
             => GetChannelClient(url)
-                .FromPool(_mainClientPool)
+                .FromPool(_pagerClientPool)
                 .GetChannel(url);
 
         public static IPager<PlatformContent> GetChannelContent(string url)
