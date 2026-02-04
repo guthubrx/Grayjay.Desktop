@@ -33,9 +33,11 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Web;
+using System.Xml.Linq;
 
 namespace Grayjay.ClientServer.Controllers
 {
@@ -912,6 +914,10 @@ namespace Grayjay.ClientServer.Controllers
                     }));
                 }
 
+                var subUrl = subtitleSource?.Url;
+                if (!string.IsNullOrWhiteSpace(subUrl))
+                    dash = InjectDashSubtitle(dash, subUrl, subtitleSource?.Format);
+
                 return dash;
             });
         }
@@ -1196,10 +1202,8 @@ namespace Grayjay.ClientServer.Controllers
                 
             if (sourceVideo != null && (sourceAudio != null || sourceSubtitle != null))
             {
-                if (!(sourceVideo is DashManifestRawSource das && sourceAudio is DashManifestRawAudioSource daus))
-                    if (!(sourceVideo is IStreamMetaDataSource) || !(sourceAudio is IStreamMetaDataSource))
-                        throw DialogException.FromException("Source doesn't provide enough playback info for unmuxed playback (IStreamMetaData)",
-                            new Exception("Unmuxed sources require IStreamMetaDataSource info to translate to dash"));
+                if (sourceAudio != null && !(sourceVideo is DashManifestRawSource && sourceAudio is DashManifestRawAudioSource) && (!(sourceVideo is IStreamMetaDataSource) || !(sourceAudio is IStreamMetaDataSource)))
+                    throw DialogException.FromException("Cannot play this source", new Exception("Unmuxed sources require IStreamMetaDataSource info to translate to dash"));
 
                 if (forceReady)
                 {
@@ -1264,6 +1268,47 @@ namespace Grayjay.ClientServer.Controllers
             //throw new Exception("Select either a videoIndex or audioIndex");
         }
 
+        private static readonly Regex _repIdRegex = new Regex("Representation\\s+id=\"(\\d+)\"", RegexOptions.Compiled);
+        private static int NextNumericRepresentationId(string mpd)
+        {
+            int max = 0;
+            foreach (Match m in _repIdRegex.Matches(mpd))
+            {
+                if (int.TryParse(m.Groups[1].Value, out var v) && v > max)
+                    max = v;
+            }
+            return max + 1;
+        }
+
+        private static string XmlEscape(string s)
+        {
+            var raw = s.Replace("&amp;", "&").Trim();
+            return SecurityElement.Escape(raw) ?? raw;
+        }
+
+        private static string InjectDashSubtitle(string mpd, string subtitleUrl, string lang = "en")
+        {
+            if (string.IsNullOrWhiteSpace(mpd) || string.IsNullOrWhiteSpace(subtitleUrl))
+                return mpd;
+
+            if (mpd.IndexOf("mimeType=\"text/vtt\"", StringComparison.OrdinalIgnoreCase) >= 0)
+                return mpd;
+
+            int repId = NextNumericRepresentationId(mpd);
+            string url = XmlEscape(subtitleUrl);
+            string block =
+                $"    <AdaptationSet mimeType=\"text/vtt\" lang=\"{lang}\">\n" +
+                $"      <Representation id=\"{repId}\" bandwidth=\"256\">\n" +
+                $"        <BaseURL>{url}</BaseURL>\n" +
+                $"      </Representation>\n" +
+                $"    </AdaptationSet>\n";
+
+            int insertAt = mpd.LastIndexOf("</Period>", StringComparison.OrdinalIgnoreCase);
+            if (insertAt < 0)
+                return mpd;
+
+            return mpd.Insert(insertAt, block);
+        }
 
         [HttpGet]
         public IActionResult StreamLocalVideoSource(int index)
