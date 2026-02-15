@@ -1,0 +1,2 @@
+Improvements:
+ - Added support for script on load to PackageBrowser (YT fix)
