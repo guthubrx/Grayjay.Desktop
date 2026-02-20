@@ -3,99 +3,51 @@ variables:
   GIT_STRATEGY: clone
 
 stages:
-  - buildAndDeployUnstableWindows
-  - buildAndDeployUnstableLinux
-  - buildAndDeployStableWindows
-  - buildAndDeployStableLinux
-  - buildAndDeployStableWindowsInstaller
+  - desktop
+  - installer
 
+.tags_manual: &tags_manual
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual
+    - when: never
 
-buildAndDeployUnstableWindows:
-  stage: buildAndDeployUnstableWindows
-  tags:
-    - WindowsBuilder
-  only:
-    - tags
-  except:
-    - ^(dev)
-  script:
-    - dir
-    - Write-Host $CI_COMMIT_TAG
-    - bash deploy_windows.sh $CI_COMMIT_TAG $UPDATER_SERVER Grayjay.Desktop.Unstable
-  artifacts:
-    paths:
-      - Grayjay.Desktop.CEF/bin/Release/net8.0/win-x64/Grayjay.Desktop-win-x64-v$CI_COMMIT_TAG.zip
-    expire_in: 1d
-  when: manual
-  
-buildAndDeployUnstableLinux:
-  stage: buildAndDeployUnstableLinux
-  tags:
-    - LinuxBuilder
-  only:
-    - tags
-  except:
-    - ^(dev)
-  script:
-    - echo "$(pwd)"
-    - bash deploy_linux.sh $CI_COMMIT_TAG $UPDATER_SERVER Grayjay.Desktop.Unstable
-  artifacts:
-    paths:
-      - /builds/videostreaming/Grayjay.Desktop/Grayjay.Desktop.CEF/bin/Release/net8.0/linux-x64/Grayjay.Desktop-linux-x64-v$CI_COMMIT_TAG.zip
-      - /builds/videostreaming/Grayjay.Desktop/Grayjay.Desktop.CEF/bin/Release/net8.0/win-x64/Grayjay.Desktop-win-x64-v$CI_COMMIT_TAG.zip
-      - /builds/videostreaming/Grayjay.Desktop/Grayjay.Desktop.CEF/bin/Release/net8.0/osx-arm64/Grayjay.Desktop-osx-arm64-v$CI_COMMIT_TAG.zip
-      - /builds/videostreaming/Grayjay.Desktop/Grayjay.Desktop.CEF/bin/Release/net8.0/osx-arm64/Grayjay.Desktop-osx-x64-v$CI_COMMIT_TAG.zip
-    expire_in: 1d
-  when: manual
-  
-buildAndDeployStableWindows:
-  stage: buildAndDeployStableWindows
-  tags:
-    - WindowsBuilder
-  only:
-    - tags
-  except:
-    - ^(dev)
-  script:
-    - dir
-    - Write-Host $CI_COMMIT_TAG
-    - bash deploy_windows.sh $CI_COMMIT_TAG $UPDATER_SERVER Grayjay.Desktop
-  artifacts:
-    paths:
-      - Grayjay.Desktop.CEF/bin/Release/net8.0/win-x64/Grayjay.Desktop-win-x64-v$CI_COMMIT_TAG.zip
-    expire_in: 1d
-  when: manual
+# -------------------------
+# DESKTOP
+# -------------------------
 
-buildAndDeployStableLinux:
-  stage: buildAndDeployStableLinux
-  tags:
-    - LinuxBuilder
-  only:
-    - tags
-  except:
-    - ^(dev)
-  script:
-    - echo "$(pwd)"
-    - bash deploy_linux.sh $CI_COMMIT_TAG $UPDATER_SERVER Grayjay.Desktop
-  artifacts:
-    paths:
-      - /builds/videostreaming/Grayjay.Desktop/Grayjay.Desktop.CEF/bin/Release/net8.0/linux-x64/Grayjay.Desktop-linux-x64-v$CI_COMMIT_TAG.zip
-      - /builds/videostreaming/Grayjay.Desktop/Grayjay.Desktop.CEF/bin/Release/net8.0/win-x64/Grayjay.Desktop-win-x64-v$CI_COMMIT_TAG.zip
-      - /builds/videostreaming/Grayjay.Desktop/Grayjay.Desktop.CEF/bin/Release/net8.0/osx-arm64/Grayjay.Desktop-osx-arm64-v$CI_COMMIT_TAG.zip
-      - /builds/videostreaming/Grayjay.Desktop/Grayjay.Desktop.CEF/bin/Release/net8.0/osx-arm64/Grayjay.Desktop-osx-x64-v$CI_COMMIT_TAG.zip
-    expire_in: 1d
-  when: manual
-  
+desktop:unstable:
+  stage: desktop
+  <<: *tags_manual
+  trigger:
+    include:
+      - local: .gitlab-ci-desktop-deploy.yml
+    strategy: depend
+  variables:
+    DEPLOY_APP_NAME: "Grayjay.Desktop.Unstable"
+
+desktop:stable:
+  stage: desktop
+  <<: *tags_manual
+  trigger:
+    include:
+      - local: .gitlab-ci-desktop-deploy.yml
+    strategy: depend
+  variables:
+    DEPLOY_APP_NAME: "Grayjay.Desktop"
+
+# -------------------------
+# INSTALLER
+# -------------------------
+
 buildAndDeployStableWindowsInstaller:
-  stage: buildAndDeployStableWindowsInstaller
-  tags:
-    - WindowsBuilder
+  stage: installer
+  tags: [WindowsBuilder]
+  <<: *tags_manual
   script:
-    - dir
     - Write-Host $CI_COMMIT_TAG
     - bash deploy_windows_installer.sh
   artifacts:
     paths:
       - Grayjay.Desktop.Installer/Output/Grayjay-1.0.0-Setup-x64.exe
     expire_in: 1d
-  when: manual

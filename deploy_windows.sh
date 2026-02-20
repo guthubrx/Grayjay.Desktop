@@ -99,9 +99,9 @@ done
 for runtime in "${runtimes[@]}"
 do
 	echo "Deleting existing on remote for $runtime\n"
-	$SSH_CMD $server "rm -R $targetDir/$appName/$version/$runtime"
-	$SSH_CMD $server "rm -R $targetDir/$appName/$version/Grayjay.Desktop-$runtime-v$version.zip"
-	$SSH_CMD $server "rm $targetDir/$appName/Grayjay.Desktop-$runtime.zip"
+	$SSH_CMD $server "rm -rf $targetDir/$appName/$version/$runtime"
+	$SSH_CMD $server "rm -f $targetDir/$appName/$version/Grayjay.Desktop-$runtime-v$version.zip"
+	$SSH_CMD $server "rm -f $targetDir/$appName/Grayjay.Desktop-$runtime.zip"
 
 	echo "Deploying for $runtime\n"
 
@@ -109,7 +109,8 @@ do
 	printf "Deploying from $PWD\n"
 	
 	printf "Generating ZIP\n"
-	rm -R "../Grayjay.Desktop-$runtime-v$version.zip"
+	rm -f "../Grayjay.Desktop-$runtime-v$version.zip"
+	rm -rf "../Grayjay.Desktop-$runtime-v$version"
 	cp -R "../publish" "../Grayjay.Desktop-$runtime-v$version"
 	cd ../
 	rm -f Grayjay.Desktop-$runtime-v$version.zip
@@ -123,10 +124,6 @@ do
 	printf " - Creating folder...\n"
 	$SSH_CMD $server "mkdir -p $outDir"
 	
-	printf " - Creating maintenance file...\n"
-	$SSH_CMD $server "touch $targetDir/$appName/maintenance"
-	
-	
 	printf " - Copying zip\n"
 	$SCP_CMD "../Grayjay.Desktop-$runtime-v$version.zip" $server:$targetDir/$appName/$version
 	printf " - Copying zip global\n"
@@ -137,12 +134,7 @@ do
 	
 	printf " - Moving files..\n"
 	$SSH_CMD $server "mv -f $outDir/publish/* $outDir"
-	$SSH_CMD $server "rm -R $outDir/publish"
-	
-	
-	printf " - Deleting maintenace file...\n"
-	$SSH_CMD "$server" "rm $targetDir/$appName/maintenance"
-	
+	$SSH_CMD $server "rm -rf $outDir/publish"
 
 	cd ../../../../../..
 	
