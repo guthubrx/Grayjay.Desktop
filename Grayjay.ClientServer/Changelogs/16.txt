@@ -1,5 +1,0 @@
-Features
- - Added support for PackageBrowser
-
-Fixes:
- - Fixed subtitles

@@ -1,9 +1,0 @@
-Improvements:
- - Updated CEF to latest version.
-
-Fixes:
- - Cancel button on sync confirm dialog now also selectable with controller.
- - Made sync confirm dialog useable with controller and changed initial and repeat delay behavior.
- - Fix for wayland fullscreen.
- - Live stream now starts instantly and no longer errors out after a certain duration.
- - Fixed async error propagation.

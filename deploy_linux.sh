@@ -1,5 +1,7 @@
 #!/bin/bash
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 targetDir="/var/www/html/Apps"
 if [[ "$3" != "" ]]; then
    appName="$3"
@@ -67,6 +69,8 @@ do
 	chmod u=rwx FUTO.Updater.Client
 	chmod u=rwx ffmpeg
     
+    bash "$ROOT_DIR/generate_changelogs.sh" "$PWD"
+
     cd ../../../../../..
 done
 
