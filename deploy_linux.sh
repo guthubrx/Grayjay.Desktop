@@ -8,9 +8,12 @@ else
    read appName
 fi
 
-SSH_KEY_PRIV_FILE="/tmp/deploy_key"
-echo "$SSH_KEY_PRIV" | base64 -d > $SSH_KEY_PRIV_FILE
-chmod 600 $SSH_KEY_PRIV_FILE
+SSH_KEY_PRIV_FILE="$(mktemp "${TMPDIR:-/tmp}/deploy_key.XXXXXXXX")"
+cleanup() { rm -f "$SSH_KEY_PRIV_FILE"; }
+trap cleanup EXIT INT TERM
+printf '%s' "$SSH_KEY_PRIV" | base64 -d > "$SSH_KEY_PRIV_FILE"
+chmod 600 "$SSH_KEY_PRIV_FILE"
+
 SSH_CMD="ssh -i $SSH_KEY_PRIV_FILE -o StrictHostKeyChecking=no"
 SCP_CMD="scp -i $SSH_KEY_PRIV_FILE -o StrictHostKeyChecking=no"
 
