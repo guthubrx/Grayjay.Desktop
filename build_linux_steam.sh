@@ -36,7 +36,7 @@ cp -r Grayjay.Desktop.Web/dist Grayjay.Desktop.CEF/bin/Release/net8.0/$runtime/p
 cd Grayjay.Desktop.CEF/bin/Release/net8.0/$runtime/publish
 
 chmod u=rwx Grayjay
-chmod u=rwx cef/dotcefnative
+chmod u=rwx cef/justcefnative
 chmod u=rwx ffmpeg
 
 rm ./FUTO.Updater.Client

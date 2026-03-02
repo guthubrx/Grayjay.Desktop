@@ -7,7 +7,7 @@
         <key>CFBundleDisplayName</key>
         <string>JustCef</string>
         <key>CFBundleExecutable</key>
-        <string>dotcefnative</string>
+        <string>justcefnative</string>
         <key>CFBundleIconFile</key>
         <string>shared</string>
         <key>CFBundleIdentifier</key>

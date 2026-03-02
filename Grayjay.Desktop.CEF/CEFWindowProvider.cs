@@ -1,4 +1,4 @@
-﻿using DotCef;
+﻿using JustCef;
 using Grayjay.ClientServer;
 using Grayjay.ClientServer.Browser;
 using Grayjay.ClientServer.Dialogs;
@@ -22,8 +22,8 @@ namespace Grayjay.Desktop.CEF
 {
     public class CEFWindowProvider : IWindowProvider
     {
-        private DotCefProcess _cef;
-        public CEFWindowProvider(DotCefProcess process)
+        private JustCefProcess _cef;
+        public CEFWindowProvider(JustCefProcess process)
         {
             _cef = process;
         }
@@ -419,13 +419,13 @@ namespace Grayjay.Desktop.CEF
 
         public class Window : IWindow
         {
-            private DotCefWindow _window;
+            private JustCefWindow _window;
 
             public event Action OnClosed;
 
             private ConcurrentDictionary<string, Func<IPCRequest, Task<IPCResponse?>>> _proxyHandlers = new ConcurrentDictionary<string, Func<IPCRequest, Task<IPCResponse?>>>();
 
-            public Window(DotCefWindow window)
+            public Window(JustCefWindow window)
             {
                 _window = window;
                 _window.SetRequestProxy((cef, req) =>

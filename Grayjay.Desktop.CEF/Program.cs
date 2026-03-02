@@ -1,4 +1,4 @@
-﻿using DotCef;
+﻿using JustCef;
 using Grayjay.ClientServer;
 using Grayjay.ClientServer.Constants;
 using Grayjay.ClientServer.Controllers;
@@ -292,8 +292,8 @@ namespace Grayjay.Desktop
             FUTO.MDNS.Logger.WillLog = (level) => Logger.WillLog((LogLevel)level);
             Engine.Logger.LogCallback = (level, tag, message, ex) => Logger.Log((LogLevel)level, tag, message, ex);
             Engine.Logger.WillLog = (level) => Logger.WillLog((LogLevel)level);
-            DotCef.Logger.LogCallback = (level, tag, message, ex) => Logger.Log((LogLevel)level, tag, message, ex);
-            DotCef.Logger.WillLog = (level) => Logger.WillLog((LogLevel)level);
+            JustCef.Logger.LogCallback = (level, tag, message, ex) => Logger.Log((LogLevel)level, tag, message, ex);
+            JustCef.Logger.WillLog = (level) => Logger.WillLog((LogLevel)level);
             SyncShared.Logger.WillLog = (level) => Logger.WillLog((LogLevel)level);
             SyncShared.Logger.LogCallback = (level, tag, message, ex) => Logger.Log((LogLevel)level, tag, message, ex);
 
@@ -380,7 +380,7 @@ namespace Grayjay.Desktop
                 }
             }
 
-            using var cef = !isServer ? new DotCefProcess() : null;
+            using var cef = !isServer ? new JustCefProcess() : null;
             if (cef != null)
             {
                 PackageBrowser.Process = cef;
@@ -389,7 +389,7 @@ namespace Grayjay.Desktop
                 Logger.i(nameof(Program), "Extra args: " + extraArgs);
 
                 string userDataDirCmd = "--user-data-dir=\"" + Path.Combine(Directories.Temporary, "chrome_" + Guid.NewGuid().ToString()) + "\" ";
-                Logger.i(nameof(Program), "Main: Starting DotCefProcess");
+                Logger.i(nameof(Program), "Main: Starting JustCefProcess");
                 if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
                     cef.Start("--use-alloy-style --use-native " + userDataDirCmd + extraArgs);
                 else
@@ -399,10 +399,10 @@ namespace Grayjay.Desktop
                     else
                         cef.Start("--use-alloy-style --use-native --no-sandbox " + userDataDirCmd + extraArgs);
                 }
-                Logger.i(nameof(Program), $"Main: Starting DotCefProcess finished ({startWindowWatch.ElapsedMilliseconds}ms)");
+                Logger.i(nameof(Program), $"Main: Starting JustCefProcess finished ({startWindowWatch.ElapsedMilliseconds}ms)");
             }
             GrayjayServer server = null;
-            DotCefWindow ? window = null;
+            JustCefWindow ? window = null;
 
             if (cef != null && !isHeadless && !isServer)
             {

@@ -60,17 +60,17 @@ do
     cd Grayjay.Desktop.CEF/bin/Release/net8.0/$runtime/publish	
 	
 	if [ "$runtime" = "win-x64" ]; then
-	   ../../../../../../rcedit-x64.exe "cef/dotcefnative.exe" --set-icon "../../../../../logo.ico"
-	   ../../../../../../rcedit-x64.exe "cef/dotcefnative.exe" --set-version-string "ProductName" "Grayjay"
-	   ../../../../../../rcedit-x64.exe "cef/dotcefnative.exe" --set-version-string "FileDescription" "Grayjay"
+	   ../../../../../../rcedit-x64.exe "cef/justcefnative.exe" --set-icon "../../../../../logo.ico"
+	   ../../../../../../rcedit-x64.exe "cef/justcefnative.exe" --set-version-string "ProductName" "Grayjay"
+	   ../../../../../../rcedit-x64.exe "cef/justcefnative.exe" --set-version-string "FileDescription" "Grayjay"
 	   #../../../../../../rcedit-x64.exe "Grayjay.Desktop.CEF.exe" --set-icon "../../../../../logo.ico"
 	   #../../../../../../rcedit-x64.exe "Grayjay.Desktop.CEF.exe" --set-version-string "ProductName" "Grayjay.Desktop"
 
     	echo "Signing..."
 		../../../../../../sign_windows.sh "cef/chrome_elf.dll"
 		../../../../../../sign_windows.sh "cef/d3dcompiler_47.dll"
-		../../../../../../sign_windows.sh "cef/dotcefnative.dll"
-		../../../../../../sign_windows.sh "cef/dotcefnative.exe"
+		../../../../../../sign_windows.sh "cef/justcefnative.dll"
+		../../../../../../sign_windows.sh "cef/justcefnative.exe"
 		../../../../../../sign_windows.sh "cef/dxcompiler.dll"
 		../../../../../../sign_windows.sh "cef/dxil.dll"
 		../../../../../../sign_windows.sh "cef/libcef.dll"

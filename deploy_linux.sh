@@ -60,7 +60,7 @@ do
     cd Grayjay.Desktop.CEF/bin/Release/net8.0/$runtime/publish	
 	
 	chmod u=rwx Grayjay
-	chmod u=rwx cef/dotcefnative
+	chmod u=rwx cef/justcefnative
 	chmod u=rwx FUTO.Updater.Client
 	chmod u=rwx ffmpeg
     

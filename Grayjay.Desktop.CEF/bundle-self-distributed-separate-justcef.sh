@@ -38,13 +38,13 @@ build_sign_notarize() {
     cp -a "$PUBLISH_PATH/libe_sqlite3.dylib" "$APP_NAME/Contents/MacOS"
     cp -a "$PUBLISH_PATH/libsodium.dylib" "$APP_NAME/Contents/MacOS"
     cp -a "$PUBLISH_PATH/ClearScriptV8.$ARCH.dylib" "$APP_NAME/Contents/MacOS"
-    cp -a "../JustCef/prebuilt/$ARCH/dotcefnative.app" "$APP_NAME/Contents/Frameworks/dotcefnative.app"
-    cp -a Resources/MacOS/Info-Cef.plist "$APP_NAME/Contents/Frameworks/dotcefnative.app/Contents/Info.plist"
-    cp -a Resources/MacOS/Info-Helper.plist "$APP_NAME/Contents/Frameworks/dotcefnative.app/Contents/Frameworks/dotcefnative Helper.app/Contents/Info.plist"
-    cp -a Resources/MacOS/Info-Helper-Alerts.plist "$APP_NAME/Contents/Frameworks/dotcefnative.app/Contents/Frameworks/dotcefnative Helper (Alerts).app/Contents/Info.plist"
-    cp -a Resources/MacOS/Info-Helper-GPU.plist "$APP_NAME/Contents/Frameworks/dotcefnative.app/Contents/Frameworks/dotcefnative Helper (GPU).app/Contents/Info.plist"
-    cp -a Resources/MacOS/Info-Helper-Plugin.plist "$APP_NAME/Contents/Frameworks/dotcefnative.app/Contents/Frameworks/dotcefnative Helper (Plugin).app/Contents/Info.plist"
-    cp -a Resources/MacOS/Info-Helper-Renderer.plist "$APP_NAME/Contents/Frameworks/dotcefnative.app/Contents/Frameworks/dotcefnative Helper (Renderer).app/Contents/Info.plist"
+    cp -a "../JustCef/prebuilt/$ARCH/justcefnative.app" "$APP_NAME/Contents/Frameworks/justcefnative.app" # TODO Outdated
+    cp -a Resources/MacOS/Info-Cef.plist "$APP_NAME/Contents/Frameworks/justcefnative.app/Contents/Info.plist"
+    cp -a Resources/MacOS/Info-Helper.plist "$APP_NAME/Contents/Frameworks/justcefnative.app/Contents/Frameworks/justcefnative Helper.app/Contents/Info.plist"
+    cp -a Resources/MacOS/Info-Helper-Alerts.plist "$APP_NAME/Contents/Frameworks/justcefnative.app/Contents/Frameworks/justcefnative Helper (Alerts).app/Contents/Info.plist"
+    cp -a Resources/MacOS/Info-Helper-GPU.plist "$APP_NAME/Contents/Frameworks/justcefnative.app/Contents/Frameworks/justcefnative Helper (GPU).app/Contents/Info.plist"
+    cp -a Resources/MacOS/Info-Helper-Plugin.plist "$APP_NAME/Contents/Frameworks/justcefnative.app/Contents/Frameworks/justcefnative Helper (Plugin).app/Contents/Info.plist"
+    cp -a Resources/MacOS/Info-Helper-Renderer.plist "$APP_NAME/Contents/Frameworks/justcefnative.app/Contents/Frameworks/justcefnative Helper (Renderer).app/Contents/Info.plist"
 
     cp -a "$PUBLISH_PATH/wwwroot" "$APP_NAME/Contents/Resources/wwwroot"
 

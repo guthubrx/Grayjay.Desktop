@@ -3,7 +3,7 @@
   "Linux": {
     "Executables": [
       "Grayjay",
-      "cef/dotcefnative",
+      "cef/justcefnative",
       "ffmpeg"
     ],
     "Ignore": [

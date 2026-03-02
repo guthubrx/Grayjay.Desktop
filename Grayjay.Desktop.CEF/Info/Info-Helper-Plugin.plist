@@ -5,15 +5,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>dotcefnative Helper (Plugin)</string>
+	<string>justcefnative Helper (Plugin)</string>
 	<key>CFBundleExecutable</key>
-	<string>dotcefnative Helper (Plugin)</string>
+	<string>justcefnative Helper (Plugin)</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.futo.grayjay.desktop.cef.helper.plugin</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>dotcefnative Helper (Plugin)</string>
+	<string>justcefnative Helper (Plugin)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
