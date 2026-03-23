@@ -55,7 +55,7 @@ const SubscriptionsPage: Component = () => {
   
   let [selectedCreators$, setSelectedCreators] = createSignal<string[]>([]);
   const hasSelectedCreator$ = createMemo(()=> selectedCreators$() && selectedCreators$().length > 0);
-  let [selectedGroup$, setSelectedGroup] = createSignal<string>();
+  let [selectedGroups$, setSelectedGroups] = createSignal<string[]>([]);
 
   StateWebsocket.registerHandlerNew("subProgress", (packet)=>{
     setSubProgress(packet.payload.progress / packet.payload.total);
@@ -84,11 +84,11 @@ const SubscriptionsPage: Component = () => {
     return subscriptionPager;
   });
   const [subGroupPager$, subGroupPagerResource] = createResourceDefault(async () => {
-    const id = selectedGroup$();
-    if(!id)
+    const ids = selectedGroups$();
+    if(ids.length !== 1)
       return undefined;
 
-    return await SubscriptionsBackend.subscriptionGroupPager(id, false);
+    return await SubscriptionsBackend.subscriptionGroupPager(ids[0], false);
   });
   const [filterPager$, filterPagerResource] = createResourceDefault(async () => {
     const url = selectedCreators$();
@@ -99,11 +99,15 @@ const SubscriptionsPage: Component = () => {
     return filterPager;
   });
   createEffect(()=>{
-    console.log("Group changed: " + selectedGroup$());
+    const ids = selectedGroups$();
+    console.log("Group changed: " + ids.join(","));
     subGroupPagerResource.refetch();
+    if(ids.length > 1 && !(subPager$.state == "ready" && subPager$()?.hadInitialUpdate$()))
+      subPagerResource.refetch();
   });
   const currentPager$ = createMemo(()=>{
-    if(!selectedGroup$()) {
+    const groups = selectedGroups$();
+    if(groups.length === 0) {
       if(selectedCreators$() && selectedCreators$().length > 0 && filterPager$.state == "ready") {
         const filterPagerResult = filterPager$();
         return filterPagerResult;
@@ -113,8 +117,14 @@ const SubscriptionsPage: Component = () => {
       else
         return subCachePager$();
     }
-    else
+    else if(groups.length === 1)
       return subGroupPager$();
+    else {
+      if(subPager$.state == "ready" && subPager$()?.hadInitialUpdate$())
+        return subPager$();
+      else
+        return subCachePager$();
+    }
   });
   createEffect(()=>{
     const pager = currentPager$();
@@ -165,7 +175,15 @@ const SubscriptionsPage: Component = () => {
       updateFilter(pager, getFilter());
   }
   function getFilter() {
+    const groups = selectedGroups$();
+    let groupChannelIds: Set<string> | null = null;
+    if(groups.length > 1) {
+      const groupUrls = new Set((subGroups$() ?? []).filter(g => groups.includes(g.id)).flatMap(g => g.urls));
+      groupChannelIds = new Set((subs$() ?? []).filter(sub => groupUrls.has(sub.channel.url)).map(sub => sub.channel.id.value));
+    }
     return (obj: IPlatformContent)=>{
+      if(groupChannelIds && !groupChannelIds.has(obj.author.id.value))
+        return false;
       //const creators = selectedCreators$();
       //if(creators.length > 0 && creators.indexOf(obj.author.url) < 0)
       //  return false;
@@ -210,6 +228,14 @@ const SubscriptionsPage: Component = () => {
       if(pager)
         updateFilter(pager, getFilter());
       */
+  }
+
+  function toggleGroup(groupId: string, multi: boolean) {
+    const ids = selectedGroups$();
+    if(multi)
+      setSelectedGroups(ids.includes(groupId) ? ids.filter(x => x !== groupId) : [...ids, groupId]);
+    else
+      setSelectedGroups(ids.length === 1 && ids[0] === groupId ? [] : [groupId]);
   }
 
   function updateFilter(pager: Pager<IPlatformContent>, condition: (obj: IPlatformContent)=>boolean){
@@ -327,49 +353,58 @@ const SubscriptionsPage: Component = () => {
               </div>
             </Show>
             <Show when={hasSubGroups$()}>
-                <div class={styles.subgroups} style={{
-                  height: subGroupsExpanded$() ? undefined : '86px',
-                  overflow: 'hidden'
-                }}>
-                  <div 
-                    class={styles.subGroupExpand} 
-                    onClick={()=>setSubGroupsExpanded(!subGroupsExpanded$())}
-                    use:focusable={{ onPress: () => setSubGroupsExpanded(!subGroupsExpanded$()) }}
+              <div class={styles.subgroups}>
+                <For each={subGroups$()}>{(subGroup: ISubscriptionGroup, i: Accessor<number>) => (
+                  <div
+                    class={styles.subgroup}
+                    classList={{ [styles.active]: selectedGroups$().includes(subGroup.id) }}
+                    onClick={(e) => toggleGroup(subGroup.id, e.metaKey || e.ctrlKey)}
+                    use:focusable={{
+                      groupEscapeTo: {
+                        left: ['sidebar'],
+                        down: ['filters'],
+                        up: ['creators']
+                      },
+                      groupId: 'subgroups',
+                      groupType: 'horizontal',
+                      groupIndices: [i()],
+                      onOptions: () => UIOverlay.overlayEditSubscriptionGroup(subGroup),
+                      onPress: () => toggleGroup(subGroup.id, false)
+                    }}
                   >
-                    <Show when={subGroupsExpanded$()}>
-                      <img src={iconChevUp} />
-                    </Show>
-                    <Show when={!subGroupsExpanded$()}>
-                      <img src={iconChevDown} />
-                    </Show>
+                    <div
+                      class={styles.image}
+                      style={{ "background-image": `url(${proxyImageVariable(subGroup.image)})` }}
+                    />
+                    <img
+                      class={styles.editIcon}
+                      src={iconEdit}
+                      onClick={(ev) => { UIOverlay.overlayEditSubscriptionGroup(subGroup); ev.stopPropagation(); }}
+                    />
+                    <div class={styles.name}>{subGroup.name}</div>
                   </div>
-                  <For each={subGroups$()}>{(subGroup: ISubscriptionGroup, i) =>
-                    <div 
-                      class={styles.subgroup} 
-                      classList={{[styles.active]: subGroup.id == selectedGroup$() }} 
-                      onClick={()=>(subGroup.id == selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id)}
-                      use:focusable={{ onOptions: () => UIOverlay.overlayEditSubscriptionGroup(subGroup), onPress: () => (subGroup.id == selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id) }}
-                    >
-                      <div class={styles.image} style={{"background-image": "url(" + proxyImageVariable(subGroup.image) + ")"}} />
-                      
-                      <img class={styles.editIcon} src={iconEdit} onClick={(ev)=>{ UIOverlay.overlayEditSubscriptionGroup(subGroup); ev.stopPropagation()}} />
-                      <div class={styles.name}>
-                        {subGroup.name}
-                      </div>
-                    </div>
-                  }</For>
-                  <div 
-                    class={styles.subgroup} 
-                    style="cursor: pointer" 
-                    onClick={()=>newSubscriptionGroup()}
-                    use:focusable={{ onPress: () => newSubscriptionGroup() }}
-                  >
-                    <div class={styles.image} style={{"background": "#222"}} />
-                    <div class={styles.centerText}>
-                      New Group
-                    </div>
-                  </div>
+                )}</For>
+
+                <div
+                  class={styles.subgroup}
+                  style="cursor: pointer"
+                  onClick={() => newSubscriptionGroup()}
+                  use:focusable={{
+                    groupEscapeTo: {
+                      left: ['sidebar'],
+                      down: ['filters'],
+                      up: ['creators']
+                    },
+                    groupId: 'subgroups',
+                    groupType: 'horizontal',
+                    groupIndices: [subGroups$()?.length ?? 0],
+                    onPress: () => newSubscriptionGroup()
+                  }}
+                >
+                  <div class={styles.image} style={{ background: "#222" }} />
+                  <div class={styles.centerText}>New Group</div>
                 </div>
+              </div>
             </Show>
             <Show when={!!filters}>
               <div class={styles.filters}>
