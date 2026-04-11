@@ -30,6 +30,8 @@ const OverlaySubscriptionGroupEditDialog: Component<OverlaySubscriptionGroupEdit
     const [selected$, setSelected] = createSignal<string[]>([]);
 
     const [stateView$, setStateView] = createSignal(0);
+    const [isMoveMode$, setMoveMode] = createSignal(false);
+    const [groups$] = createResourceDefault(async () => SubscriptionsBackend.subscriptionGroups());
 
     function select(sub: ISubscription) {
       const index = selected.indexOf(sub.channel.url);
@@ -74,6 +76,24 @@ const OverlaySubscriptionGroupEditDialog: Component<OverlaySubscriptionGroupEdit
       changeView(0);
       props.subscriptionGroup.urls = props.subscriptionGroup.urls.concat(arr).filter(onlyUnique);
       subscriptionsResource.refetch();
+    }
+
+    function selectAll() {
+      const groupSubs = subscriptions$()?.filter(x => props.subscriptionGroup.urls.indexOf(x.channel.url) >= 0) ?? [];
+      const allSelected = selected$().length === groupSubs.length;
+      selected.length = 0;
+      if(!allSelected) selected.push(...groupSubs.map(s => s.channel.url));
+      setSelected([...selected]);
+    }
+
+    function copyToGroup(targetGroupId: string) {
+      const target = groups$()?.find(g => g.id === targetGroupId);
+      if(!target) return;
+      target.urls = [...new Set([...target.urls, ...selected$()])];
+      SubscriptionsBackend.subscriptionGroupSave(target);
+      if(isMoveMode$()) deleteSelected();
+      else setSelected([]);
+      changeView(0);
     }
 
     function globalBack() {
@@ -125,6 +145,34 @@ const OverlaySubscriptionGroupEditDialog: Component<OverlaySubscriptionGroupEdit
                     onPress: () => deleteGroup(),
                     onBack: globalBack
                   }} />
+            </div>
+          </div>
+        </Show>
+        <Show when={stateView$() == 4}>
+          <div class={styles.container} use:focusScope={{ initialMode: 'trap' }} onClick={(ev) => ev.stopPropagation()} onMouseDown={(ev) => ev.stopPropagation()}>
+            <div class={styles.dialogHeader}>
+              <div class={styles.headerText}>{isMoveMode$() ? "Move to group" : "Copy to group"}</div>
+              <div class={styles.headerSubText}>Select the destination group</div>
+            </div>
+            <ScrollContainer>
+              <div style={{"margin-left": "20px", "margin-right": "20px", "height": "65vh"}}>
+                <div class={styles.subscriptionsContainer}>
+                  <For each={groups$()?.filter(g => g.id !== props.subscriptionGroup.id)}>{(group) =>
+                    <div class={styles.subscription} onClick={() => copyToGroup(group.id)} use:focusable={{
+                      onPress: () => copyToGroup(group.id),
+                      onBack: globalBack
+                    }}>
+                      <div class={styles.image} style={{"background-image": `url(${proxyImageVariable(group.image)})`}} />
+                      <div class={styles.name}>{group.name}</div>
+                    </div>
+                  }</For>
+                </div>
+              </div>
+            </ScrollContainer>
+            <div style="height: 1px; background-color: rgba(255, 255, 255, 0.09); margin-top: 10px; margin-bottom: 10px;"></div>
+            <div style="text-align: right">
+              <Button text={"Cancel"} onClick={() => changeView(0)} style={{"margin-left": "10px", cursor: "pointer"}}
+                color={"#222"} focusableOpts={{ onPress: () => changeView(0), onBack: globalBack }} />
             </div>
           </div>
         </Show>
@@ -189,10 +237,26 @@ const OverlaySubscriptionGroupEditDialog: Component<OverlaySubscriptionGroupEdit
             </ScrollContainer>
             <div style="height: 1px; background-color: rgba(255, 255, 255, 0.09); margin-top: 10px; margin-bottom: 10px;"></div>
             <div style="text-align: right">
+                  <Button
+                    text={selected$().length > 0 && selected$().length === (subscriptions$()?.filter(x => props.subscriptionGroup.urls.indexOf(x.channel.url) >= 0).length ?? 0) ? "Deselect All" : "Select All"}
+                    onClick={() => selectAll()}
+                    style={{"margin-left": "10px", cursor: "pointer"}}
+                    color={"#222"}
+                    focusableOpts={{ onPress: () => selectAll(), onBack: globalBack }} />
                   <Show when={selected$().length > 0}>
+                    <Button text={"Copy to group"}
+                      onClick={() => { setMoveMode(false); changeView(4); }}
+                      style={{"margin-left": "10px", cursor: "pointer"}}
+                      color={"#222"}
+                      focusableOpts={{ onPress: () => { setMoveMode(false); changeView(4); }, onBack: globalBack }} />
+                    <Button text={"Move to group"}
+                      onClick={() => { setMoveMode(true); changeView(4); }}
+                      style={{"margin-left": "10px", cursor: "pointer"}}
+                      color={"#222"}
+                      focusableOpts={{ onPress: () => { setMoveMode(true); changeView(4); }, onBack: globalBack }} />
                     <Button text={"Delete Selected"}
                       onClick={()=>deleteSelected()}
-                      style={{"margin-left": "10px", cursor: ("pointer")}} 
+                      style={{"margin-left": "10px", cursor: ("pointer")}}
                       color={"rgba(249, 112, 102, 0.08)"}
                       focusableOpts={{
                         onPress: () => deleteSelected(),

@@ -398,3 +398,9 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Steam zip
+Grayjay_Steam.zip
+
+# Audit local (résultats d'audit de code, jamais à committer)
+audits/

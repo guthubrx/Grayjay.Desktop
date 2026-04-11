@@ -1,4 +1,4 @@
-import { createSignal, type Component, For, createResource, Show, createEffect, createMemo } from 'solid-js';
+import { createSignal, type Component, For, createResource, Show, createEffect, createMemo, Accessor, untrack } from 'solid-js';
 import styles from './index.module.css';
 import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
 import SearchBar from '../../components/topbars/SearchBar';
@@ -100,9 +100,9 @@ const SubscriptionsPage: Component = () => {
   });
   createEffect(()=>{
     const ids = selectedGroups$();
-    console.log("Group changed: " + ids.join(","));
-    subGroupPagerResource.refetch();
-    if(ids.length > 1 && !(subPager$.state == "ready" && subPager$()?.hadInitialUpdate$()))
+    if(ids.length === 1)
+      subGroupPagerResource.refetch();
+    if(ids.length > 1 && untrack(() => !(subPager$.state == "ready" && subPager$()?.hadInitialUpdate$())))
       subPagerResource.refetch();
   });
   const currentPager$ = createMemo(()=>{
