@@ -1,4 +1,8 @@
 
+> **Fork personnel — Bluejay**
+> Ce dépôt est un fork personnel de [futo-org/Grayjay.Desktop](https://github.com/futo-org/Grayjay.Desktop).
+> Le code source est soumis à la licence [FUTO Business Source License 1.1](./LICENSE.md) — usage commercial et distribution payante interdits sans accord FUTO.
+
 # Grayjay Desktop
 Grayjay is a multi-platform media application that allows you to watch content from multiple platforms in a single application. Using an extendable plugin system developers can make new integrations with additional platforms. Plugins are cross-compatible between Android and Desktop.
 
