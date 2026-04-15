@@ -422,16 +422,16 @@ namespace Grayjay.Desktop
                 await window.SetModifyRequestsAsync(true, false);
                 if (scaleFactor != null && scaleFactor != 1.0)
                 {
-                    window.OnLoadEnd += async (url) =>
+                    window.OnFrameLoadEnd += async (frameLoadInfo) =>
                     {
                         try
                         {
-                            if (url != null && url.EndsWith("/web/index.html"))
+                            if (frameLoadInfo.Url != null && frameLoadInfo.Url.EndsWith("/web/index.html"))
                             {
                                 await window.SetZoomAsync(scaleFactor.Value);
                                 Logger.i(nameof(Program), "Set page scale factor.");
                             }
-                            Logger.i(nameof(Program), "OnLoadEnd: " + url);
+                            Logger.i(nameof(Program), "OnLoadEnd: " + frameLoadInfo.Url);
                         }
                         catch (Exception e)
                         {
