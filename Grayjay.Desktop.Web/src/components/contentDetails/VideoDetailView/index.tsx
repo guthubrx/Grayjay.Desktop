@@ -572,6 +572,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     });
     const shouldHideSideBar = createMemo(() => {
         //TODO: Expand these conditions
+        if (StateGlobal.settings$()?.object?.playback?.recommendationsCarousel && mode() === VideoMode.Theatre && recommendationsVisible$())
+            return true;
         const sideBarVisible = shouldShowQueue() || hasLiveChat$() || recommendationsVisible$();
         return !sideBarVisible || dimensions().width < 1400;
     });
@@ -1574,6 +1576,37 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         "max-width": `${maximumColumnWidth()}px`
                     }}>
                         <div class={styles.containerLeft} style={{ width: shouldHideSideBar() ? "100%" : undefined }}>
+                            <Show when={shouldHideSideBar() && recommendationsVisible$()}>
+                                <div style={{
+                                    "width": "calc(100% - 80px)",
+                                    "margin-right": "40px",
+                                    "margin-left": "40px",
+                                    "margin-top": "8px"
+                                }} class={styles.recommendations}>
+                                    <HorizontalScrollContainer ref={horizontalScrollRecommendContainerRef} subtle={true}>
+                                        <HorizontalFlexibleArrayList outerContainerRef={horizontalScrollRecommendContainerRef}
+                                            onEnd={onScrollEndRecommendations}
+                                            addedItems={recomPager$()?.addedItemsEvent}
+                                            modifiedItems={recomPager$()?.modifiedItemsEvent}
+                                            removedItems={recomPager$()?.removedItemsEvent}
+                                            items={recomPager$()?.data}
+                                            builder={(_, item) => {
+                                                return (
+                                                    <VideoThumbnailView
+                                                        style={{"margin-bottom": "10px", "width": "236px", "box-sizing": "border-box", "padding-right": "16px" }}
+                                                        imageStyle={{"height": "124px", "width": "220px"}}
+                                                        video={item()}
+                                                        onClick={()=>{video?.actions.openVideo(item())}}
+                                                        focusableOpts={item() ? {
+                                                            onPress: () => video?.actions.openVideo(item())
+                                                        } : undefined}
+                                                    />
+                                                );
+                                            }} />
+                                    </HorizontalScrollContainer>
+                                </div>
+                            </Show>
+
                             <div class={styles.headerContainer}>
                                 <div class={styles.containerTitle}>
                                     <div class={styles.title} ondragstart={(ev)=>preventDragDrop(ev)}>{name$()}</div>
@@ -1730,37 +1763,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 </Show>
                                 */
                             }
-
-                            <Show when={shouldHideSideBar() && recommendationsVisible$()}>
-                                <div style={{
-                                    "width": "calc(100% - 80px)",
-                                    "margin-right": "40px",
-                                    "margin-left": "40px",
-                                    "margin-top": "28px"
-                                }} class={styles.recommendations}>
-                                    <HorizontalScrollContainer ref={horizontalScrollRecommendContainerRef} subtle={true}>
-                                        <HorizontalFlexibleArrayList outerContainerRef={horizontalScrollRecommendContainerRef}
-                                            onEnd={onScrollEndRecommendations}
-                                            addedItems={recomPager$()?.addedItemsEvent}
-                                            modifiedItems={recomPager$()?.modifiedItemsEvent}
-                                            removedItems={recomPager$()?.removedItemsEvent}
-                                            items={recomPager$()?.data}
-                                            builder={(_, item) => {
-                                                return (
-                                                    <VideoThumbnailView 
-                                                        style={{"margin-bottom": "10px", "width": "236px", "box-sizing": "border-box", "padding-right": "16px" }}
-                                                        imageStyle={{"height": "124px", "width": "220px"}}
-                                                        video={item()}
-                                                        onClick={()=>{video?.actions.openVideo(item())}}
-                                                        focusableOpts={item() ? {
-                                                            onPress: () => video?.actions.openVideo(item())
-                                                        } : undefined}
-                                                    />
-                                                );
-                                            }} />
-                                    </HorizontalScrollContainer>
-                                </div>
-                            </Show>
 
                             <Switch>
                                 <Match when={!videoLoadedIsValid$() || commentsPager$.state !== "ready"}>
