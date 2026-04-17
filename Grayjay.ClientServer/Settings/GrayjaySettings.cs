@@ -188,6 +188,9 @@ namespace Grayjay.ClientServer.Settings
                 return (int)(height * (16 / (double)9)) * height;
             }
 
+            [SettingsField("Horizontal Recommendations", SettingsField.TOGGLE, "Show recommendations below the player as a horizontal scrolling list instead of a vertical sidebar", 3)]
+            public bool RecommendationsCarousel { get; set; } = false;
+
 
             /*
             [SettingsField("Preferred Preview Quality", SettingsField.DROPDOWN, "Default qaulity while previewing a video in a feed", 4)]
