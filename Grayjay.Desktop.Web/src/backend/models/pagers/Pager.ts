@@ -7,6 +7,7 @@ export abstract class Pager<T> {
     data: T[] = Array<T>();
     dataFiltered: T[] = Array<T>();
     filter?: (item: T)=>boolean;
+    sortComparator?: (a: T, b: T) => number;
     modifiedItemsEvent = new Event1<{startIndex: number, endIndex: number}>();
     modifiedFilteredItemsEvent = new Event1<{startIndex: number, endIndex: number}>();
     removedItemsEvent = new Event1<{startIndex: number, endIndex: number}>();
@@ -23,6 +24,21 @@ export abstract class Pager<T> {
     setFilter(filter: (arg0: T)=>boolean) {
         this.filter = filter;
         updateDataArray<T>(this.dataFiltered, this.data.filter(filter), (a, b) => this.modifiedFiltered(a, b), (a, b) => this.addedFiltered(a, b), (a, b) => this.removedFiltered(a, b));
+        if (this.sortComparator && this.dataFiltered.length > 0) {
+            this.dataFiltered.sort(this.sortComparator);
+            this.modifiedFiltered(0, this.dataFiltered.length - 1);
+        }
+        this.filterChangedEvent.invoke();
+    }
+
+    setSortComparator(comparator: ((a: T, b: T) => number) | undefined) {
+        this.sortComparator = comparator;
+        const filtered = this.data.filter(this.filter ?? (() => true));
+        if (comparator) filtered.sort(comparator);
+        this.dataFiltered.length = 0;
+        this.dataFiltered.push(...filtered);
+        if (this.dataFiltered.length > 0)
+            this.modifiedFiltered(0, this.dataFiltered.length - 1);
         this.filterChangedEvent.invoke();
     }
 
@@ -59,6 +75,7 @@ export abstract class Pager<T> {
         if (result?.results) {
             this.data.push(...result.results);
             this.dataFiltered.push(...result.results.filter((this.filter) ? this.filter : (item)=>true));
+            if (this.sortComparator) this.dataFiltered.sort(this.sortComparator);
             if (this.dataFiltered.length > 0) {
                 this.addedFiltered(0, this.dataFiltered.length - 1);
                 console.info(`addedFiltered(0, ${this.dataFiltered.length - 1})`);
@@ -131,15 +148,23 @@ export abstract class Pager<T> {
                 const dataFilteredLengthBefore = this.dataFiltered.length;
                 this.data.push(...result.results);
                 this.dataFiltered.push(...result.results.filter((this.filter) ? this.filter : (item)=>true));
+                const filteredAdded = this.dataFiltered.length > dataFilteredLengthBefore;
+                if (this.sortComparator) this.dataFiltered.sort(this.sortComparator);
                 console.log("next page loaded", {length: this.data.length});
-                
+
                 if (this.data.length > dataLengthBefore) {
                     this.added(dataLengthBefore, this.data.length - 1);
                     console.info(`nextPage added(${dataLengthBefore}, ${this.data.length - 1})`);
                 }
-                if (this.dataFiltered.length > dataFilteredLengthBefore) {
-                    this.addedFiltered(dataFilteredLengthBefore, this.dataFiltered.length - 1);
-                    console.info(`nextPage addedFiltered(${dataFilteredLengthBefore}, ${this.dataFiltered.length - 1})`);
+                if (filteredAdded) {
+                    if (this.sortComparator) {
+                        this.modifiedFiltered(0, this.dataFiltered.length - 1);
+                        this.addedFiltered(dataFilteredLengthBefore, this.dataFiltered.length - 1);
+                        console.info(`nextPage modifiedFiltered(0, ${this.dataFiltered.length - 1}) + addedFiltered(${dataFilteredLengthBefore}, ${this.dataFiltered.length - 1})`);
+                    } else {
+                        this.addedFiltered(dataFilteredLengthBefore, this.dataFiltered.length - 1);
+                        console.info(`nextPage addedFiltered(${dataFilteredLengthBefore}, ${this.dataFiltered.length - 1})`);
+                    }
                 } else {
                     this.noFiltered();
                     console.info(`nextPage noFilteredItems`);
