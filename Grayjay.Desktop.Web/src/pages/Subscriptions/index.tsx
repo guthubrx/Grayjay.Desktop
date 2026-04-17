@@ -1,4 +1,4 @@
-import { createSignal, type Component, For, createResource, Show, createEffect, createMemo, Accessor } from 'solid-js';
+import { createSignal, type Component, For, createResource, Show, createEffect, createMemo, Accessor, untrack } from 'solid-js';
 import styles from './index.module.css';
 import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
 import SearchBar from '../../components/topbars/SearchBar';
@@ -29,7 +29,9 @@ import { ContentType } from '../../backend/models/ContentType';
 
 import { ImportBackend } from '../../backend/ImportBackend';
 
+import iconChevDown from '../../assets/icons/icon_chrevron_down.svg'
 import iconEdit from '../../assets/icons/icon24_edit.svg'
+import iconChevUp from '../../assets/icons/icon_chevron_right.svg'
 import iconQuestion from '../../assets/icons/icon24_faq.svg'
 import iconSubscriptions from '../../assets/icons/icon_nav_subscriptions.svg'
 import iconSearch from '../../assets/icons/icon24_search.svg'
@@ -53,7 +55,7 @@ const SubscriptionsPage: Component = () => {
   
   let [selectedCreators$, setSelectedCreators] = createSignal<string[]>([]);
   const hasSelectedCreator$ = createMemo(()=> selectedCreators$() && selectedCreators$().length > 0);
-  let [selectedGroup$, setSelectedGroup] = createSignal<string>();
+  let [selectedGroups$, setSelectedGroups] = createSignal<string[]>([]);
 
   StateWebsocket.registerHandlerNew("subProgress", (packet)=>{
     setSubProgress(packet.payload.progress / packet.payload.total);
@@ -82,11 +84,11 @@ const SubscriptionsPage: Component = () => {
     return subscriptionPager;
   });
   const [subGroupPager$, subGroupPagerResource] = createResourceDefault(async () => {
-    const id = selectedGroup$();
-    if(!id)
+    const ids = selectedGroups$();
+    if(ids.length !== 1)
       return undefined;
 
-    return await SubscriptionsBackend.subscriptionGroupPager(id, false);
+    return await SubscriptionsBackend.subscriptionGroupPager(ids[0], false);
   });
   const [filterPager$, filterPagerResource] = createResourceDefault(async () => {
     const url = selectedCreators$();
@@ -97,11 +99,14 @@ const SubscriptionsPage: Component = () => {
     return filterPager;
   });
   createEffect(()=>{
-    console.log("Group changed: " + selectedGroup$());
+    const ids = selectedGroups$();
     subGroupPagerResource.refetch();
+    if(ids.length > 1 && untrack(() => !(subPager$.state == "ready" && subPager$()?.hadInitialUpdate$())))
+      subPagerResource.refetch();
   });
   const currentPager$ = createMemo(()=>{
-    if(!selectedGroup$()) {
+    const groups = selectedGroups$();
+    if(groups.length === 0) {
       if(selectedCreators$() && selectedCreators$().length > 0 && filterPager$.state == "ready") {
         const filterPagerResult = filterPager$();
         return filterPagerResult;
@@ -111,8 +116,14 @@ const SubscriptionsPage: Component = () => {
       else
         return subCachePager$();
     }
-    else
+    else if(groups.length === 1)
       return subGroupPager$();
+    else {
+      if(subPager$.state == "ready" && subPager$()?.hadInitialUpdate$())
+        return subPager$();
+      else
+        return subCachePager$();
+    }
   });
   createEffect(()=>{
     const pager = currentPager$();
@@ -163,7 +174,15 @@ const SubscriptionsPage: Component = () => {
       updateFilter(pager, getFilter());
   }
   function getFilter() {
+    const groups = selectedGroups$();
+    let groupChannelIds: Set<string> | null = null;
+    if(groups.length > 1) {
+      const groupUrls = new Set((subGroups$() ?? []).filter(g => groups.includes(g.id)).flatMap(g => g.urls));
+      groupChannelIds = new Set((subs$() ?? []).filter(sub => groupUrls.has(sub.channel.url)).map(sub => sub.channel.id.value));
+    }
     return (obj: IPlatformContent)=>{
+      if(groupChannelIds && !groupChannelIds.has(obj.author.id.value))
+        return false;
       //const creators = selectedCreators$();
       //if(creators.length > 0 && creators.indexOf(obj.author.url) < 0)
       //  return false;
@@ -210,6 +229,14 @@ const SubscriptionsPage: Component = () => {
       */
   }
 
+  function toggleGroup(groupId: string, multi: boolean) {
+    const ids = selectedGroups$();
+    if(multi)
+      setSelectedGroups(ids.includes(groupId) ? ids.filter(x => x !== groupId) : [...ids, groupId]);
+    else
+      setSelectedGroups(ids.length === 1 && ids[0] === groupId ? [] : [groupId]);
+  }
+
   function updateFilter(pager: Pager<IPlatformContent>, condition: (obj: IPlatformContent)=>boolean){
     pager.setFilter(condition);
   }
@@ -231,6 +258,11 @@ const SubscriptionsPage: Component = () => {
       })
     ]
   } as Menu;
+  function setReloadButtonRef(element: HTMLElement) {
+    anchor.setElement(element);
+  }
+
+  const [subGroupsExpanded$, setSubGroupsExpanded] = createSignal(false);
   function newSubscriptionGroup() {
     UIOverlay.overlayNewSubscriptionGroup((group)=>{
       subGroupsResource.refetch();
@@ -272,28 +304,10 @@ const SubscriptionsPage: Component = () => {
   return (
     <div class={styles.container}>
       <NavigationBar isRoot={true} childrenAfter={
-        <IconButton
-          icon={iconRefresh}
-          variant="none"
-          shape="circle"
-          width="30px"
-          height="30px"
-          iconInset="0px"
-          style={{ "margin-left": "24px" }}
-          onClick={(e) => {
-            anchor.setElement(e.currentTarget as HTMLElement);
-            setShowReloadMenu(true);
-          }}
-          focusableOpts={{
-            onPress: (el) => {
-              anchor.setElement(el);
-              setShowReloadMenu(true);
-            },
-            groupId: 'nav-bar',
-            groupIndices: [1],
-            groupType: 'horizontal',
-          }}
-        />
+          <img src={iconRefresh} style={{"margin-left": "24px", "cursor": "pointer", "height": "30px", "width": "30px" }}
+            ref={setReloadButtonRef}
+            use:focusable={{ onPress: () => setShowReloadMenu(true) }}
+            onClick={()=>{ setShowReloadMenu(true) }} />
       } />
       <ScrollContainer ref={scrollContainerRef}>
         <Show when={subs$() && subs$()!.length > 0}>
@@ -304,16 +318,7 @@ const SubscriptionsPage: Component = () => {
                   class={styles.channel} 
                   onClick={() => toggleCreator(sub.channel.url)} 
                   classList={{[styles.active]: selectedCreators$().indexOf(sub.channel.url) >= 0}} 
-                  use:focusable={{
-                    groupEscapeTo: {
-                      left: ['sidebar'],
-                      down: ['subgroups', 'filters']
-                    },
-                    groupId: 'creators',
-                    groupIndices: [i()],
-                    groupType: 'horizontal',
-                    onPress: () => toggleCreator(sub.channel.url) 
-                  }}
+                  use:focusable={{ onPress: () => toggleCreator(sub.channel.url) }}
                 >
                   <div>
                     <img src={sub.channel.thumbnail} class={styles.channelImg} />
@@ -339,30 +344,10 @@ const SubscriptionsPage: Component = () => {
                 </div>
                 <div style="flex-grow: 1"></div>
                 <div class={styles.bannerButtons}>
-                  <Button text="Create a subscription group" color="linear-gradient(267deg, #01D6E6 -100.57%, #0182E7 90.96%)"
-                    onClick={() => newSubscriptionGroup()} focusableOpts={{ 
-                      onPress: () => newSubscriptionGroup(),
-                      groupEscapeTo: {
-                        left: ['sidebar'],
-                        down: ['filters'],
-                        up: ['creators']
-                      },
-                      groupId: 'subgroups',
-                      groupType: 'horizontal',
-                      groupIndices: [0]
-                    }} />
+                  <Button text="Create a subscription group" color="linear-gradient(267deg, #01D6E6 -100.57%, #0182E7 90.96%)" focusColor="linear-gradient(267deg, #00eeffff -100.57%, #0091ffff 90.96%)"
+                    onClick={() => newSubscriptionGroup()} focusableOpts={{ onPress: () => newSubscriptionGroup() }} />
                   <Button text="Dismiss" color="transparant" focusColor="#FFFFFF22" style={{ border: "1px solid rgba(1, 155, 231, 0)", "margin-left": "16px" }} 
-                    onClick={() => dismissSubscriptionGroups()} focusableOpts={{ 
-                      onPress: () => dismissSubscriptionGroups(),
-                      groupEscapeTo: {
-                        left: ['sidebar'],
-                        down: ['filters'],
-                        up: ['creators']
-                      },
-                      groupId: 'subgroups',
-                      groupType: 'horizontal',
-                      groupIndices: [1]
-                    }} />
+                    onClick={() => dismissSubscriptionGroups()} focusableOpts={{ onPress: () => dismissSubscriptionGroups() }} />
                 </div>
               </div>
             </Show>
@@ -371,8 +356,8 @@ const SubscriptionsPage: Component = () => {
                 <For each={subGroups$()}>{(subGroup: ISubscriptionGroup, i: Accessor<number>) => (
                   <div
                     class={styles.subgroup}
-                    classList={{ [styles.active]: subGroup.id === selectedGroup$() }}
-                    onClick={() => (subGroup.id === selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id)}
+                    classList={{ [styles.active]: selectedGroups$().includes(subGroup.id) }}
+                    onClick={(e) => toggleGroup(subGroup.id, e.metaKey || e.ctrlKey)}
                     use:focusable={{
                       groupEscapeTo: {
                         left: ['sidebar'],
@@ -383,7 +368,7 @@ const SubscriptionsPage: Component = () => {
                       groupType: 'horizontal',
                       groupIndices: [i()],
                       onOptions: () => UIOverlay.overlayEditSubscriptionGroup(subGroup),
-                      onPress: () => (subGroup.id === selectedGroup$()) ? setSelectedGroup(undefined) : setSelectedGroup(subGroup.id)
+                      onPress: () => toggleGroup(subGroup.id, false)
                     }}
                   >
                     <div
@@ -403,7 +388,7 @@ const SubscriptionsPage: Component = () => {
                   class={styles.subgroup}
                   style="cursor: pointer"
                   onClick={() => newSubscriptionGroup()}
-                  use:focusable={{ 
+                  use:focusable={{
                     groupEscapeTo: {
                       left: ['sidebar'],
                       down: ['filters'],
@@ -412,7 +397,7 @@ const SubscriptionsPage: Component = () => {
                     groupId: 'subgroups',
                     groupType: 'horizontal',
                     groupIndices: [subGroups$()?.length ?? 0],
-                    onPress: () => newSubscriptionGroup() 
+                    onPress: () => newSubscriptionGroup()
                   }}
                 >
                   <div class={styles.image} style={{ background: "#222" }} />
@@ -427,16 +412,7 @@ const SubscriptionsPage: Component = () => {
                     class={styles.filter}
                     classList={{[styles.active]: filter.active[0]()}}
                     onClick={()=>toggleFilter(i())}
-                    use:focusable={{
-                      groupEscapeTo: {
-                        left: ['sidebar'],
-                        up: ['subgroups', 'creators']
-                      },
-                      groupId: 'filters',
-                      groupType: 'horizontal',
-                      groupIndices: [i()],
-                      onPress: () => toggleFilter(i()) 
-                    }}
+                    use:focusable={{ onPress: () => toggleFilter(i()) }}
                   >
                     <div class={styles.name}>
                       {filter.name}
