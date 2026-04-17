@@ -191,6 +191,18 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Horizontal Recommendations", SettingsField.TOGGLE, "Show recommendations below the player as a horizontal scrolling list instead of a vertical sidebar", 3)]
             public bool RecommendationsCarousel { get; set; } = false;
 
+            [SettingsField("Show Continue Watching", SettingsField.TOGGLE, "Show a row of unfinished videos near the player", 4)]
+            public bool ContinueWatchingEnabled { get; set; } = false;
+
+            [SettingsField("Horizontal Continue Watching", SettingsField.TOGGLE, "Show continue watching as a horizontal carousel instead of a vertical sidebar list", 5)]
+            public bool ContinueWatchingCarousel { get; set; } = true;
+
+            [SettingsField("Horizontal Queue", SettingsField.TOGGLE, "Show the playback queue as a horizontal carousel below the player in theater mode", 6)]
+            public bool QueueCarousel { get; set; } = false;
+
+            [SettingsField("Side-by-side Carousels", SettingsField.TOGGLE, "When multiple carousels are horizontal, display them side by side instead of stacked", 7)]
+            public bool CarouselsSideBySide { get; set; } = false;
+
 
             /*
             [SettingsField("Preferred Preview Quality", SettingsField.DROPDOWN, "Default qaulity while previewing a video in a feed", 4)]
