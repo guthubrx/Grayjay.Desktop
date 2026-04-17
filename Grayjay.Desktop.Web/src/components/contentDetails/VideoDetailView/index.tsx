@@ -63,6 +63,9 @@ import DOMPurify from 'dompurify';
 import { LocalBackend } from "../../../backend/LocalBackend";
 import { ILiveChatWindowDescriptor } from "../../../backend/models/comments/ILiveChatWindowDescriptor";
 import LiveChatRemoteWindow from "../../LiveChatRemoteWindow";
+import { Portal } from 'solid-js/web';
+import { SubscriptionsBackend } from '../../../backend/SubscriptionsBackend';
+import { Menus } from '../../../Menus';
 import { HistoryBackend } from "../../../backend/HistoryBackend";
 import StateGlobal from "../../../state/StateGlobal";
 import StateSync from "../../../state/StateSync";
@@ -110,6 +113,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     let descriptionContainerRef: HTMLDivElement | undefined;
     let containerRef: HTMLDivElement | undefined;
     let videoContainer: HTMLDivElement | undefined;
+    let moreSubscriptionElement: HTMLDivElement | undefined;
     let isScrubbing = false;
     let position: Duration | undefined = undefined;
     let errorCounter: number = 0;
@@ -655,6 +659,29 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const url$ = createMemo(() => videoLoadedIsValid$() ? (videoLoaded$()?.url ?? currentVideo$()?.url) : currentVideo$()?.url);
     const shareUrl$ = createMemo(() => videoLoadedIsValid$() ? (videoLoaded$()?.shareUrl ?? videoLoaded$()?.url ?? currentVideo$()?.shareUrl ?? currentVideo$()?.url ?? "") : (currentVideo$()?.shareUrl ?? currentVideo$()?.url));
     const author$ = createMemo(() => videoLoadedIsValid$() ? (videoLoaded$()?.author ?? currentVideo$()?.author) : currentVideo$()?.author);
+
+    const [subscriptionMenu$, setSubscriptionMenu] = createSignal<{ menu: Menu, subscription?: ISubscription, subscriptionSettings?: ISubscriptionSettings }>({ menu: { title: "", items: [] } });
+    const [showSubscriptionMenu$, setShowSubscriptionMenu] = createSignal(false);
+    const subscriptionMenuAnchor = new Anchor(null, showSubscriptionMenu$, AnchorStyle.BottomRight);
+    const [subscription$, subscriptionResource] = createResourceDefault(() => author$()?.url, async (u) => await SubscriptionsBackend.subscription(u));
+
+    const openSubscriptionMenu = async (el: HTMLElement, subscription: ISubscription | undefined) => {
+        if (!subscription) return;
+        const sourceState = StateGlobal.getSourceState(subscription.channel.id.pluginID);
+        const subscriptionSettings = await SubscriptionsBackend.subscriptionSettings(subscription.channel.url);
+        subscriptionMenuAnchor.setElement(el);
+        setSubscriptionMenu(Menus.getSubscriptionMenu(subscription, subscriptionSettings, sourceState));
+        setShowSubscriptionMenu(true);
+    };
+
+    const closeSubscriptionMenu = () => {
+        const subscription = subscriptionMenu$().subscription;
+        if (!subscription) return;
+        const subscriptionSettings = subscriptionMenu$().subscriptionSettings;
+        if (!subscriptionSettings) return;
+        SubscriptionsBackend.updateSubscriptionSettings(subscription.channel.url, subscriptionSettings);
+        setShowSubscriptionMenu(false);
+    };
 
     const navigate = useNavigate();
     function onClickAuthor() {
@@ -1589,7 +1616,17 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     </Show>
                                 </div>
 
-                                <SubscribeButton author={author$()?.url} style={{"margin-top": "29px"}} focusable={true} />
+                                <div style={{"display": "flex", "align-items": "center", "margin-top": "29px", "gap": "8px"}}>
+                                    <Show when={subscription$()}>
+                                        <TransparentIconButton
+                                            ref={moreSubscriptionElement}
+                                            icon={more}
+                                            style={{"width": "42px", "height": "42px"}}
+                                            onClick={(ev) => openSubscriptionMenu(ev.target as HTMLElement, subscription$()!)}
+                                        />
+                                    </Show>
+                                    <SubscribeButton author={author$()?.url} focusable={true} onIsSubscribedChanged={() => subscriptionResource.refetch()} />
+                                </div>
 
                                 <div style="flex-grow: 1;">
                                 </div>
@@ -2005,6 +2042,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     <SideBar alwaysMinimized={true} onNavigate={() => minimize()} style={{ "transition": "transform 0.3s ease-in-out" }} classList={{ [styles.sideBarHidden]: sideBarHidden$() }} onMoreOpened={() => setSideBarHidden(true)}></SideBar>
                 </div>
             </Show>
+            <Portal>
+                <SettingsMenu menu={subscriptionMenu$().menu} anchor={subscriptionMenuAnchor} show={showSubscriptionMenu$()} onHide={closeSubscriptionMenu} />
+            </Portal>
             <Show when={video?.state() === VideoState.Maximized}>
                 <div style={{"position": "absolute", "bottom": "8px", "right": repliesPager$() ? "12px" : "20px", "z-index": mode() === VideoMode.Theatre ? 2 : undefined}}>
                     <ControllerOverlay />
