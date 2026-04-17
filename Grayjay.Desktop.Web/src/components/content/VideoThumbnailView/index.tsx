@@ -23,6 +23,8 @@ interface VideoProps {
   imageStyle?: JSX.CSSProperties;
   useCache?: boolean;
   focusableOpts?: FocusableOptions;
+  hideAddToQueue?: boolean;
+  settingsOnHover?: boolean;
 }
 
 const VideoThumbnailView: Component<VideoProps> = (props) => {
@@ -88,6 +90,11 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
           <Show when={!props.video?.isLive}>
             <div class={styles.duration}>{toHumanTime(props.video?.duration ?? 0)}</div>
           </Show>
+          <Show when={props.settingsOnHover && props.onSettings && focus?.isControllerMode() !== true}>
+            <div class={styles.settingsOverlay}>
+              <IconButton icon={more} ref={refMoreButton} onClick={(e: MouseEvent) => { e.stopPropagation(); openMoreOverlay(); }} />
+            </div>
+          </Show>
             <div class={styles.progressBar}>
               <div class={styles.progressBarProgress} style={{width: (progress$() * 100) + "%"}}>
 
@@ -109,14 +116,14 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
             </div>
             
 
-            <Show when={props.onAddtoQueue && focus?.isControllerMode() !== true}>
-              <IconButton icon={addToQueueIcon} 
+            <Show when={!props.hideAddToQueue && props.onAddtoQueue && focus?.isControllerMode() !== true}>
+              <IconButton icon={addToQueueIcon}
                 style={{"margin-right": "7px", "margin-top": "4px"}}
                 iconPadding='3px'
                 height={"22px"} width={"22px"} ref={refAddToQueueButton} onClick={() => props.onAddtoQueue?.(refAddToQueueButton!, props.video!)} />
             </Show>
-            
-            <Show when={props.onSettings && focus?.isControllerMode() !== true} fallback={<div class="menu-anchor"></div>}>
+
+            <Show when={!props.settingsOnHover && props.onSettings && focus?.isControllerMode() !== true} fallback={<div class="menu-anchor"></div>}>
               <IconButton icon={more} ref={refMoreButton} onClick={() => openMoreOverlay()} />
             </Show>
         </div>

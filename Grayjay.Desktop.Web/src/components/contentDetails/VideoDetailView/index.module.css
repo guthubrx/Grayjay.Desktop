@@ -361,3 +361,86 @@
     border-radius: 10px;
     color: #DD7777;
 }
+
+.recommendationsCarouselWrapper {
+    position: relative;
+    width: 100%;
+}
+
+.carouselSectionTitle {
+    color: #FFF;
+    font-family: Inter;
+    font-size: 20px;
+    font-weight: 600;
+    padding: 12px 40px 0 40px;
+    box-sizing: border-box;
+}
+
+.recommendationsCarouselWrapper > div > div {
+    scrollbar-width: none;
+}
+
+.recommendationsCarouselWrapper > div > div::-webkit-scrollbar {
+    display: none;
+}
+
+.carouselNavButton {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 48px;
+    height: 90px;
+    border: none;
+    background-color: rgba(20, 20, 20, 0.75);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    z-index: 10;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+    backdrop-filter: blur(6px);
+}
+
+.carouselNavButton:hover {
+    background-color: rgba(40, 40, 40, 0.92);
+}
+
+.carouselNavButton img {
+    width: 28px;
+    height: 28px;
+    opacity: 0.85;
+}
+
+.carouselNavButton:hover img {
+    opacity: 1;
+}
+
+.carouselNavLeft {
+    left: 0;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.carouselNavRight {
+    right: 0;
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.sideBarSectionTitle {
+    color: #F0F0F0;
+    font-family: Inter;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: normal;
+    margin-bottom: 12px;
+}
+
+.recommendationItemActions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+}
