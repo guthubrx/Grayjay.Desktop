@@ -1372,11 +1372,21 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const recMenuAnchorRight = new Anchor(null, recMenuShow$, AnchorStyle.BottomRight);
     const recMenuAnchorLeft = new Anchor(null, recMenuShow$, AnchorStyle.BottomLeft);
     const [recMenuAnchor$, setRecMenuAnchor] = createSignal<Anchor>(recMenuAnchorRight);
+    const removeFromQueue = (c: IPlatformVideo) => {
+        const q = video?.queue();
+        const idx = q?.findIndex(x => x.url === c.url);
+        if (!video || !q || idx === undefined || idx < 0) return;
+        const cur = video.index() ?? 0;
+        video.actions.setQueue(cur > idx ? cur - 1 : cur, q.slice(0, idx).concat(q.slice(idx + 1)), video.repeat(), video.shuffle());
+    };
     const recMenu$ = createMemo<Menu>(() => {
         const c = recMenuContent$();
+        const inQueue = c ? (video?.queue()?.some(x => x.url === c.url) ?? false) : false;
         return { title: "", items: c ? [
             new MenuItemButton("Open channel", iconCreator, undefined, () => c.author && navigate("/web/channel?url=" + encodeURIComponent(c.author.url), { state: { author: c.author } })),
-            new MenuItemButton("Add to queue", iconQueue, undefined, () => video?.actions.addToQueue(c)),
+            inQueue
+                ? new MenuItemButton("Remove from queue", iconQueue, undefined, () => removeFromQueue(c))
+                : new MenuItemButton("Add to queue", iconQueue, undefined, () => video?.actions.addToQueue(c)),
             new MenuItemButton("Watch later", iconWatchLater, undefined, async () => { await WatchLaterBackend.add(c); await video?.actions?.refetchWatchLater(); }),
             new MenuItemButton("Add to playlist", iconAddToPlaylist, undefined, () => UIOverlay.overlayAddToPlaylist(c)),
             new MenuItemButton("Download video", iconDownload, undefined, () => UIOverlay.overlayDownload(c.url)),
