@@ -68,6 +68,7 @@ import SearchBar from "../../topbars/SearchBar";
 import { ContentType } from "../../../backend/models/ContentType";
 import DOMPurify from 'dompurify';
 import { LocalBackend } from "../../../backend/LocalBackend";
+import { LocalRecommendationsBackend } from "../../../backend/LocalRecommendationsBackend";
 import { ILiveChatWindowDescriptor } from "../../../backend/models/comments/ILiveChatWindowDescriptor";
 import LiveChatRemoteWindow from "../../LiveChatRemoteWindow";
 import { HistoryBackend } from "../../../backend/HistoryBackend";
@@ -261,7 +262,32 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         if(!videoLoaded)
             return undefined;
         const result =  await DetailsBackend.recommendationsPager(videoLoaded.url);
-        console.log("Recommendation Results:", result);
+        try {
+            const channelUrl = videoLoaded?.author?.url;
+            if (channelUrl && result?.data) {
+                const locals = await LocalRecommendationsBackend.forVideo(channelUrl, 20);
+                if (locals && locals.length > 0) {
+                    const platformSeen = new Set(result.data.map((c: any) => c?.url).filter(Boolean));
+                    const uniqueLocals = locals
+                        .filter(l => l?.url && !platformSeen.has(l.url))
+                        .map(l => ({ ...l, __fromSubscriptions: true } as any));
+                    const merged: any[] = [];
+                    const a = result.data as any[];
+                    const b = uniqueLocals;
+                    const max = Math.max(a.length, b.length);
+                    for (let i = 0; i < max; i++) {
+                        if (i < b.length) merged.push(b[i]);
+                        if (i < a.length) merged.push(a[i]);
+                    }
+                    result.data.length = 0;
+                    result.data.push(...merged);
+                    result.dataFiltered.length = 0;
+                    result.dataFiltered.push(...merged.filter(result.filter ?? (() => true)));
+                }
+            }
+        } catch (e) {
+            console.warn("Local recommendations merge failed", e);
+        }
         return result;
     });
     const [historyPager$] = createResource<Pager<IHistoryVideo>>(() => [videoLoaded$(), StateGlobal.settings$()?.object?.playback?.continueWatchingEnabled], async ([videoLoaded, enabled]: any) => {
@@ -1509,7 +1535,12 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             }} onClick={()=>{video?.actions.openVideo(item())}} use:focusable={{
                 onPress: () => video?.actions.openVideo(item())
             }}>
-                <img src={bestThumbnail()?.url} style="border-radius: 3px; height: 112px; width: 200px; cursor: pointer;" referrerPolicy='no-referrer' />
+                <div style="position: relative; flex-shrink: 0;">
+                    <img src={bestThumbnail()?.url} style="border-radius: 3px; height: 112px; width: 200px; cursor: pointer; display: block;" referrerPolicy='no-referrer' />
+                    <Show when={(item() as any)?.__fromSubscriptions === true}>
+                        <div class={styles.subscriptionBadge} title="De vos abonnements">◆ subs</div>
+                    </Show>
+                </div>
                 <div style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; cursor: pointer; margin-left: 10px;">
                     <div class={styles.recommendationItemTitle}>{item()?.name}</div>
                     <div class={styles.recommendationItemAuthor} style="margin-top: 6px">{item()?.author?.name}</div>
