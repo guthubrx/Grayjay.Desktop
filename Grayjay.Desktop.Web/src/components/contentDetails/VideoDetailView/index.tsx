@@ -83,6 +83,7 @@ import VideoThumbnailView from "../../content/VideoThumbnailView";
 import { IPlatformVideo } from "../../../backend/models/content/IPlatformVideo";
 import HorizontalScrollContainer from "../../containers/HorizontalScrollContainer";
 import HorizontalFlexibleArrayList from "../../containers/HorizontalFlexibleArrayList";
+import iconChevronDown from '../../../assets/icons/icon16_chevron_down.svg';
 import SideBar from "../../menus/SideBar";
 import LiveChatWindow from "../../LiveChatWindow";
 import { focusScope } from '../../../focusScope'; void focusScope;
@@ -120,6 +121,7 @@ interface HorizontalCarouselProps {
     onScrollEnd?: () => void;
     builder: (index: Accessor<number | undefined>, item: Accessor<any>) => any;
     flex?: string;
+    onTitleClick?: () => void;
 }
 
 const HorizontalCarousel: Component<HorizontalCarouselProps> = (props) => {
@@ -150,7 +152,13 @@ const HorizontalCarousel: Component<HorizontalCarouselProps> = (props) => {
             onMouseEnter={() => { setHover(true); update(); }}
             onMouseLeave={() => setHover(false)}
         >
-            <div class={styles.carouselSectionTitle}>{props.title}</div>
+            <div
+                class={styles.carouselSectionTitle}
+                style={{ cursor: props.onTitleClick ? "pointer" : undefined, "user-select": "none" }}
+                onClick={() => props.onTitleClick?.()}
+            >
+                {props.title}
+            </div>
             <div style={{ width: "100%", padding: "8px 40px 0 40px", "box-sizing": "border-box" }}>
                 <HorizontalScrollContainer ref={scrollRef} subtle={true}>
                     <HorizontalFlexibleArrayList
@@ -255,6 +263,13 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             return undefined;
         return await HistoryBackend.historyPager();
     });
+    const [carouselsCollapsed$, setCarouselsCollapsed] = createSignal(false);
+    SettingsBackend.persistGet("carouselsCollapsed", false).then((r: boolean) => setCarouselsCollapsed(r)).catch(e => console.error("Failed to get persistent setting 'carouselsCollapsed'.", e));
+    const toggleCarouselsCollapsed = () => {
+        const n = !carouselsCollapsed$();
+        setCarouselsCollapsed(n);
+        SettingsBackend.persistSet("carouselsCollapsed", n);
+    };
     const continueWatchingItems$ = createMemo(() => {
         const items = historyPager$()?.data ?? [];
         const currentUrl = videoLoaded$()?.url;
@@ -1673,6 +1688,16 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     </div>
                 </StickyShrinkOnScrollContainer>
                 <Show when={anyHorizontalCarousel$()}>
+                    <div
+                        class={styles.carouselsToggleBar}
+                        onClick={toggleCarouselsCollapsed}
+                        title={carouselsCollapsed$() ? "Show carousels" : "Hide carousels"}
+                        use:focusable={{ onPress: toggleCarouselsCollapsed }}
+                    >
+                        <img src={iconChevronDown} class={styles.carouselsToggleChevron} style={{ transform: carouselsCollapsed$() ? "rotate(-90deg)" : undefined }} />
+                    </div>
+                </Show>
+                <Show when={anyHorizontalCarousel$() && !carouselsCollapsed$()}>
                     <div style={{
                         display: "flex",
                         "flex-direction": carouselsSideBySide$() ? "row" : "column",
@@ -1683,6 +1708,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         <Show when={showHorizontalQueue$()}>
                             <HorizontalCarousel
                                 title="Queue"
+                                onTitleClick={toggleCarouselsCollapsed}
                                 items={video?.queue() ?? []}
                                 flex={carouselsSideBySide$() ? `0 1 ${Math.min(video?.queue()?.length ?? 0, 6) * 166 + 80}px` : undefined}
                                 builder={(_, item) => (
@@ -1705,6 +1731,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         <Show when={showHorizontalContinueWatching$()}>
                             <HorizontalCarousel
                                 title="Continue Watching"
+                                onTitleClick={toggleCarouselsCollapsed}
                                 items={continueWatchingItems$()}
                                 flex={carouselsSideBySide$() ? `0 1 ${Math.min(continueWatchingItems$()?.length ?? 0, 6) * 166 + 80}px` : undefined}
                                 builder={(_, item) => (
@@ -1725,6 +1752,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         <Show when={showHorizontalRecommendations$()}>
                             <HorizontalCarousel
                                 title="Recommendations"
+                                onTitleClick={toggleCarouselsCollapsed}
                                 pager={recomPager$()}
                                 onScrollEnd={onScrollEndRecommendations}
                                 flex={carouselsSideBySide$() ? "1 0 412px" : undefined}
@@ -1798,7 +1826,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     </Show>
                                 </div>
 
-                                <SubscribeButton author={author$()?.url} style={{"margin-top": "29px"}} focusable={true} />
+                                <SubscribeButton author={author$()?.url} style={{"margin-top": "22px"}} focusable={true} />
 
                                 <div style="flex-grow: 1;">
                                 </div>
