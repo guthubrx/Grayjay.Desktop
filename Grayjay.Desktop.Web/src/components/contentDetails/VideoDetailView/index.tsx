@@ -14,6 +14,7 @@ import iconQueue from '../../../assets/icons/icon_add_to_queue.svg';
 import iconCreator from '../../../assets/icons/icon_nav_creators.svg';
 import iconWatchLater from '../../../assets/icons/icon24_watch_later.svg';
 import iconAddToPlaylist from '../../../assets/icons/icon24_add_to_playlist.svg';
+import iconCheck from '../../../assets/icons/icon_checkmark.svg';
 import more_horiz from '../../../assets/icons/more_horiz_FILL0_wght400_GRAD0_opsz24.svg';
 import share from '../../../assets/icons/icon24_Share.svg';
 import ic_chevron_down from '../../../assets/icons/icon_chrevron_down.svg';
@@ -271,11 +272,13 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         setCarouselsCollapsed(n);
         SettingsBackend.persistSet("carouselsCollapsed", n);
     };
+    const [markedAsWatched$, setMarkedAsWatched] = createSignal<Set<string>>(new Set());
     const continueWatchingItems$ = createMemo(() => {
         const items = historyPager$()?.data ?? [];
         const currentUrl = videoLoaded$()?.url;
+        const marked = markedAsWatched$();
         return items
-            .filter(h => h.video && h.video.duration > 60 && h.position > h.video.duration * 0.02 && h.position < h.video.duration * 0.95 && h.video.url !== currentUrl)
+            .filter(h => h.video && h.video.duration > 60 && h.position > h.video.duration * 0.02 && h.position < h.video.duration * 0.95 && h.video.url !== currentUrl && !marked.has(h.video.url))
             .map(h => ({ ...h.video, metadata: { ...((h.video as any).metadata ?? {}), position: h.position } }));
     });
 
@@ -1417,12 +1420,26 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const [recMenuAnchor$, setRecMenuAnchor] = createSignal<Anchor>(recMenuAnchorRight);
     const recMenu$ = createMemo<Menu>(() => {
         const c = recMenuContent$();
+        const inQueue = c ? (video?.queue()?.some(x => x.url === c.url) ?? false) : false;
+        const inContinueWatching = c ? continueWatchingItems$().some(x => x.url === c.url) : false;
         return { title: "", items: c ? [
             new MenuItemButton("Open channel", iconCreator, undefined, () => c.author && navigate("/web/channel?url=" + encodeURIComponent(c.author.url), { state: { author: c.author } })),
             new MenuItemButton("Add to queue", iconQueue, undefined, () => video?.actions.addToQueue(c)),
             new MenuItemButton("Watch later", iconWatchLater, undefined, async () => { await WatchLaterBackend.add(c); await video?.actions?.refetchWatchLater(); }),
             new MenuItemButton("Add to playlist", iconAddToPlaylist, undefined, () => UIOverlay.overlayAddToPlaylist(c)),
             new MenuItemButton("Download video", iconDownload, undefined, () => UIOverlay.overlayDownload(c.url)),
+            ...(inContinueWatching && c.duration ? [
+                new MenuItemButton("Mark as watched", iconCheck, undefined, async () => {
+                    await DetailsBackend.watchProgress(c.url, c.duration);
+                    setMarkedAsWatched(prev => new Set([...prev, c.url]));
+                })
+            ] : []),
+            ...(inContinueWatching ? [
+                new MenuItemButton("Remove from history", iconTrash, undefined, async () => {
+                    await HistoryBackend.removeHistory(c.url);
+                    setMarkedAsWatched(prev => new Set([...prev, c.url]));
+                })
+            ] : []),
         ] : [] };
     });
     const openRecMenu = (el: HTMLElement, c: IPlatformVideo) => {
