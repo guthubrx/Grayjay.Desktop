@@ -44,6 +44,7 @@ export interface VideoContextValue {
         setQueue: (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean) => void;
         addToQueue: (v: IPlatformVideo) => void;
         setIndex: (index: number) => void;
+        consumeAndSetIndex: (index: number) => void;
         setRepeat: (value: boolean) => void;
         setShuffle: (value: boolean) => void;
         closeVideo: () => void;
@@ -128,6 +129,18 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
 
         setQueue([ ... (queue() ?? []), video ]);
     };
+    const consumeAndSetIndex = (targetIndex: number) => {
+        const currentIndex = index();
+        const currentQueue = queue();
+        if (currentIndex === undefined || !currentQueue || targetIndex === currentIndex) return;
+        const newQueue = currentQueue.filter((_, i) => i !== currentIndex);
+        const newIndex = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
+        batch(() => {
+            setQueue(newQueue);
+            setIndex(Math.max(0, Math.min(newIndex, newQueue.length - 1)));
+            setStartTime(undefined);
+        });
+    };
     const closeVideo = () => {
         batch(()=>{
             console.log("Closing video");
@@ -187,6 +200,7 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
                     setStartTime(undefined);
                 });
             },
+            consumeAndSetIndex,
             openVideo,
             openVideoByUrl,
             setQueue: sq,
