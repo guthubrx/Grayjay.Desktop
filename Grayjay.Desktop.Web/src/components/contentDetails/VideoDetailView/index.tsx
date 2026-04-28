@@ -292,6 +292,14 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }
     };
 
+    const playFromQueue = (targetIndex: number) => {
+        if (video?.repeat()) {
+            video?.actions?.setIndex(targetIndex);
+        } else {
+            video?.actions?.consumeAndSetIndex(targetIndex);
+        }
+    };
+
     const handleEnded = async () => {
         const currentIndex = video?.index();
         if (currentIndex === undefined) {
@@ -306,7 +314,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             if (nextIndex === currentIndex) {
                 eventRestart.invoke();
             } else {
-                video?.actions?.setIndex(nextIndex);
+                playFromQueue(nextIndex);
             }
         }
 
@@ -1434,7 +1442,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     if (nextIndex === currentIndex) {
                                         eventRestart.invoke();
                                     } else {
-                                        video?.actions?.setIndex(nextIndex);
+                                        playFromQueue(nextIndex);
                                     }
                                 }
                             }}
@@ -1449,7 +1457,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     if (nextIndex === currentIndex) {
                                         eventRestart.invoke();
                                     } else {
-                                        video?.actions?.setIndex(nextIndex);
+                                        playFromQueue(nextIndex);
                                     }
                                 }
                             })}
@@ -1650,7 +1658,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     }} onVideoClick={(v) => {
                                         const index = video?.queue()?.findIndex(x => x === v);
                                         if (index !== undefined) {
-                                            video?.actions?.setIndex(index);
+                                            playFromQueue(index);
                                         }
                                     }} onShuffleClick={() => {
                                         video?.actions?.setShuffle(!video?.shuffle());
@@ -1827,7 +1835,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                         }} onVideoClick={(v) => {
                                             const index = video?.queue()?.findIndex(x => x === v);
                                             if (index !== undefined) {
-                                                video?.actions?.setIndex(index);
+                                                playFromQueue(index);
                                             }
                                         }} onShuffleClick={() => {
                                             video?.actions?.setShuffle(!video?.shuffle());
