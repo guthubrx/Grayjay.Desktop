@@ -37,7 +37,9 @@ import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, s
 import { DetailsBackend } from "../../../backend/DetailsBackend";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
-import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton } from "../../menus/Overlays/SettingsMenu";
+import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton, MenuSeperator } from "../../menus/Overlays/SettingsMenu";
+import iconCreator from '../../../assets/icons/icon_nav_creators.svg';
+import iconTrash from '../../../assets/icons/icon_trash.svg';
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
 import Loader from "../../basics/loaders/Loader";
@@ -494,7 +496,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
 
     createEffect(async () => {
         if (videoSource$()?.shouldResume !== true) {
-            const playbackSpeed = await getDefaultPlaybackSpeed();
+            const channelUrl = videoLoaded$()?.author?.url;
+            const channelOverride = channelUrl ? channelPlaybackSpeeds$()[channelUrl] : undefined;
+            const playbackSpeed = channelOverride ?? await getDefaultPlaybackSpeed();
             console.log("video changed, resetting playback speed", playbackSpeed);
             setPlaybackSpeed(playbackSpeed);
         }
@@ -590,6 +594,19 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     });
     const [playbackSpeed$, setPlaybackSpeed] = createSignal(1);
     const [windowMaximized$, setWindowMaximized] = createSignal(false);
+    const [channelPlaybackSpeeds$, setChannelPlaybackSpeeds] = createSignal<Record<string, number>>({});
+    SettingsBackend.persistGet("channelPlaybackSpeeds", {}).then((r: Record<string, number>) => setChannelPlaybackSpeeds(r ?? {})).catch(e => console.error("Failed to get persistent setting 'channelPlaybackSpeeds'.", e));
+    const setChannelPlaybackSpeed = (channelUrl: string, speed: number) => {
+        const next = { ...channelPlaybackSpeeds$(), [channelUrl]: speed };
+        setChannelPlaybackSpeeds(next);
+        SettingsBackend.persistSet("channelPlaybackSpeeds", next);
+    };
+    const clearChannelPlaybackSpeed = (channelUrl: string) => {
+        const next = { ...channelPlaybackSpeeds$() };
+        delete next[channelUrl];
+        setChannelPlaybackSpeeds(next);
+        SettingsBackend.persistSet("channelPlaybackSpeeds", next);
+    };
 
     const repositionMinimize = () => {
         const vd = videoDimensions();
@@ -1222,25 +1239,33 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         ]
                     }
                 } as MenuItem : undefined,
-                {
-                    key: "Playback Speed",
-                    value: `${playbackSpeed$().toFixed(2)}x`,
-                    type: "group",
-                    subMenu: {
-                        title: "Playback Speed",
-                        items: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25].map(s => {
-                            return {
-                                name: `${s.toFixed(2)}x`,
-                                value: s,
-                                type: "option",
-                                onSelected: () => {
-                                    setPlaybackSpeed(s);
-                                },
-                                isSelected: playbackSpeed$() == s
-                            } as IMenuItemOption;
-                        })
+                (() => {
+                    const channelUrl = videoLoaded$()?.author?.url;
+                    const channelOverride = channelUrl ? channelPlaybackSpeeds$()[channelUrl] : undefined;
+                    const items: MenuItem[] = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25].map(s => {
+                        return {
+                            name: `${s.toFixed(2)}x`,
+                            value: s,
+                            type: "option",
+                            onSelected: () => {
+                                setPlaybackSpeed(s);
+                            },
+                            isSelected: playbackSpeed$() == s
+                        } as IMenuItemOption;
+                    });
+                    if (channelUrl) {
+                        items.push(new MenuSeperator());
+                        items.push(new MenuItemButton("Apply to this channel", iconCreator, undefined, () => setChannelPlaybackSpeed(channelUrl, playbackSpeed$())));
+                        if (channelOverride !== undefined)
+                            items.push(new MenuItemButton("Reset for this channel", iconTrash, undefined, () => clearChannelPlaybackSpeed(channelUrl)));
                     }
-                } as MenuItem
+                    return {
+                        key: "Playback Speed",
+                        value: `${playbackSpeed$().toFixed(2)}x`,
+                        type: "group",
+                        subMenu: { title: "Playback Speed", items }
+                    } as MenuItem;
+                })()
             ]
         } as Menu;
     });
