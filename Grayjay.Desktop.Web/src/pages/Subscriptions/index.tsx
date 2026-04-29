@@ -1,4 +1,5 @@
-import { createSignal, type Component, For, createResource, Show, createEffect, createMemo, Accessor } from 'solid-js';
+import { createSignal, type Component, For, createResource, Show, createEffect, createMemo, Accessor, onMount, onCleanup } from 'solid-js';
+import { getKeybinding } from '../../state/StateKeybindings';
 import styles from './index.module.css';
 import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
 import SearchBar from '../../components/topbars/SearchBar';
@@ -231,6 +232,19 @@ const SubscriptionsPage: Component = () => {
       })
     ]
   } as Menu;
+
+  const onReloadKeyDown = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement | null;
+    if (t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.isContentEditable) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === getKeybinding("reload")) {
+      doUpdate = true;
+      subPagerResource.refetch();
+      e.preventDefault();
+    }
+  };
+  onMount(() => window.addEventListener("keydown", onReloadKeyDown));
+  onCleanup(() => window.removeEventListener("keydown", onReloadKeyDown));
   function newSubscriptionGroup() {
     UIOverlay.overlayNewSubscriptionGroup((group)=>{
       subGroupsResource.refetch();
