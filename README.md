@@ -34,7 +34,62 @@
 
 ---
 
-# Grayjay Desktop
+## What this fork adds
+
+Each item below is a small, focused feature kept on its own branch (`pr/...`) so it can be discarded, reworked, or — eventually, with FUTO's blessing — proposed upstream as a single clean PR. The goal is always to fit the look, conventions and minimalism of the original code.
+
+> *Screenshots live in `docs/screenshots/` (drop any file you'd like to illustrate a feature; the README will reference them).*
+
+### 1. Horizontal carousels in theater mode &mdash; `pr/horizontal-carousels-theater`
+
+In theater mode, the queue, continue-watching list and recommendations can be displayed as horizontal carousels under the player instead of (or alongside) the vertical sidebar. Each is a separate setting under **Player → Carousels**, plus a "side-by-side" toggle. A thin collapsible bar under the player lets you hide/show all carousels at once. The state is persisted (`carouselsCollapsed`).
+
+Also includes a "Mark watched" / "Remove from history" entry in the context menu of continue-watching items.
+
+![Horizontal carousels](docs/screenshots/horizontal-carousels.png)
+
+### 2. Queue items consumed on play &mdash; `pr/queue-consume-on-play`
+
+When `repeat` is off, the currently-played video is removed from the queue once it finishes (auto-end) or when you manually pick another item or press next/prev. When `repeat` is on, the queue is preserved as before. No more leftover "already watched" entries piling up.
+
+### 3. Per-channel playback speed &mdash; `pr/per-channel-playback-speed`
+
+In the playback-speed submenu, two new entries: **Apply to this channel** (pin the current speed for every video from this channel) and **Reset for this channel**. Stored client-side under a single `channelPlaybackSpeeds` key — no schema change.
+
+![Per-channel speed](docs/screenshots/per-channel-speed.png)
+
+### 4. Hold-to-fast-forward &mdash; `pr/long-press-playback-speed`
+
+Press-and-hold on the player → playback temporarily jumps to a configurable speed (1.5×/2.0×/2.5×/3.0×, default 2.0×). Release → back to normal. New setting **Player → Long Press Playback Speed**.
+
+### 5. Keyboard shortcuts overlay &mdash; `pr/keyboard-shortcuts-overlay`
+
+Press `?` anywhere → an overlay lists every global keyboard shortcut. Layout-agnostic (`Shift+/` on US, `Shift+,` on French Mac, etc., all map to `?` via `e.key`).
+
+![Shortcuts overlay](docs/screenshots/shortcuts-overlay.png)
+
+### 6. Customizable keyboard shortcuts &mdash; `pr/keyboard-shortcuts-customize` (depends on #5)
+
+From the overlay, a **Customize…** link opens a rebind dialog. 13 actions are remappable (`press`, `back`, `options`, `action`, navigation arrows + alt nav `w/a/s/d`, `showShortcuts`). Click an action → press a key → done. **Reset to defaults** button. Visual warning on conflicts. Stored client-side under `keyboardShortcuts`.
+
+![Customize shortcuts](docs/screenshots/shortcuts-customize.png)
+
+### 7. Player keyboard shortcuts &mdash; `pr/player-keyboard-shortcuts` (depends on #6)
+
+Four extra customizable actions for the active video:
+
+| Default | Action |
+|:---:|---|
+| `t` | Toggle theater mode |
+| `v` | Maximize video to fill the window (UI hidden, not OS fullscreen) |
+| `x` | Speed +0.25 |
+| `z` | Speed -0.25 |
+
+`Esc` (or whatever you've bound `back` to) exits window-maximize.
+
+---
+
+
 Grayjay is a multi-platform media application that allows you to watch content from multiple platforms in a single application. Using an extendable plugin system developers can make new integrations with additional platforms. Plugins are cross-compatible between Android and Desktop.
 
 FUTO is an organization dedicated to developing, both through in-house engineering and investment, technologies that frustrate centralization and industry consolidation.
