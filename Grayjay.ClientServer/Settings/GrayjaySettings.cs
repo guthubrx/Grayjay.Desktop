@@ -179,6 +179,10 @@ namespace Grayjay.ClientServer.Settings
                 };
             }
 
+            [SettingsField("Long Press Playback Speed", SettingsField.DROPDOWN, "Speed applied while holding the player", 2)]
+            [SettingsDropdownOptions("1.5", "2.0", "2.5", "3.0")]
+            public int LongPressPlaybackSpeed { get; set; } = 1;
+
             [SettingsField("Preferred Quality", SettingsField.DROPDOWN, "Default quality for watching a video", 2)]
             [SettingsDropdownOptions("Automatic (1080p)", "2160p", "1440p", "1080p", "720p", "480p", "360p", "240p", "144p")]
             public int PreferredQuality { get; set; } = 0;
