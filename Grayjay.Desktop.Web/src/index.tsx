@@ -153,6 +153,7 @@ const App: Component<RouteSectionProps> = (props) => {
         </div>
       </Show>
       <GlobalContextMenu />
+      <ShortcutsOverlay show={showShortcuts$()} onClose={() => setShowShortcuts(false)} />
       <div style="position: absolute; bottom: 8px; right: 20px; z-index: 5;">
         <ControllerOverlay />
       </div>
