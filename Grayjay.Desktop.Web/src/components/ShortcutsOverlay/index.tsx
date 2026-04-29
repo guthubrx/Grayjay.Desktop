@@ -29,6 +29,12 @@ const ShortcutsOverlay: Component<ShortcutsOverlayProps> = (props) => {
         { keys: [display(getKeybinding("navUpAlt")), display(getKeybinding("navDownAlt")), display(getKeybinding("navLeftAlt")), display(getKeybinding("navRightAlt"))].map(k => k.toUpperCase()), description: "Navigate (alternative)" },
         { keys: [display(getKeybinding("options"))], description: KEYBINDING_LABELS.options },
         { keys: [display(getKeybinding("action"))], description: KEYBINDING_LABELS.action },
+        { keys: [display(getKeybinding("theaterToggle"))], description: KEYBINDING_LABELS.theaterToggle },
+        { keys: [display(getKeybinding("windowMaximize"))], description: KEYBINDING_LABELS.windowMaximize },
+        { keys: [display(getKeybinding("speedUp"))], description: KEYBINDING_LABELS.speedUp },
+        { keys: [display(getKeybinding("speedDown"))], description: KEYBINDING_LABELS.speedDown },
+        { keys: [display(getKeybinding("closeVideo"))], description: KEYBINDING_LABELS.closeVideo },
+        { keys: [display(getKeybinding("reload"))], description: KEYBINDING_LABELS.reload },
         { keys: [display(getKeybinding("showShortcuts"))], description: KEYBINDING_LABELS.showShortcuts },
     ]);
 
