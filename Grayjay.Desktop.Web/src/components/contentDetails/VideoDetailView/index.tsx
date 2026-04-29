@@ -38,7 +38,6 @@ import { DetailsBackend } from "../../../backend/DetailsBackend";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
 import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton, MenuSeperator } from "../../menus/Overlays/SettingsMenu";
-import iconCreator from '../../../assets/icons/icon_nav_creators.svg';
 import iconTrash from '../../../assets/icons/icon_trash.svg';
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
