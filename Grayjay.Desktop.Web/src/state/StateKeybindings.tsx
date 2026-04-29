@@ -5,6 +5,8 @@ export type ActionId =
     | "press" | "back" | "options" | "action"
     | "navUp" | "navDown" | "navLeft" | "navRight"
     | "navUpAlt" | "navDownAlt" | "navLeftAlt" | "navRightAlt"
+    | "theaterToggle" | "windowMaximize" | "speedUp" | "speedDown"
+    | "closeVideo"
     | "showShortcuts";
 
 export const KEYBINDING_LABELS: Record<ActionId, string> = {
@@ -20,6 +22,11 @@ export const KEYBINDING_LABELS: Record<ActionId, string> = {
     navDownAlt: "Navigate down (alternative)",
     navLeftAlt: "Navigate left (alternative)",
     navRightAlt: "Navigate right (alternative)",
+    theaterToggle: "Toggle theater mode",
+    windowMaximize: "Maximize video to fill the window",
+    speedUp: "Increase playback speed (+0.25)",
+    speedDown: "Decrease playback speed (-0.25)",
+    closeVideo: "Close current video",
     showShortcuts: "Show shortcuts overlay",
 };
 
@@ -36,6 +43,11 @@ export const DEFAULT_KEYBINDINGS: Record<ActionId, string> = {
     navDownAlt: "s",
     navLeftAlt: "a",
     navRightAlt: "d",
+    theaterToggle: "t",
+    windowMaximize: "v",
+    speedUp: "x",
+    speedDown: "z",
+    closeVideo: "q",
     showShortcuts: "?",
 };
 

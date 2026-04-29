@@ -63,6 +63,7 @@ import { ILiveChatWindowDescriptor } from "../../../backend/models/comments/ILiv
 import LiveChatRemoteWindow from "../../LiveChatRemoteWindow";
 import { HistoryBackend } from "../../../backend/HistoryBackend";
 import StateGlobal from "../../../state/StateGlobal";
+import { getKeybinding } from "../../../state/StateKeybindings";
 import StateSync from "../../../state/StateSync";
 import { SyncDevice } from "../../../backend/models/sync/SyncDevice";
 import { SyncBackend } from "../../../backend/SyncBackend";
@@ -461,6 +462,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         return desiredMaximumHeight;
     });
     const [playbackSpeed$, setPlaybackSpeed] = createSignal(1);
+    const [windowMaximized$, setWindowMaximized] = createSignal(false);
 
     const repositionMinimize = () => {
         const vd = videoDimensions();
@@ -633,10 +635,32 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         repositionMinimize();
     };
 
+    const handlePlayerKeyDown = (e: KeyboardEvent) => {
+        const target = e.target as HTMLElement | null;
+        const editable = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+        if (editable) return;
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        if (e.key === getKeybinding("theaterToggle")) {
+            video?.actions?.setDesiredMode(video?.desiredMode() === VideoMode.Theatre ? VideoMode.Standard : VideoMode.Theatre);
+            e.preventDefault();
+        } else if (e.key === getKeybinding("windowMaximize")) {
+            setWindowMaximized(v => !v);
+            e.preventDefault();
+        } else if (windowMaximized$() && e.key === getKeybinding("back")) {
+            setWindowMaximized(false);
+            e.preventDefault();
+            e.stopPropagation();
+        } else if (e.key === getKeybinding("closeVideo")) {
+            video?.actions?.closeVideo();
+            e.preventDefault();
+        }
+    };
+
     onMount(() => {
         LiveChatState.ensureLiveChatWebsocket();
         resizeObserver.observe(scrollContainerRef!);
         window.addEventListener('resize', handleWindowResize);
+        window.addEventListener('keydown', handlePlayerKeyDown);
         setDimensions({ width: scrollContainerRef!.clientWidth, height: scrollContainerRef!.clientHeight });
     });
 
@@ -644,6 +668,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         console.log("Cleaning up VideoDetailView")
         resizeObserver.unobserve(scrollContainerRef!);
         window.removeEventListener('resize', handleWindowResize);
+        window.removeEventListener('keydown', handlePlayerKeyDown);
         video?.actions.closeVideo();
         resizeObserver.disconnect();
     });
@@ -1606,6 +1631,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 </>
                             }
                             fullscreen={video?.state() === VideoState.Fullscreen}
+                            windowMaximized={windowMaximized$()}
                             focusable={true}
                             onOptions={() => {
                                 setShowSettings(true);
