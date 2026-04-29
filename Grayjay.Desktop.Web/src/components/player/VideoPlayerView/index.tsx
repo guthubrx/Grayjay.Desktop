@@ -60,6 +60,7 @@ interface VideoProps {
     resumePosition?: Duration;
     loaderUI?: JSX.Element;
     fullscreen?: boolean;
+    windowMaximized?: boolean;
     focusable?: boolean;
     onOptions?: (el: HTMLElement, inputSource: InputSource) => void;
     onReady?: (handle: VideoPlayerViewHandle) => void;
@@ -1238,11 +1239,12 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     });
 
     return (
-        <div ref={setContainerRef} 
+        <div ref={setContainerRef}
             classList={{
-                [styles.container]: !isFullscreen(),
-                [styles.containerFullscreen]: isFullscreen()
-            }} 
+                [styles.container]: !isFullscreen() && !props.windowMaximized,
+                [styles.containerFullscreen]: isFullscreen(),
+                [styles.containerWindowMaximized]: !isFullscreen() && !!props.windowMaximized
+            }}
             style={{ 
                 ... props.style,
                 cursor: areControlsVisible() ? undefined : "none"
