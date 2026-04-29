@@ -19,6 +19,21 @@
     outline: 0px;
 }
 
+.containerWindowMaximized {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+}
+
+.containerWindowMaximized:focus {
+    outline: 0px;
+}
+
 .controls {
     position: absolute;
     top: 0;
