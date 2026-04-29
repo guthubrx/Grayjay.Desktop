@@ -2,6 +2,7 @@ import { createContext, useContext, createSignal, onCleanup, createEffect, Acces
 import { Direction, Press, FocusableOptions, ScopeOptions, uid, isVisible, isFocusable, InputSource } from "./nav";
 import { useLocation, useNavigate } from "@solidjs/router";
 import { useVideo, VideoState } from "./contexts/VideoProvider";
+import { getKeybinding } from "./state/StateKeybindings";
 
 type NodeId = string;
 
@@ -885,35 +886,36 @@ export function FocusProvider(props: { children: JSX.Element }) {
 
         if (editable && editableWantsKey(e, !!trap)) return;
 
-        if (!e.ctrlKey && !e.shiftKey && !e.altKey) {
-            switch (e.key) {
-                /*case 'ArrowUp': navigateDirection('up', "keyboard"); e.preventDefault(); e.stopPropagation(); break;
-                case 'ArrowDown': navigateDirection('down', "keyboard"); e.preventDefault(); e.stopPropagation(); break;
-                case 'ArrowLeft': navigateDirection('left', "keyboard"); e.preventDefault(); e.stopPropagation(); break;
-                case 'ArrowRight': navigateDirection('right', "keyboard"); e.preventDefault(); e.stopPropagation(); break;*/
-                case 'Enter':
-                //case ' ':
-                    press('press', "keyboard");
-                    e.preventDefault();
-                    e.stopPropagation();
-                    break;
-                case 'Escape':
-                    if (press('back', "keyboard")) e.preventDefault(); e.stopPropagation(); break;
-                case 'o':
-                    if (!editable && !e.altKey && !e.metaKey) { if (press('options', "keyboard")) e.preventDefault(); e.stopPropagation(); }
-                    break;
-                case 'p':
-                    if (!editable && !e.altKey && !e.metaKey) { if (press('action', "keyboard")) e.preventDefault(); e.stopPropagation(); }
-                    break;
-                default:
-                    if (!editable) {
-                        if (e.key === 'w') { navigateDirection('up', "keyboard"); e.preventDefault(); e.stopPropagation(); }
-                        else if (e.key === 's') { navigateDirection('down', "keyboard"); e.preventDefault(); e.stopPropagation(); }
-                        else if (e.key === 'a') { navigateDirection('left', "keyboard"); e.preventDefault(); e.stopPropagation(); }
-                        else if (e.key === 'd') { navigateDirection('right', "keyboard"); e.preventDefault(); e.stopPropagation(); }
-                    }
-                    break;
+        if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+            const keyPress = getKeybinding("press");
+            const keyBack = getKeybinding("back");
+            const keyOptions = getKeybinding("options");
+            const keyAction = getKeybinding("action");
+            const keyNavUp = getKeybinding("navUp");
+            const keyNavDown = getKeybinding("navDown");
+            const keyNavLeft = getKeybinding("navLeft");
+            const keyNavRight = getKeybinding("navRight");
+            if (e.key === keyPress) {
+                press('press', "keyboard");
+                e.preventDefault();
+                e.stopPropagation();
             }
+            else if (e.key === keyBack) {
+                if (press('back', "keyboard")) e.preventDefault();
+                e.stopPropagation();
+            }
+            else if (!editable && !e.altKey && !e.metaKey && e.key === keyOptions) {
+                if (press('options', "keyboard")) e.preventDefault();
+                e.stopPropagation();
+            }
+            else if (!editable && !e.altKey && !e.metaKey && e.key === keyAction) {
+                if (press('action', "keyboard")) e.preventDefault();
+                e.stopPropagation();
+            }
+            else if (!editable && (e.key === keyNavUp || e.key === getKeybinding("navUpAlt"))) { navigateDirection('up', "keyboard"); e.preventDefault(); e.stopPropagation(); }
+            else if (!editable && (e.key === keyNavDown || e.key === getKeybinding("navDownAlt"))) { navigateDirection('down', "keyboard"); e.preventDefault(); e.stopPropagation(); }
+            else if (!editable && (e.key === keyNavLeft || e.key === getKeybinding("navLeftAlt"))) { navigateDirection('left', "keyboard"); e.preventDefault(); e.stopPropagation(); }
+            else if (!editable && (e.key === keyNavRight || e.key === getKeybinding("navRightAlt"))) { navigateDirection('right', "keyboard"); e.preventDefault(); e.stopPropagation(); }
         }
     }
 

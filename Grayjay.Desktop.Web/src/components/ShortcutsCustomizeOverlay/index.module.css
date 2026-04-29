@@ -8,7 +8,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10000;
+    z-index: 10001;
 }
 
 .overlay {
@@ -49,7 +49,7 @@
 }
 
 .list {
-    padding: 0 24px 20px 24px;
+    padding: 0 24px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -63,35 +63,49 @@
     padding: 8px 0;
 }
 
-.keys {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
+.label {
+    color: #B3B3B3;
+    font-size: 14px;
 }
 
-.kbd {
+.keyButton {
     background: #2E2E2E;
     border: 1px solid #404040;
     border-radius: 4px;
-    padding: 2px 8px;
+    padding: 4px 12px;
     font-family: Inter;
     font-size: 13px;
     font-weight: 500;
     color: #D9D9D9;
-    min-width: 22px;
+    min-width: 96px;
     text-align: center;
+    cursor: pointer;
+    user-select: none;
 }
 
-.plus {
-    color: #8C8C8C;
+.keyButton:hover {
+    background: #353535;
+}
+
+.capturing {
+    background: #019BE7;
+    color: #FFF;
+    border-color: #019BE7;
+}
+
+.conflict {
+    border-color: #DD7777;
+    color: #DD7777;
+}
+
+.warning {
+    margin: 12px 24px 0 24px;
+    padding: 8px 12px;
+    background: rgba(221, 119, 119, 0.12);
+    border: 1px solid rgba(221, 119, 119, 0.4);
+    border-radius: 6px;
+    color: #DD7777;
     font-size: 13px;
-}
-
-.description {
-    color: #B3B3B3;
-    font-size: 14px;
-    text-align: right;
 }
 
 .footer {
@@ -100,12 +114,12 @@
     justify-content: flex-end;
 }
 
-.customizeLink {
+.resetLink {
     color: #019BE7;
     font-size: 14px;
     cursor: pointer;
 }
 
-.customizeLink:hover {
+.resetLink:hover {
     text-decoration: underline;
 }

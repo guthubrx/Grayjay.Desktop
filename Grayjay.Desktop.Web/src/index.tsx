@@ -29,6 +29,7 @@ import LoaderGameExamplePage from './pages/LoaderGameExamplePage';
 import { FocusProvider } from './FocusProvider';
 import { focusScope } from './focusScope';import ControllerOverlay from './components/ControllerOverlay';
 import ShortcutsOverlay from './components/ShortcutsOverlay';
+import { getKeybinding } from './state/StateKeybindings';
  void focusScope;
 
 const HomePage = lazy(() => import('./pages/Home'));
@@ -70,7 +71,8 @@ const App: Component<RouteSectionProps> = (props) => {
     const target = e.target as HTMLElement | null;
     const editable = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
     if (editable) return;
-    if (e.key === "?") {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === getKeybinding("showShortcuts")) {
       setShowShortcuts(s => !s);
       e.preventDefault();
     }
