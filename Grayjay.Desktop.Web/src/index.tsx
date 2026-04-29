@@ -28,6 +28,7 @@ import BuyPage from './pages/BuyPage';
 import LoaderGameExamplePage from './pages/LoaderGameExamplePage';
 import { FocusProvider } from './FocusProvider';
 import { focusScope } from './focusScope';import ControllerOverlay from './components/ControllerOverlay';
+import ShortcutsOverlay from './components/ShortcutsOverlay';
  void focusScope;
 
 const HomePage = lazy(() => import('./pages/Home'));
@@ -63,6 +64,19 @@ StateWebsocket.registerHandlerNew("OpenUrl", (packet)=>{
 
 const App: Component<RouteSectionProps> = (props) => {
   const [isDropping$, setIsDropping] = createSignal<boolean>();
+  const [showShortcuts$, setShowShortcuts] = createSignal(false);
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    const editable = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+    if (editable) return;
+    if (e.key === "?") {
+      setShowShortcuts(s => !s);
+      e.preventDefault();
+    }
+  };
+  onMount(() => window.addEventListener("keydown", onKeyDown));
+  onCleanup(() => window.removeEventListener("keydown", onKeyDown));
 
   function dragOver(ev: any){
     setIsDropping(true);
@@ -140,6 +154,7 @@ const App: Component<RouteSectionProps> = (props) => {
       <div style="position: absolute; bottom: 8px; right: 20px; z-index: 5;">
         <ControllerOverlay />
       </div>
+      <ShortcutsOverlay show={showShortcuts$()} onClose={() => setShowShortcuts(false)} />
     </div>;
   };
 
