@@ -866,9 +866,12 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const openSubscriptionMenu = async (el: HTMLElement, subscription: ISubscription | undefined) => {
         if (!subscription) return;
         const sourceState = StateGlobal.getSourceState(subscription.channel.id.pluginID);
-        const subscriptionSettings = await SubscriptionsBackend.subscriptionSettings(subscription.channel.url);
+        const [subscriptionSettings, groups] = await Promise.all([
+            SubscriptionsBackend.subscriptionSettings(subscription.channel.url),
+            SubscriptionsBackend.subscriptionGroups().catch(() => [] as ISubscriptionGroup[])
+        ]);
         subscriptionMenuAnchor.setElement(el);
-        setSubscriptionMenu(Menus.getSubscriptionMenu(subscription, subscriptionSettings, sourceState));
+        setSubscriptionMenu(Menus.getSubscriptionMenu(subscription, subscriptionSettings, sourceState, groups));
         setShowSubscriptionMenu(true);
     };
 
