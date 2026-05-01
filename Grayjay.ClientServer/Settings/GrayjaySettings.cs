@@ -202,6 +202,9 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Side-by-side Carousels", SettingsField.TOGGLE, "When multiple carousels are horizontal, display them side by side instead of stacked", 7)]
             public bool CarouselsSideBySide { get; set; } = false;
 
+            [SettingsField("Persist Queue", SettingsField.TOGGLE, "Restore your playback queue between sessions", 8)]
+            public bool PersistQueue { get; set; } = true;
+
 
             /*
             [SettingsField("Preferred Preview Quality", SettingsField.DROPDOWN, "Default qaulity while previewing a video in a feed", 4)]

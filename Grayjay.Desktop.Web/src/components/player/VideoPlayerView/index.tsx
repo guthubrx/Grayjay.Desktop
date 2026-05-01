@@ -41,6 +41,7 @@ interface VideoProps {
     onIsPlayingChanged?: (isPlaying: boolean) => void;
     onPreviousVideo?: () => void;
     onNextVideo?: () => void;
+    hasNextVideo?: boolean;
     handleTheatre?: () => void;
     handleEscape?: () => void;
     handleMinimize?: () => void;
@@ -1426,6 +1427,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     }}
                     onPreviousVideo={props.onPreviousVideo}
                     onNextVideo={props.onNextVideo}
+                    hasNextVideo={props.hasNextVideo}
                     onOpenSearch={props.onOpenSearch}
                     onSingleFrameForward={() => {
                         if (paused())

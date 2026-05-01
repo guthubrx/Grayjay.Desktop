@@ -1,4 +1,5 @@
-import { createContext, useContext, JSX, ParentComponent, createSignal, Accessor, batch, createMemo, onMount } from "solid-js";
+import { createContext, useContext, JSX, ParentComponent, createSignal, Accessor, batch, createMemo, createEffect, onMount } from "solid-js";
+import StateGlobal from "../state/StateGlobal";
 import { range, shuffleArray } from "../utility";
 import { IOrderedPlatformVideo, WatchLaterBackend } from "../backend/WatchLaterBackend";
 import { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
@@ -225,6 +226,27 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     SettingsBackend.persistGet("desiredMode", VideoMode.Theatre).then((r: VideoMode) => setDesiredModeInternal(r)).catch(e => console.error("Failed to get persistent setting 'desiredMode'.", e));
     SettingsBackend.persistGet("theatrePinned", true).then((r: boolean) => setTheatrePinnedInternal(r)).catch(e => console.error("Failed to get persistent setting 'theatrePinned'.", e));
     SettingsBackend.persistGet("volume", 1).then((r: number) => setVolumeInternal(r)).catch(e => console.error("Failed to get persistent setting 'volume'.", e));
+
+    SettingsBackend.persistGet("playQueue", null).then((r: any) => {
+        if (StateGlobal.settings$()?.object?.playback?.persistQueue === false) return;
+        if (!r || !Array.isArray(r.queue) || r.queue.length === 0) return;
+        batch(() => {
+            setQueue(r.queue);
+            setIndex(typeof r.index === 'number' ? r.index : 0);
+            if (typeof r.repeat === 'boolean') setRepeat(r.repeat);
+            if (typeof r.shuffle === 'boolean') setShuffle(r.shuffle);
+        });
+    }).catch(e => console.error("Failed to get persistent setting 'playQueue'.", e));
+
+    createEffect(() => {
+        const q = queue();
+        const i = index();
+        const r = repeat();
+        const s = shuffle();
+        if (StateGlobal.settings$()?.object?.playback?.persistQueue === false) return;
+        const payload = (q && q.length > 0) ? { queue: q, index: i, repeat: r, shuffle: s } : null;
+        SettingsBackend.persistSet("playQueue", payload).catch(() => {});
+    });
 
     return (
         <VideoContext.Provider value={value}>

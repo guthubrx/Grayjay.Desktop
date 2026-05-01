@@ -1849,6 +1849,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     }
                                 }
                             })}
+                            hasNextVideo={nextVideoIndex() !== undefined && nextVideoIndex() !== video?.index()}
                             onIncreasePlaybackSpeed={() => setPlaybackSpeed(Math.min(2.25, playbackSpeed$() + 0.25))}
                             onDecreasePlaybackSpeed={() => setPlaybackSpeed(Math.max(0.25, playbackSpeed$() - 0.25))}
                             onOpenSearch={() => {

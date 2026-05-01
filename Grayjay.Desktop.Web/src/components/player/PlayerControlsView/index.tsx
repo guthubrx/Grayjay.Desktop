@@ -43,6 +43,7 @@ export interface PlayerControlsProps {
     onNextChapter?: () => void;
     onPreviousVideo?: () => void;
     onNextVideo?: () => void;
+    hasNextVideo?: boolean;
     onSingleFrameForward?: () => void;
     onSingleFrameBackward?: () => void;
     onIncreasePlaybackSpeed?: () => void;
@@ -568,7 +569,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
             <div class={styles.leftButtonContainer} style={props.leftButtonContainerStyle}>
                 <img src={play} class={styles.play} alt="play" style={{display: !props.isPlaying ? "block" : "none" }} onClick={(ev)=>onPlay(ev)} onDblClick={(e) => e.stopPropagation()} />
                 <img src={pause} class={styles.pause} alt="pause" style={{display: props.isPlaying ? "block" : "none" }} onClick={(ev)=>onPause(ev)} onDblClick={(e) => e.stopPropagation()} />
-                <Show when={props.onNextVideo}>
+                <Show when={props.onNextVideo && props.hasNextVideo}>
                     <img src={iconNext} class={styles.next} alt="next" onClick={(ev)=>onNext(ev)} onDblClick={(e) => e.stopPropagation()} />
                 </Show>
                 <img src={props.volume ? ic_volume : ic_mute} class={styles.volume} alt="volume" onClick={(ev)=> onToggleVolume(ev)} onDblClick={(e) => e.stopPropagation()} />
