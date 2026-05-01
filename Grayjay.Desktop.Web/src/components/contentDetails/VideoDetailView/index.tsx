@@ -40,6 +40,8 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
 import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton, IMenuFilter, MenuSeperator } from "../../menus/Overlays/SettingsMenu";
 import iconTrash from '../../../assets/icons/icon_trash.svg';
+import iconPinned from '../../../assets/icons/pinned.svg';
+import iconPinnedFill from '../../../assets/icons/pinned-fill.svg';
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
 import Loader from "../../basics/loaders/Loader";
@@ -1357,18 +1359,15 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             name: `${s.toFixed(2)}x`,
                             value: s,
                             type: "option",
-                            onSelected: () => {
-                                setPlaybackSpeed(s);
-                            },
-                            isSelected: playbackSpeed$() == s
+                            onSelected: () => setPlaybackSpeed(s),
+                            isSelected: playbackSpeed$() == s,
+                            ...(channelUrl ? {
+                                trailingIcon: channelOverride === s ? iconPinnedFill : iconPinned,
+                                trailingActive: channelOverride === s,
+                                onTrailingClick: () => channelOverride === s ? clearChannelPlaybackSpeed(channelUrl) : setChannelPlaybackSpeed(channelUrl, s),
+                            } : {})
                         } as IMenuItemOption;
                     });
-                    if (channelUrl) {
-                        items.push(new MenuSeperator());
-                        items.push(new MenuItemButton("Apply to this channel", iconCreator, undefined, () => setChannelPlaybackSpeed(channelUrl, playbackSpeed$())));
-                        if (channelOverride !== undefined)
-                            items.push(new MenuItemButton("Reset for this channel", iconTrash, undefined, () => clearChannelPlaybackSpeed(channelUrl)));
-                    }
                     return {
                         key: "Playback Speed",
                         value: `${playbackSpeed$().toFixed(2)}x`,
