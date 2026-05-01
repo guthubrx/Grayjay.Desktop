@@ -61,6 +61,7 @@ interface VideoProps {
     resumePosition?: Duration;
     loaderUI?: JSX.Element;
     fullscreen?: boolean;
+    windowMaximized?: boolean;
     focusable?: boolean;
     onOptions?: (el: HTMLElement, inputSource: InputSource) => void;
     onReady?: (handle: VideoPlayerViewHandle) => void;
@@ -554,6 +555,31 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             } else if (videoElement) {
                 videoElement.playbackRate = playbackSpeed;
             }
+        }
+    };
+
+    let longPressTimer: ReturnType<typeof setTimeout> | undefined;
+    let longPressActive = false;
+    let consumeNextPress = false;
+    const handleLongPressStart = async () => {
+        if (longPressTimer || longPressActive) return;
+        longPressTimer = setTimeout(async () => {
+            longPressTimer = undefined;
+            longPressActive = true;
+            const value = (await SettingsBackend.settings())?.object?.playback?.longPressPlaybackSpeed;
+            const speed = [1.5, 2.0, 2.5, 3.0][value ?? 1] ?? 2.0;
+            setPlaybackSpeed(speed);
+        }, 300);
+    };
+    const handleLongPressEnd = () => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = undefined;
+        }
+        if (longPressActive) {
+            longPressActive = false;
+            consumeNextPress = true;
+            setPlaybackSpeed(props.playbackSpeed ?? 1.0);
         }
     };
 
@@ -1152,6 +1178,10 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     });
 
     const togglePlay = async () => {
+        if (consumeNextPress) {
+            consumeNextPress = false;
+            return;
+        }
         if(props.onVerifyToggle && !props.onVerifyToggle(paused() || ended()))
             return;
         if (isCasting()) {
@@ -1247,7 +1277,13 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             return undefined;
 
         return {
-            onPress: togglePlay,
+            onPress: () => {
+                if (consumeNextPress) {
+                    consumeNextPress = false;
+                    return;
+                }
+                togglePlay();
+            },
             onPressLabel: "Toggle Playback",
             onOptions: props.onOptions,
             onDirection: (el, dir, inputSource) => {
@@ -1308,17 +1344,20 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     ));
 
     return (
-        <div ref={setContainerRef} 
+        <div ref={setContainerRef}
             classList={{
-                [styles.container]: !isFullscreen(),
-                [styles.containerFullscreen]: isFullscreen()
-            }} 
+                [styles.container]: !isFullscreen() && !props.windowMaximized,
+                [styles.containerFullscreen]: isFullscreen(),
+                [styles.containerWindowMaximized]: !isFullscreen() && !!props.windowMaximized
+            }}
             style={{ 
                 ... props.style,
                 cursor: areControlsVisible() ? undefined : "none"
             }} 
             onMouseMove={handleMouseMove}
-            onMouseLeave={hideControls}
+            onMouseLeave={() => { hideControls(); handleLongPressEnd(); }}
+            onMouseDown={handleLongPressStart}
+            onMouseUp={handleLongPressEnd}
             onDblClick={handleDblClick}
             use:focusable={focusableOpts()}>
 

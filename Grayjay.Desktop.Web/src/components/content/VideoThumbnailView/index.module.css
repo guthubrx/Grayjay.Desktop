@@ -170,6 +170,20 @@
     flex-grow: 1;
 }
 
+.settingsOverlay {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 2;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+}
+.container:hover .settingsOverlay {
+    opacity: 1;
+}
+
 .progressBar {
     position: absolute;
     right: 0px;
