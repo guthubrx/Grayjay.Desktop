@@ -3,6 +3,7 @@ import styles from './index.module.css';
 import { DateTime, Duration } from "luxon";
 import play from '../../../assets/icons/icon_32_play.svg';
 import pause from '../../../assets/icons/icon32_pause.svg';
+import iconNext from '../../../assets/icons/icon24_next.svg';
 import ic_volume from '../../../assets/icons/ic_volume.svg';
 import ic_mute from '../../../assets/icons/ic_mute.svg';
 import fullscreen from '../../../assets/icons/icon_32_fullscreen.svg';
@@ -172,7 +173,13 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     const onPlay = (e: MouseEvent) => {
         if(props.handlePlay)
             props.handlePlay();
-        
+
+        e.stopPropagation();
+        e.preventDefault();
+    };
+
+    const onNext = (e: MouseEvent) => {
+        props.onNextVideo?.();
         e.stopPropagation();
         e.preventDefault();
     };
@@ -561,6 +568,9 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
             <div class={styles.leftButtonContainer} style={props.leftButtonContainerStyle}>
                 <img src={play} class={styles.play} alt="play" style={{display: !props.isPlaying ? "block" : "none" }} onClick={(ev)=>onPlay(ev)} onDblClick={(e) => e.stopPropagation()} />
                 <img src={pause} class={styles.pause} alt="pause" style={{display: props.isPlaying ? "block" : "none" }} onClick={(ev)=>onPause(ev)} onDblClick={(e) => e.stopPropagation()} />
+                <Show when={props.onNextVideo}>
+                    <img src={iconNext} class={styles.next} alt="next" onClick={(ev)=>onNext(ev)} onDblClick={(e) => e.stopPropagation()} />
+                </Show>
                 <img src={props.volume ? ic_volume : ic_mute} class={styles.volume} alt="volume" onClick={(ev)=> onToggleVolume(ev)} onDblClick={(e) => e.stopPropagation()} />
                 <Show when={props.volume !== undefined}>
                     <div style="position: relative; height: 24px; width: 92px; flex-shrink: 0" onDblClick={(e) => e.stopPropagation()}>

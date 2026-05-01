@@ -311,6 +311,18 @@
     flex-shrink: 0;
 }
 
+.next {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 8px;
+    opacity: 0.85;
+}
+.next:hover {
+    opacity: 1;
+}
+
 .volume {
     width: 24px;
     height: 24px;

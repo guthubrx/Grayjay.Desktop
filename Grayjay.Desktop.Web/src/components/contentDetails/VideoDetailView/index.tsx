@@ -131,6 +131,7 @@ interface HorizontalCarouselProps {
     builder: (index: Accessor<number | undefined>, item: Accessor<any>) => any;
     flex?: string;
     onTitleClick?: () => void;
+    currentIndex?: number;
 }
 
 const HorizontalCarousel: Component<HorizontalCarouselProps> = (props) => {
@@ -154,6 +155,15 @@ const HorizontalCarousel: Component<HorizontalCarouselProps> = (props) => {
     onCleanup(() => {
         scrollRef?.removeEventListener('scroll', update);
     });
+    createEffect(on(() => props.currentIndex, (idx) => {
+        if (idx === undefined || !scrollRef) return;
+        const items = scrollRef.querySelectorAll<HTMLElement>('[data-carousel-idx]');
+        const target = items[idx];
+        if (target) {
+            const offset = target.offsetLeft - (scrollRef.clientWidth - target.clientWidth) / 2;
+            scrollRef.scrollTo({ left: Math.max(0, offset), behavior: 'smooth' });
+        }
+    }, { defer: true }));
     return (
         <div
             class={styles.recommendationsCarouselWrapper}
@@ -445,6 +455,14 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }
     };
 
+    const playFromQueue = (targetIndex: number) => {
+        if (video?.repeat()) {
+            video?.actions?.setIndex(targetIndex);
+        } else {
+            video?.actions?.consumeAndSetIndex(targetIndex);
+        }
+    };
+
     const handleEnded = async () => {
         const currentIndex = video?.index();
         if (currentIndex === undefined) {
@@ -459,7 +477,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             if (nextIndex === currentIndex) {
                 eventRestart.invoke();
             } else {
-                video?.actions?.setIndex(nextIndex);
+                playFromQueue(nextIndex);
             }
         }
 
@@ -1812,7 +1830,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     if (nextIndex === currentIndex) {
                                         eventRestart.invoke();
                                     } else {
-                                        video?.actions?.setIndex(nextIndex);
+                                        playFromQueue(nextIndex);
                                     }
                                 }
                             }}
@@ -1827,7 +1845,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     if (nextIndex === currentIndex) {
                                         eventRestart.invoke();
                                     } else {
-                                        video?.actions?.setIndex(nextIndex);
+                                        playFromQueue(nextIndex);
                                     }
                                 }
                             })}
@@ -1944,21 +1962,27 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 title="Queue"
                                 onTitleClick={toggleCarouselsCollapsed}
                                 items={video?.queue() ?? []}
+                                currentIndex={video?.index()}
                                 flex={carouselsSideBySide$() ? `0 1 ${Math.min(video?.queue()?.length ?? 0, 6) * 166 + 80}px` : undefined}
-                                builder={(_, item) => (
-                                    <VideoThumbnailView
-                                        style={{"margin-bottom": "10px", "width": "166px", "box-sizing": "border-box", "padding-right": "12px" }}
-                                        imageStyle={{"height": "87px", "width": "154px"}}
-                                        video={item()}
-                                        onClick={() => {
-                                            const i = video?.queue()?.findIndex(x => x === item());
-                                            if (i !== undefined && i >= 0) video?.actions?.setIndex(i);
-                                        }}
-                                        onAddtoQueue={(_, content) => video?.actions.addToQueue(content as IPlatformVideo)}
-                                        onSettings={(el, content) => openRecMenu(el, content as IPlatformVideo)}
-                                        hideAddToQueue={true}
-                                        settingsOnHover={true}
-                                    />
+                                builder={(idx, item) => (
+                                    <div data-carousel-idx={idx()} style={{ position: "relative", "flex-shrink": 0, transition: "opacity 200ms ease, transform 200ms ease" }}>
+                                        <VideoThumbnailView
+                                            style={{"margin-bottom": "10px", "width": "166px", "box-sizing": "border-box", "padding-right": "12px", opacity: idx() === video?.index() ? 1 : 0.65 }}
+                                            imageStyle={{"height": "87px", "width": "154px"}}
+                                            video={item()}
+                                            onClick={() => {
+                                                const i = video?.queue()?.findIndex(x => x === item());
+                                                if (i !== undefined && i >= 0) playFromQueue(i);
+                                            }}
+                                            onAddtoQueue={(_, content) => video?.actions.addToQueue(content as IPlatformVideo)}
+                                            onSettings={(el, content) => openRecMenu(el, content as IPlatformVideo)}
+                                            hideAddToQueue={true}
+                                            settingsOnHover={true}
+                                        />
+                                        <Show when={idx() === video?.index()}>
+                                            <div style={{ position: "absolute", top: "30px", left: "65px", "pointer-events": "none", "font-size": "24px", color: "white", "text-shadow": "0 2px 6px rgba(0,0,0,0.6)" }}>▶</div>
+                                        </Show>
+                                    </div>
                                 )}
                             />
                         </Show>
@@ -2131,7 +2155,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     }} onVideoClick={(v) => {
                                         const index = video?.queue()?.findIndex(x => x === v);
                                         if (index !== undefined) {
-                                            video?.actions?.setIndex(index);
+                                            playFromQueue(index);
                                         }
                                     }} onShuffleClick={() => {
                                         video?.actions?.setShuffle(!video?.shuffle());
@@ -2281,7 +2305,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                         }} onVideoClick={(v) => {
                                             const index = video?.queue()?.findIndex(x => x === v);
                                             if (index !== undefined) {
-                                                video?.actions?.setIndex(index);
+                                                playFromQueue(index);
                                             }
                                         }} onShuffleClick={() => {
                                             video?.actions?.setShuffle(!video?.shuffle());
