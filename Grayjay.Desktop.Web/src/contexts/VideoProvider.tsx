@@ -245,7 +245,7 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         const s = shuffle();
         if (StateGlobal.settings$()?.object?.playback?.persistQueue === false) return;
         const payload = (q && q.length > 0) ? { queue: q, index: i, repeat: r, shuffle: s } : null;
-        SettingsBackend.persistSet("playQueue", payload).catch(() => {});
+        SettingsBackend.persistSet("playQueue", payload).catch(e => console.warn("Failed to persist playQueue", e));
     });
 
     return (
