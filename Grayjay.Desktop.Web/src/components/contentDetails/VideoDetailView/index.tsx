@@ -280,7 +280,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         if(!videoLoaded)
             return undefined;
         const result =  await DetailsBackend.recommendationsPager(videoLoaded.url);
-        console.log("Recommendation Results:", result);
         try {
             const channelUrl = videoLoaded?.author?.url;
             if (channelUrl && result?.data) {
