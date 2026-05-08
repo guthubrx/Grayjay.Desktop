@@ -295,10 +295,10 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                                         groupType: 'grid',
                                         groupIndices: [row(), col()],
                                         groupEscapeTo: { left: ['sidebar'] },
-                                        onPress: () => {
+                                        onPress: (_, inputSource) => {
                                             const url = item().backendUrl ?? item().url;
                                             if (url)
-                                                video?.actions.openVideo(item() as IPlatformVideo, undefined, VideoState.Fullscreen);
+                                                video?.actions.openVideo(item() as IPlatformVideo, undefined, inputSource === "gamepad" ? VideoState.Fullscreen : undefined);
                                         },
                                         onOptions: (e, inputSource) => {
                                             onSettingsClicked(e, item(), inputSource);
