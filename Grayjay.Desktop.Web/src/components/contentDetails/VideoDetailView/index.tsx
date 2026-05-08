@@ -848,6 +848,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             setWindowMaximized(false);
             e.preventDefault();
             e.stopPropagation();
+        } else if (e.key === getKeybinding("closeVideo")) {
+            video?.actions?.closeVideo();
+            e.preventDefault();
         }
     };
 

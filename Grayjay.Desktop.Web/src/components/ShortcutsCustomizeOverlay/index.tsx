@@ -28,6 +28,7 @@ const ACTIONS: ActionId[] = [
     "navUp", "navDown", "navLeft", "navRight",
     "navUpAlt", "navDownAlt", "navLeftAlt", "navRightAlt",
     "theaterToggle", "windowMaximize", "speedUp", "speedDown",
+    "closeVideo",
     "showShortcuts",
 ];
 
