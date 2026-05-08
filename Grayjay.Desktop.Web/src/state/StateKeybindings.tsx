@@ -7,6 +7,7 @@ export type ActionId =
     | "navUpAlt" | "navDownAlt" | "navLeftAlt" | "navRightAlt"
     | "theaterToggle" | "windowMaximize" | "speedUp" | "speedDown"
     | "closeVideo"
+    | "reload"
     | "showShortcuts";
 
 export const KEYBINDING_LABELS: Record<ActionId, string> = {
@@ -27,6 +28,7 @@ export const KEYBINDING_LABELS: Record<ActionId, string> = {
     speedUp: "Increase playback speed (+0.25)",
     speedDown: "Decrease playback speed (-0.25)",
     closeVideo: "Close current video",
+    reload: "Reload feed (Home / Subscriptions)",
     showShortcuts: "Show shortcuts overlay",
 };
 
@@ -48,6 +50,7 @@ export const DEFAULT_KEYBINDINGS: Record<ActionId, string> = {
     speedUp: "x",
     speedDown: "z",
     closeVideo: "q",
+    reload: "r",
     showShortcuts: "?",
 };
 

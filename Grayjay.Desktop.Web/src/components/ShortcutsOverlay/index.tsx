@@ -34,6 +34,7 @@ const ShortcutsOverlay: Component<ShortcutsOverlayProps> = (props) => {
         { keys: [display(getKeybinding("speedUp"))], description: KEYBINDING_LABELS.speedUp },
         { keys: [display(getKeybinding("speedDown"))], description: KEYBINDING_LABELS.speedDown },
         { keys: [display(getKeybinding("closeVideo"))], description: KEYBINDING_LABELS.closeVideo },
+        { keys: [display(getKeybinding("reload"))], description: KEYBINDING_LABELS.reload },
         { keys: [display(getKeybinding("showShortcuts"))], description: KEYBINDING_LABELS.showShortcuts },
     ]);
 

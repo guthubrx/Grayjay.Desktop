@@ -1,4 +1,4 @@
-import { createResource, type Component, Show, onMount } from 'solid-js';
+import { createResource, type Component, Show, onMount, onCleanup } from 'solid-js';
 
 import styles from './index.module.css';
 import { HomeBackend } from '../../backend/HomeBackend';
@@ -8,6 +8,7 @@ import ScrollContainer from '../../components/containers/ScrollContainer';
 import StateGlobal from '../../state/StateGlobal';
 import { DateTime } from 'luxon';
 import IconButton from '../../components/buttons/IconButton';
+import { getKeybinding } from '../../state/StateKeybindings';
 
 import iconRefresh from "../../assets/icons/icon_reload_temp.svg"
 import iconHome from "../../assets/icons/icon_nav_home.svg"
@@ -31,6 +32,18 @@ const HomePage: Component = () => {
   console.log("Home page with resource: ", homePager());
   console.log("Home page with resource state: ", homePager.state);
   
+  const onKeyDown = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement | null;
+    if (t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.isContentEditable) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === getKeybinding("reload")) {
+      StateGlobal.reloadHome();
+      e.preventDefault();
+    }
+  };
+  onMount(() => window.addEventListener("keydown", onKeyDown));
+  onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+
   let scrollContainerRef: HTMLDivElement | undefined;
   return (
     <div class={styles.container}>
