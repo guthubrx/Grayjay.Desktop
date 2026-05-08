@@ -844,10 +844,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         } else if (e.key === getKeybinding("windowMaximize")) {
             setWindowMaximized(v => !v);
             e.preventDefault();
-        } else if (windowMaximized$() && e.key === getKeybinding("back")) {
-            setWindowMaximized(false);
-            e.preventDefault();
-            e.stopPropagation();
         } else if (e.key === getKeybinding("closeVideo")) {
             video?.actions?.closeVideo();
             e.preventDefault();
@@ -1883,11 +1879,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 }
                             }}
                             handleEscape={() => {
-                                /*if (video?.state() === VideoState.Maximized) {
-                                    minimize();
-                                } else if (video?.state() === VideoState.Minimized) {
-                                    close();
-                                }*/
+                                if (windowMaximized$()) setWindowMaximized(false);
                             }}
                             handleMinimize={() => {
                                 if (video?.state() === VideoState.Minimized) {
