@@ -610,6 +610,17 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         setPlaybackSpeed(props.playbackSpeed ?? 1.0);
     });
 
+    const [speedChipVisible$, setSpeedChipVisible] = createSignal(false);
+    let speedChipTimer: number | undefined;
+    createEffect(on(() => props.playbackSpeed, () => {
+        setSpeedChipVisible(false);
+        if (speedChipTimer) clearTimeout(speedChipTimer);
+        // double rAF so the CSS animation restarts even if the chip was already visible
+        requestAnimationFrame(() => requestAnimationFrame(() => setSpeedChipVisible(true)));
+        speedChipTimer = window.setTimeout(() => setSpeedChipVisible(false), 1500);
+    }, { defer: true }));
+    onCleanup(() => { if (speedChipTimer) clearTimeout(speedChipTimer); });
+
     const onVolumeChanged = (volume: number) => {
         if (isCasting()) {
             return;
@@ -1371,6 +1382,10 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     <img src={props.source?.thumbnailUrl} onLoad={(ev) => { setThumbnailDimensions({ width: ev.currentTarget.naturalWidth, height: ev.currentTarget.naturalHeight }); }} referrerPolicy='no-referrer' />
                 </Show>
             </div>
+
+            <Show when={speedChipVisible$()}>
+                <div class={styles.speedChip}>{(props.playbackSpeed ?? 1).toFixed(2)}x</div>
+            </Show>
 
             <div
                 classList={{
