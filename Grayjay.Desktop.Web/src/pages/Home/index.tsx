@@ -285,6 +285,15 @@ const HomePage: Component = () => {
         return result;
     };
 
+    // Continue watching — excludes dismissed videos/channels
+    const continueWatchingItems = () => {
+        const dV = dismissedVideos$();
+        const dC = dismissedChannels$();
+        return (historyItems() ?? []).filter(h =>
+            !dV.has(h.video?.url ?? '') && !dC.has(h.video?.author?.url ?? '')
+        );
+    };
+
     // Recommended = home pager items after the hero, with valid metadata only, excluding watched
     const recommendedItems = () => {
         const watched = watchedUrls();
@@ -326,10 +335,10 @@ const HomePage: Component = () => {
                     />
                 </Show>
 
-                <Show when={(historyItems()?.length ?? 0) > 0}>
+                <Show when={continueWatchingItems().length > 0}>
                     <HomeCarousel
                         title="Continue watching"
-                        items={historyItems()!}
+                        items={continueWatchingItems()}
                         builder={(_, item: IHistoryVideo) => (
                             <VideoThumbnailView
                                 style={THUMB_STYLE}
