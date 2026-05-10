@@ -1,4 +1,5 @@
 import { createSignal, createResource, createEffect, createMemo, batch, type Component, Show, For, onMount, onCleanup } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
 import styles from './index.module.css';
 import { HistoryBackend } from '../../backend/HistoryBackend';
@@ -442,12 +443,14 @@ const HomePage: Component = () => {
                 </Show>
             </ScrollContainer>
 
-            <SettingsMenu
-                menu={videoMenu$()}
-                show={videoMenuShow$()}
-                onHide={() => setVideoMenuShow(false)}
-                anchor={videoMenuAnchor$()}
-            />
+            <Portal>
+                <SettingsMenu
+                    menu={videoMenu$()}
+                    show={videoMenuShow$()}
+                    onHide={() => setVideoMenuShow(false)}
+                    anchor={videoMenuAnchor$()}
+                />
+            </Portal>
         </div>
     );
 };
