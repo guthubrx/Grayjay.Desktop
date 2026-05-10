@@ -5,6 +5,8 @@
     background-size: cover;
     background-position: center;
     flex-shrink: 0;
+    /* Fade transition driven by background-image change */
+    transition: background-image 0s, opacity 0.3s ease;
 }
 
 .gradient {
@@ -59,4 +61,72 @@
 
 .playButton:hover {
     background: rgba(255, 255, 255, 1);
+}
+
+/* Navigation arrows */
+.arrowLeft,
+.arrowRight {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    background: rgba(0, 0, 0, 0.45);
+    color: #ffffff;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
+}
+
+.arrowLeft {
+    left: 16px;
+}
+
+.arrowRight {
+    right: 16px;
+}
+
+.arrowLeft:hover,
+.arrowRight:hover {
+    background: rgba(0, 0, 0, 0.72);
+}
+
+/* Dots indicator */
+.dots {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    align-items: center;
+}
+
+.dot,
+.dotActive {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.dot {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.dotActive {
+    background: rgba(255, 255, 255, 1);
+    transform: scale(1.25);
 }

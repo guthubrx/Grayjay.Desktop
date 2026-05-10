@@ -1,8 +1,9 @@
-import { createResource, type Component, Show, onMount, onCleanup } from 'solid-js';
+import { createResource, type Component, Show, For, onMount, onCleanup } from 'solid-js';
 
 import styles from './index.module.css';
 import { HistoryBackend } from '../../backend/HistoryBackend';
 import { WatchLaterBackend } from '../../backend/WatchLaterBackend';
+import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
 import NavigationBar from '../../components/topbars/NavigationBar';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import StateGlobal from '../../state/StateGlobal';
@@ -24,6 +25,13 @@ import iconSources from "../../assets/icons/ic_circles.svg";
 const THUMB_STYLE = { width: '280px', "flex-shrink": '0' };
 const MAX_CAROUSEL_ITEMS = 20;
 const MIN_WATCH_POSITION = 30;
+const HERO_COUNT = 5;
+const MAX_CHANNEL_CAROUSELS = 10;
+
+interface ChannelGroup {
+    author: IPlatformVideo['author'];
+    videos: IPlatformVideo[];
+}
 
 const HomePage: Component = () => {
     const homePager = StateGlobal.home$;
@@ -66,19 +74,41 @@ const HomePage: Component = () => {
         }
     });
 
+    // Per-channel carousels from subscriptions cache
+    const [channelCarousels] = createResource(async (): Promise<ChannelGroup[]> => {
+        try {
+            const result = await SubscriptionsBackend.subscriptionsCacheLoad();
+            const groups = new Map<string, ChannelGroup>();
+            for (const video of result.results as IPlatformVideo[]) {
+                const key = video.author?.url ?? video.author?.name ?? 'unknown';
+                if (!groups.has(key)) {
+                    groups.set(key, { author: video.author, videos: [] });
+                }
+                groups.get(key)!.videos.push(video);
+            }
+            return [...groups.values()]
+                .filter(g => g.videos.length >= 1)
+                .sort((a, b) => {
+                    // Most recently uploaded channel first
+                    const da = new Date(a.videos[0]?.dateTime ?? 0).getTime();
+                    const db = new Date(b.videos[0]?.dateTime ?? 0).getTime();
+                    return db - da;
+                })
+                .slice(0, MAX_CHANNEL_CAROUSELS);
+        } catch {
+            return [];
+        }
+    });
+
     function openVideo(v: IPlatformVideo) {
         video?.actions.openVideo(v);
     }
 
-    const heroVideo = () => {
-        const data = homePager()?.data;
-        return data && data.length > 0 ? data[0] : undefined;
-    };
+    // First N videos for the hero slider — available as soon as pager starts loading
+    const heroVideos = () => homePager()?.data?.slice(0, HERO_COUNT) ?? [];
 
-    const recommendedItems = () => {
-        const data = homePager()?.data;
-        return data && data.length > 1 ? data.slice(1) : [];
-    };
+    // Recommended = everything after the hero videos
+    const recommendedItems = () => homePager()?.data?.slice(HERO_COUNT) ?? [];
 
     return (
         <div class={styles.container}>
@@ -101,68 +131,94 @@ const HomePage: Component = () => {
                 />
             } />
 
-            <Show when={homePager.state === 'ready'}>
-                <Show when={homePager() && homePager()!.data.length > 0} fallback={
-                    <EmptyContentView icon={iconHome} title='No home results' description='Install, configure, or enable more sources' actions={[
-                        {
-                            icon: iconSources,
-                            title: "Go to Sources",
-                            action: () => nav("/web/sources")
-                        }
-                    ]} />
-                }>
-                    <ScrollContainer>
-                        <Show when={heroVideo()}>
-                            <HeroBanner
-                                video={heroVideo()!}
-                                onPlay={() => openVideo(heroVideo()!)}
-                            />
-                        </Show>
-
-                        <Show when={(historyItems()?.length ?? 0) > 0}>
-                            <HomeCarousel
-                                title="Continue watching"
-                                items={historyItems()!}
-                                builder={(_, item: IHistoryVideo) => (
-                                    <VideoThumbnailView
-                                        style={THUMB_STYLE}
-                                        video={{ ...item.video, metadata: { position: item.position } } as any}
-                                        onClick={() => openVideo(item.video)}
-                                    />
-                                )}
-                            />
-                        </Show>
-
-                        <Show when={(watchLaterItems()?.length ?? 0) > 0}>
-                            <HomeCarousel
-                                title="Watch later"
-                                items={watchLaterItems()!}
-                                builder={(_, item: IPlatformVideo) => (
-                                    <VideoThumbnailView
-                                        style={THUMB_STYLE}
-                                        video={item}
-                                        onClick={() => openVideo(item)}
-                                    />
-                                )}
-                            />
-                        </Show>
-
-                        <Show when={recommendedItems().length > 0}>
-                            <HomeCarousel
-                                title="Recommended"
-                                items={recommendedItems()}
-                                builder={(_, item: IPlatformVideo) => (
-                                    <VideoThumbnailView
-                                        style={THUMB_STYLE}
-                                        video={item}
-                                        onClick={() => openVideo(item)}
-                                    />
-                                )}
-                            />
-                        </Show>
-                    </ScrollContainer>
+            {/* Page is always visible — each section appears as data arrives */}
+            <ScrollContainer>
+                <Show when={heroVideos().length > 0}>
+                    <HeroBanner
+                        videos={heroVideos()}
+                        onPlay={openVideo}
+                        intervalMs={5000}
+                    />
                 </Show>
-            </Show>
+
+                <Show when={(historyItems()?.length ?? 0) > 0}>
+                    <HomeCarousel
+                        title="Continue watching"
+                        items={historyItems()!}
+                        builder={(_, item: IHistoryVideo) => (
+                            <VideoThumbnailView
+                                style={THUMB_STYLE}
+                                video={{ ...item.video, metadata: { position: item.position } } as any}
+                                onClick={() => openVideo(item.video)}
+                            />
+                        )}
+                    />
+                </Show>
+
+                <Show when={(watchLaterItems()?.length ?? 0) > 0}>
+                    <HomeCarousel
+                        title="Watch later"
+                        items={watchLaterItems()!}
+                        builder={(_, item: IPlatformVideo) => (
+                            <VideoThumbnailView
+                                style={THUMB_STYLE}
+                                video={item}
+                                onClick={() => openVideo(item)}
+                            />
+                        )}
+                    />
+                </Show>
+
+                {/* Per-channel carousels from subscriptions */}
+                <Show when={(channelCarousels()?.length ?? 0) > 0}>
+                    <For each={channelCarousels()}>
+                        {(group) => (
+                            <HomeCarousel
+                                title={group.author?.name ?? 'Unknown channel'}
+                                items={group.videos.slice(0, MAX_CAROUSEL_ITEMS)}
+                                builder={(_, item: IPlatformVideo) => (
+                                    <VideoThumbnailView
+                                        style={THUMB_STYLE}
+                                        video={item}
+                                        onClick={() => openVideo(item)}
+                                    />
+                                )}
+                            />
+                        )}
+                    </For>
+                </Show>
+
+                {/* Recommended — fallback/complement from home pager */}
+                <Show when={recommendedItems().length > 0}>
+                    <HomeCarousel
+                        title="Recommended"
+                        items={recommendedItems()}
+                        builder={(_, item: IPlatformVideo) => (
+                            <VideoThumbnailView
+                                style={THUMB_STYLE}
+                                video={item}
+                                onClick={() => openVideo(item)}
+                            />
+                        )}
+                    />
+                </Show>
+
+                {/* Empty state — only when pager is done and truly empty */}
+                <Show when={homePager.state === 'ready' && (homePager()?.data?.length ?? 0) === 0}>
+                    <EmptyContentView
+                        icon={iconHome}
+                        title='No home results'
+                        description='Install, configure, or enable more sources'
+                        actions={[
+                            {
+                                icon: iconSources,
+                                title: "Go to Sources",
+                                action: () => nav("/web/sources")
+                            }
+                        ]}
+                    />
+                </Show>
+            </ScrollContainer>
         </div>
     );
 };
