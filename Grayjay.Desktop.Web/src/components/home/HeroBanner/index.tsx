@@ -14,36 +14,10 @@ import iconClose from '../../../assets/icons/icon24_close.svg';
 interface HeroBannerProps {
     videos: IPlatformVideo[];
     onPlay: (video: IPlatformVideo) => void;
-    onDismissed?: (url: string) => void;
+    onDismissedVideo?: (url: string) => void;
+    onDismissedChannel?: (url: string) => void;
     intervalMs?: number;
     watchLaterUrls?: () => Set<string>;
-}
-
-// ── localStorage helpers ──────────────────────────────────────────────────────
-
-const STORAGE_DISMISSED_VIDEOS = 'grayjay_dismissed_videos';
-const STORAGE_DISMISSED_CHANNELS = 'grayjay_dismissed_channels';
-
-function getDismissedVideos(): Set<string> {
-    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_DISMISSED_VIDEOS) ?? '[]')); }
-    catch { return new Set(); }
-}
-
-function dismissVideo(url: string): void {
-    const set = getDismissedVideos();
-    set.add(url);
-    localStorage.setItem(STORAGE_DISMISSED_VIDEOS, JSON.stringify([...set]));
-}
-
-function getDismissedChannels(): Set<string> {
-    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_DISMISSED_CHANNELS) ?? '[]')); }
-    catch { return new Set(); }
-}
-
-function dismissChannel(url: string): void {
-    const set = getDismissedChannels();
-    set.add(url);
-    localStorage.setItem(STORAGE_DISMISSED_CHANNELS, JSON.stringify([...set]));
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -199,8 +173,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     function handleDismissVideo() {
         const v = currentVideo();
         if (!v?.url) return;
-        dismissVideo(v.url);
-        props.onDismissed?.(v.url);
+        props.onDismissedVideo?.(v.url);
         setDismissState('video');
         goNext();
     }
@@ -208,7 +181,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     function handleDismissChannel() {
         const v = currentVideo();
         if (!v?.author?.url) return;
-        dismissChannel(v.author.url);
+        props.onDismissedChannel?.(v.author.url);
         setDismissState('channel');
         setTimeout(() => setDismissState('none'), 1000);
     }

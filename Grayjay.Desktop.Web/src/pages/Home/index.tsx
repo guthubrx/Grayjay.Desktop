@@ -1,4 +1,4 @@
-import { createSignal, createResource, createEffect, type Component, Show, For, onMount, onCleanup } from 'solid-js';
+import { createSignal, createResource, createEffect, createMemo, batch, type Component, Show, For, onMount, onCleanup } from 'solid-js';
 
 import styles from './index.module.css';
 import { HistoryBackend } from '../../backend/HistoryBackend';
@@ -17,10 +17,18 @@ import VideoThumbnailView from '../../components/content/VideoThumbnailView';
 import { IPlatformVideo } from '../../backend/models/content/IPlatformVideo';
 import { IHistoryVideo } from '../../backend/models/content/IHistoryVideo';
 import { useVideo } from '../../contexts/VideoProvider';
+import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overlays/SettingsMenu';
+import Anchor, { AnchorStyle } from '../../utility/Anchor';
+import UIOverlay from '../../state/UIOverlay';
 
 import iconRefresh from "../../assets/icons/icon_reload_temp.svg";
 import iconHome from "../../assets/icons/icon_nav_home.svg";
 import iconSources from "../../assets/icons/ic_circles.svg";
+import iconQueue from "../../assets/icons/icon_add_to_queue.svg";
+import iconWatchLaterMenu from "../../assets/icons/icon24_watch_later.svg";
+import iconCreator from "../../assets/icons/icon_nav_creators.svg";
+import iconDownload from "../../assets/icons/icon24_download.svg";
+import iconAddToPlaylist from "../../assets/icons/icon24_add_to_playlist.svg";
 
 const THUMB_STYLE = { width: '280px', "flex-shrink": '0' };
 const MAX_CAROUSEL_ITEMS = 20;
@@ -99,9 +107,22 @@ const HomePage: Component = () => {
     onMount(() => window.addEventListener("keydown", onKeyDown));
     onCleanup(() => window.removeEventListener("keydown", onKeyDown));
 
-    const [dismissRevision, setDismissRevision] = createSignal(0);
+    // Reactive dismiss sets — source of vérité pour heroVideos()
+    const [dismissedVideos$, setDismissedVideos] = createSignal<Set<string>>(getDismissed().videos);
+    const [dismissedChannels$, setDismissedChannels] = createSignal<Set<string>>(getDismissed().channels);
 
-    // Hero cache — starts from localStorage, updated when pager has live data
+    const handleDismissVideo = (url: string) => {
+        const next = new Set([...dismissedVideos$(), url]);
+        setDismissedVideos(next);
+        try { localStorage.setItem('grayjay_dismissed_videos', JSON.stringify([...next])); } catch {}
+    };
+    const handleDismissChannel = (url: string) => {
+        const next = new Set([...dismissedChannels$(), url]);
+        setDismissedChannels(next);
+        try { localStorage.setItem('grayjay_dismissed_channels', JSON.stringify([...next])); } catch {}
+    };
+
+    // Hero cache — starts from localStorage, updated when pager has live data (sans vidéos dismissées)
     const [homeCached, setHomeCached] = createSignal<IPlatformVideo[]>(loadHomeCache());
     createEffect(() => {
         const pager = homePager();
@@ -109,7 +130,10 @@ const HomePage: Component = () => {
         void pager.hadInitialUpdate$?.();
         const data = pager.data as IPlatformVideo[];
         if (data.length === 0) return;
-        try { localStorage.setItem(STORAGE_HOME_CACHE, JSON.stringify(data.slice(0, HOME_CACHE_SIZE))); } catch {}
+        const dV = dismissedVideos$();
+        const dC = dismissedChannels$();
+        const filtered = data.filter(v => !dV.has(v.url ?? '') && !dC.has(v.author?.url ?? ''));
+        try { localStorage.setItem(STORAGE_HOME_CACHE, JSON.stringify(filtered.slice(0, HOME_CACHE_SIZE))); } catch {}
         setHomeCached([...data]);
     });
 
@@ -187,6 +211,42 @@ const HomePage: Component = () => {
         video?.actions.openVideo(v);
     }
 
+    // ── Video context menu (same pattern as VideoDetailView recMenu) ──────────
+    const [videoMenuContent$, setVideoMenuContent] = createSignal<IPlatformVideo | undefined>();
+    const [videoMenuShow$, setVideoMenuShow] = createSignal(false);
+    const videoMenuAnchorRight = new Anchor(null, videoMenuShow$, AnchorStyle.BottomRight);
+    const videoMenuAnchorLeft  = new Anchor(null, videoMenuShow$, AnchorStyle.BottomLeft);
+    const [videoMenuAnchor$, setVideoMenuAnchor] = createSignal<Anchor>(videoMenuAnchorRight);
+
+    const videoMenu$ = createMemo<Menu>(() => {
+        const c = videoMenuContent$();
+        const inQueue = c ? (video?.queue()?.some(x => x.url === c.url) ?? false) : false;
+        return { title: '', items: c ? [
+            new MenuItemButton('Open channel', iconCreator, undefined, () => {
+                if (c.author) nav('/web/channel?url=' + encodeURIComponent(c.author.url), { state: { author: c.author } });
+            }),
+            inQueue
+                ? new MenuItemButton('Remove from queue', iconQueue, undefined, () => {
+                    const q = video?.queue();
+                    const idx = q?.findIndex(x => x.url === c.url);
+                    if (!video || !q || idx === undefined || idx < 0) return;
+                    const cur = video.index() ?? 0;
+                    video.actions.setQueue(cur > idx ? cur - 1 : cur, q.slice(0, idx).concat(q.slice(idx + 1)), video.repeat(), video.shuffle());
+                })
+                : new MenuItemButton('Add to queue', iconQueue, undefined, () => video?.actions.addToQueue(c)),
+            new MenuItemButton('Watch later', iconWatchLaterMenu, undefined, () => WatchLaterBackend.add(c).catch(() => {})),
+            new MenuItemButton('Add to playlist', iconAddToPlaylist, undefined, () => UIOverlay.overlayAddToPlaylist(c)),
+            new MenuItemButton('Download video', iconDownload, undefined, () => UIOverlay.overlayDownload(c.url)),
+        ] : [] };
+    });
+
+    const openVideoMenu = (el: HTMLElement, c: IPlatformVideo) => {
+        const rect = el.getBoundingClientRect();
+        const a = rect.right < 280 ? videoMenuAnchorLeft : videoMenuAnchorRight;
+        a.setElement(el);
+        batch(() => { setVideoMenuAnchor(a); setVideoMenuContent(c); setVideoMenuShow(true); });
+    };
+
     // Reactive set of already-watched video URLs (position > MIN_WATCH_POSITION)
     const watchedUrls = () => new Set(
         (historyItems() ?? []).map(h => h.video?.url).filter(Boolean) as string[]
@@ -194,8 +254,8 @@ const HomePage: Component = () => {
 
     // Hero videos — 1:1 interleave of recent subs + platform recos, thumbnail required
     const heroVideos = () => {
-        void dismissRevision();
-        const { videos: dVideos, channels: dChannels } = getDismissed();
+        const dVideos = dismissedVideos$();
+        const dChannels = dismissedChannels$();
         const watched = watchedUrls();
         const exclude = (v: IPlatformVideo) =>
             dVideos.has(v.url ?? '') || dChannels.has(v.author?.url ?? '') ||
@@ -259,7 +319,8 @@ const HomePage: Component = () => {
                     <HeroBanner
                         videos={heroVideos()}
                         onPlay={openVideo}
-                        onDismissed={() => setDismissRevision(r => r + 1)}
+                        onDismissedVideo={handleDismissVideo}
+                        onDismissedChannel={handleDismissChannel}
                         intervalMs={15000}
                         watchLaterUrls={() => new Set((watchLaterItems() ?? []).map(v => v.url ?? '').filter(Boolean))}
                     />
@@ -274,6 +335,8 @@ const HomePage: Component = () => {
                                 style={THUMB_STYLE}
                                 video={{ ...item.video, metadata: { position: item.position } } as any}
                                 onClick={() => openVideo(item.video)}
+                                onSettings={(el, c) => openVideoMenu(el, c)}
+                                settingsOnHover={true}
                             />
                         )}
                     />
@@ -288,6 +351,8 @@ const HomePage: Component = () => {
                                 style={THUMB_STYLE}
                                 video={item}
                                 onClick={() => openVideo(item)}
+                                onSettings={(el, c) => openVideoMenu(el, c)}
+                                settingsOnHover={true}
                             />
                         )}
                     />
@@ -308,6 +373,8 @@ const HomePage: Component = () => {
                                                 style={THUMB_STYLE}
                                                 video={item}
                                                 onClick={() => openVideo(item)}
+                                                onSettings={(el, c) => openVideoMenu(el, c)}
+                                                settingsOnHover={true}
                                             />
                                         )}
                                     />
@@ -327,6 +394,8 @@ const HomePage: Component = () => {
                                 style={THUMB_STYLE}
                                 video={item}
                                 onClick={() => openVideo(item)}
+                                onSettings={(el, c) => openVideoMenu(el, c)}
+                                settingsOnHover={true}
                             />
                         )}
                     />
@@ -348,6 +417,13 @@ const HomePage: Component = () => {
                     />
                 </Show>
             </ScrollContainer>
+
+            <SettingsMenu
+                menu={videoMenu$()}
+                show={videoMenuShow$()}
+                onHide={() => setVideoMenuShow(false)}
+                anchor={videoMenuAnchor$()}
+            />
         </div>
     );
 };
