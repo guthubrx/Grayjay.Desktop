@@ -13,6 +13,7 @@ import creators from '../../../assets/icons/icon_nav_creators.svg';
 import ic_sidebarOpen from '../../../assets/icons/sidebar-open.svg';
 import ic_sidebarClose from '../../../assets/icons/sidebar-close.svg';
 import ic_more from '../../../assets/icons/icon_button_more.svg';
+import iconDiscover from '../../../assets/icons/icon24_play_feed.svg';
 import history from '../../../assets/icons/icon_nav_history.svg';
 import download from '../../../assets/icons/icon24_download.svg';
 import iconSync from '../../../assets/icons/ic_sync.svg';
@@ -30,6 +31,7 @@ import { SubscriptionsBackend } from '../../../backend/SubscriptionsBackend';
 import SideBarCreator from '../SideBarCreator';
 import UIOverlay from '../../../state/UIOverlay';
 import { WindowBackend } from '../../../backend/WindowBackend';
+import { homeStyle$ } from '../../../state/HomeStyleState';
 import FlexibleArrayList from '../../containers/FlexibleArrayList';
 import StateGlobal from '../../../state/StateGlobal';
 import { createResourceDefault } from '../../../utility';
@@ -131,6 +133,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   };
   
   const homeBtn: ButtonItem = { icon: home, name: 'Home', path: '/web/home', getSelected: createMemo(() => location.pathname === '/web/home' || location.pathname === '/web/index.html'), autoPressOnFocus: false };
+  const discoverBtn: ButtonItem = { icon: iconDiscover, name: 'Discover', path: '/web/discover', getSelected: createMemo(() => location.pathname === '/web/discover'), autoPressOnFocus: false };
   const subscriptionsBtn: ButtonItem = { icon: subscriptions, name: 'Subscriptions', path: '/web/subscriptions', getSelected: createMemo(() => location.pathname === '/web/subscriptions'), autoPressOnFocus: false };
   const creatorsBtn: ButtonItem = { icon: creators, name: 'Creators', path: '/web/creators', getSelected: createMemo(() => location.pathname === '/web/creators'), autoPressOnFocus: false };
   const playlistsBtn: ButtonItem = { icon: playlists, name: 'Playlists', path: '/web/playlists', getSelected: createMemo(() => location.pathname === '/web/playlists'), autoPressOnFocus: false };
@@ -146,7 +149,10 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
   const developerBtn: ButtonItem = { icon: iconLink, name: 'Developer', path: '/Developer/Index', getSelected: createMemo(() => location.pathname === '/Developer/Index'), onRightClick: () => LocalBackend.open(`http://${window.location.host}/Developer/Index`) };
   
   const topButtons$ = createMemo(() => {
-    let list: ButtonItem[] = [homeBtn, subscriptionsBtn, creatorsBtn, playlistsBtn];
+    const isClassic = homeStyle$() === 'classic';
+    let list: ButtonItem[] = isClassic
+        ? [homeBtn, discoverBtn, subscriptionsBtn, creatorsBtn, playlistsBtn]
+        : [homeBtn, subscriptionsBtn, creatorsBtn, playlistsBtn];
   
     if (video?.watchLater()?.length) {
       list.push(watchLaterBtn);

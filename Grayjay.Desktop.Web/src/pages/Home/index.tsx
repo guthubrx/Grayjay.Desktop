@@ -21,6 +21,8 @@ import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overl
 import Anchor, { AnchorStyle } from '../../utility/Anchor';
 import UIOverlay from '../../state/UIOverlay';
 
+import { homeStyle$, setHomeStyle } from '../../state/HomeStyleState';
+
 import iconRefresh from "../../assets/icons/icon_reload_temp.svg";
 import iconHome from "../../assets/icons/icon_nav_home.svg";
 import iconSources from "../../assets/icons/ic_circles.svg";
@@ -89,6 +91,11 @@ const HomePage: Component = () => {
     const homePager = StateGlobal.home$;
     const video = useVideo();
     const nav = useNavigate();
+
+    function switchToClassic() {
+        setHomeStyle('classic');
+        nav('/web/home', { replace: true });
+    }
 
     const lastHomeMillis = Math.abs(StateGlobal.lastHomeTime$()?.diffNow().toMillis() ?? 0);
     if (lastHomeMillis > 2 * 60 * 1000) {
@@ -304,25 +311,33 @@ const HomePage: Component = () => {
     return (
         <div class={styles.container}>
             <NavigationBar isRoot={true} childrenAfter={
-                <IconButton
-                    icon={iconRefresh}
-                    variant="none"
-                    shape="circle"
-                    width="30px"
-                    height="30px"
-                    iconInset="0px"
-                    style={{ "margin-left": "24px" }}
-                    onClick={() => StateGlobal.reloadHome()}
-                    focusableOpts={{
-                        groupId: 'nav-bar',
-                        groupIndices: [1],
-                        groupType: 'horizontal',
-                        onPress: () => StateGlobal.reloadHome(),
-                    }}
-                />
+                <div style={{ display: 'flex', gap: '8px', 'align-items': 'center', 'margin-left': '16px' }}>
+                    <IconButton
+                        icon={iconRefresh}
+                        variant="none"
+                        shape="circle"
+                        width="30px"
+                        height="30px"
+                        iconInset="0px"
+                        onClick={() => StateGlobal.reloadHome()}
+                        focusableOpts={{
+                            groupId: 'nav-bar',
+                            groupIndices: [1],
+                            groupType: 'horizontal',
+                            onPress: () => StateGlobal.reloadHome(),
+                        }}
+                    />
+                    <button
+                        style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', 'border-radius': '6px', color: 'rgba(255,255,255,0.55)', padding: '5px 12px', 'font-size': '12px', cursor: 'pointer', 'white-space': 'nowrap' }}
+                        onClick={switchToClassic}
+                        title="Switch to classic home"
+                    >
+                        Classic view
+                    </button>
+                </div>
             } />
 
-            {/* Page is always visible — each section appears as data arrives */}
+            {/* Routing handled by HomeRouter — show here only when truly navigated to as Netflix */}
             <ScrollContainer>
                 <Show when={heroVideos().length > 0}>
                     <HeroBanner

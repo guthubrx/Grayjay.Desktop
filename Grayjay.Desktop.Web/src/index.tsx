@@ -4,11 +4,12 @@ import { render } from 'solid-js/web';
 import './index.css';
 import { Router, Route, RouteSectionProps, useNavigate, Navigator } from '@solidjs/router';
 import SideBar from './components/menus/SideBar';
-import { Component, Show, children, createSignal, lazy, onCleanup, onMount } from 'solid-js';
+import { Component, Match, Show, Switch, children, createSignal, lazy, onCleanup, onMount } from 'solid-js';
 import VideoDetailView from './components/contentDetails/VideoDetailView';
 import { VideoContextValue, VideoProvider, VideoState, useVideo } from './contexts/VideoProvider';
 import SourcesPage from './pages/Sources';
 import ChannelPage from './pages/Channel';
+import { homeStyle$ } from './state/HomeStyleState';
 import SearchPage from './pages/Search';
 import StateGlobal from './state/StateGlobal';
 import DownloadsPage from './pages/Downloads';
@@ -33,6 +34,7 @@ import { getKeybinding } from './state/StateKeybindings';
  void focusScope;
 
 const HomePage = lazy(() => import('./pages/Home'));
+const HomeClassicPage = lazy(() => import('./pages/HomeClassic'));
 const SubscriptionsPage = lazy(() => import('./pages/Subscriptions'));
 const CreatorsPage = lazy(() => import('./pages/Creators'));
 const PlaylistsPage = lazy(() => import('./pages/Playlists'));
@@ -51,6 +53,13 @@ root?.addEventListener("click", function(event) {
   console.log("Click", event);
   StateGlobal.onGlobalClick?.invoke(event);
 });
+
+const HomeRouter: Component<RouteSectionProps> = () => (
+    <Switch>
+        <Match when={homeStyle$() === 'classic'}><HomeClassicPage /></Match>
+        <Match when={homeStyle$() !== 'classic'}><HomePage /></Match>
+    </Switch>
+);
 
 var navigate: Navigator | undefined = undefined;
 var video: VideoContextValue | undefined = undefined;
@@ -171,9 +180,10 @@ const App: Component<RouteSectionProps> = (props) => {
 
 render(() => (
   <Router root={App}>
-    <Route path="/web/index.html" component={HomePage} />
-    <Route path="/web" component={HomePage} />
-    <Route path="/web/home" component={HomePage} />
+    <Route path="/web/index.html" component={HomeRouter} />
+    <Route path="/web" component={HomeRouter} />
+    <Route path="/web/home" component={HomeRouter} />
+    <Route path="/web/discover" component={HomePage} />
     <Route path="/web/search" component={SearchPage} />
     <Route path="/web/subscriptions" component={SubscriptionsPage} />
     <Route path="/web/creators" component={CreatorsPage} />
