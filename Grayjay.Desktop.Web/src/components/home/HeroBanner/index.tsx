@@ -136,14 +136,17 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
         const v = currentVideo();
         if (!v?.url) return;
         setOverlayLoading(true);
-        Promise.all([
-            DetailsBackend.videoLoad(v.url).catch(() => null),
-            LocalRecommendationsBackend.forVideo(v.author?.url ?? '', 6).catch(() => [])
-        ]).then(([details, channelVids]) => {
-            if (details?.video?.description) setOverlayDescription(details.video.description);
-            setOverlayChannelVideos((channelVids as IPlatformVideo[]).filter(cv => cv.url !== v.url).slice(0, 5));
-            setOverlayLoading(false);
-        });
+
+        // Channel videos from local cache — fast, show independently
+        LocalRecommendationsBackend.forVideo(v.author?.url ?? '', 6)
+            .then(vids => setOverlayChannelVideos((vids as IPlatformVideo[]).filter(cv => cv.url !== v.url).slice(0, 5)))
+            .catch(() => {});
+
+        // Full description — slow network fetch, clears spinner when done
+        DetailsBackend.videoLoad(v.url)
+            .then(details => { if (details?.video?.description) setOverlayDescription(details.video.description); })
+            .catch(() => {})
+            .finally(() => setOverlayLoading(false));
     }
 
     function handleDismissVideo() {
