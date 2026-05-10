@@ -1,8 +1,11 @@
-import { Component, createEffect, createSignal, onCleanup, Show } from 'solid-js';
+import { Component, createEffect, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
+import { DetailsBackend } from '../../../backend/DetailsBackend';
+import { LocalRecommendationsBackend } from '../../../backend/LocalRecommendationsBackend';
 import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
 import { WatchLaterBackend } from '../../../backend/WatchLaterBackend';
+import VideoThumbnailView from '../../content/VideoThumbnailView';
 import styles from './index.module.css';
 
 import iconWatchLater from '../../../assets/icons/icon24_watch_later.svg';
@@ -73,6 +76,10 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     const [addedToWatchLater, setAddedToWatchLater] = createSignal(false);
     const [overlayAddedToWatchLater, setOverlayAddedToWatchLater] = createSignal(false);
     const [dismissState, setDismissState] = createSignal<'none' | 'video' | 'channel'>('none');
+    const [overlayDescription, setOverlayDescription] = createSignal<string | null>(null);
+    const [overlayDescExpanded, setOverlayDescExpanded] = createSignal(false);
+    const [overlayChannelVideos, setOverlayChannelVideos] = createSignal<IPlatformVideo[]>([]);
+    const [overlayLoading, setOverlayLoading] = createSignal(false);
 
     const intervalMs = () => props.intervalMs ?? 10000;
 
@@ -119,6 +126,24 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
         WatchLaterBackend.add(v).catch(() => {});
         setActive(true);
         setTimeout(() => setActive(false), 1000);
+    }
+
+    function openInfoOverlay() {
+        setShowInfo(true);
+        setOverlayDescription(null);
+        setOverlayChannelVideos([]);
+        setOverlayDescExpanded(false);
+        const v = currentVideo();
+        if (!v?.url) return;
+        setOverlayLoading(true);
+        Promise.all([
+            DetailsBackend.videoLoad(v.url).catch(() => null),
+            LocalRecommendationsBackend.forVideo(v.author?.url ?? '', 6).catch(() => [])
+        ]).then(([details, channelVids]) => {
+            if (details?.video?.description) setOverlayDescription(details.video.description);
+            setOverlayChannelVideos((channelVids as IPlatformVideo[]).filter(cv => cv.url !== v.url).slice(0, 5));
+            setOverlayLoading(false);
+        });
     }
 
     function handleDismissVideo() {
@@ -171,7 +196,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                         </button>
                         <button
                             class={styles.infoButton}
-                            onClick={() => setShowInfo(true)}
+                            onClick={openInfoOverlay}
                             title="More info"
                         >
                             i
@@ -238,6 +263,31 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                                     <span>{new Date(currentVideo()!.dateTime!).toLocaleDateString()}</span>
                                 </Show>
                             </div>
+                            <Show when={overlayLoading()}>
+                                <p class={styles.overlayLoading}>Chargement…</p>
+                            </Show>
+                            <Show when={overlayDescription()}>
+                                <p class={`${styles.overlayDescription} ${overlayDescExpanded() ? styles.overlayDescriptionExpanded : ''}`}>
+                                    {overlayDescription()}
+                                </p>
+                                <button class={styles.overlayDescriptionToggle} onClick={() => setOverlayDescExpanded(v => !v)}>
+                                    {overlayDescExpanded() ? 'Voir moins' : 'Voir plus'}
+                                </button>
+                            </Show>
+                            <Show when={overlayChannelVideos().length > 0}>
+                                <p class={styles.overlaySectionTitle}>Autres vidéos</p>
+                                <div class={styles.overlayChannelVideos}>
+                                    <For each={overlayChannelVideos()}>
+                                        {(cv) => (
+                                            <VideoThumbnailView
+                                                style={{ width: '160px', 'flex-shrink': '0' }}
+                                                video={cv}
+                                                onClick={() => { props.onPlay(cv); setShowInfo(false); }}
+                                            />
+                                        )}
+                                    </For>
+                                </div>
+                            </Show>
                             <div class={styles.overlayActions}>
                                 <button
                                     class={styles.overlayPlayButton}

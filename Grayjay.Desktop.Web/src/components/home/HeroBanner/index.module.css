@@ -264,6 +264,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(6px);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -274,7 +275,7 @@
 .overlayCard {
     background: #1a1a1a;
     border-radius: 12px;
-    width: 560px;
+    width: 760px;
     max-width: 90vw;
     max-height: 85vh;
     overflow-y: auto;
@@ -356,3 +357,56 @@
 }
 
 .overlayClose:hover { background: rgba(0, 0, 0, 0.85); }
+
+.overlayDescription {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.6;
+    margin-bottom: 20px;
+    white-space: pre-line;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.overlayDescriptionExpanded {
+    -webkit-line-clamp: unset;
+    overflow: visible;
+}
+
+.overlayDescriptionToggle {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 20px;
+    text-decoration: underline;
+}
+
+.overlayLoading {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 16px;
+}
+
+.overlayChannelVideos {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+}
+
+.overlayChannelVideos::-webkit-scrollbar { display: none; }
+
+.overlaySectionTitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+}
