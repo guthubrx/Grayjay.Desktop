@@ -144,7 +144,10 @@ const HomePage: Component = () => {
         try {
             const pager = await HistoryBackend.historyPager();
             return pager.data
-                .filter((h: IHistoryVideo) => h.position > MIN_WATCH_POSITION)
+                .filter((h: IHistoryVideo) => {
+                    const dur = h.video?.duration;
+                    return h.position > MIN_WATCH_POSITION && !(dur > 0 && h.position >= dur * 0.9);
+                })
                 .slice(0, MAX_CAROUSEL_ITEMS);
         } catch {
             return [] as IHistoryVideo[];
