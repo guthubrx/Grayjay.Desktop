@@ -28,6 +28,17 @@ const MIN_WATCH_POSITION = 30;
 const HERO_COUNT = 5;
 const MAX_CHANNEL_CAROUSELS = 10;
 
+function getDismissed(): { videos: Set<string>; channels: Set<string> } {
+    const parse = (key: string): Set<string> => {
+        try { return new Set(JSON.parse(localStorage.getItem(key) ?? '[]')); }
+        catch { return new Set(); }
+    };
+    return {
+        videos: parse('grayjay_dismissed_videos'),
+        channels: parse('grayjay_dismissed_channels'),
+    };
+}
+
 const MIN_CHANNEL_VIDEOS = 3;
 
 interface GroupCarousel {
@@ -79,6 +90,8 @@ const HomePage: Component = () => {
     };
     onMount(() => window.addEventListener("keydown", onKeyDown));
     onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+
+    const [dismissRevision, setDismissRevision] = createSignal(0);
 
     const [historyItems] = createResource(async () => {
         try {
@@ -150,8 +163,14 @@ const HomePage: Component = () => {
         video?.actions.openVideo(v);
     }
 
-    // First N videos for the hero slider — available as soon as pager starts loading
-    const heroVideos = () => homePager()?.data?.slice(0, HERO_COUNT) ?? [];
+    // First N videos for the hero slider — filtered by dismissed videos/channels
+    const heroVideos = () => {
+        void dismissRevision();
+        const { videos, channels } = getDismissed();
+        return (homePager()?.data ?? [])
+            .filter(v => !videos.has(v.url ?? '') && !channels.has(v.author?.url ?? ''))
+            .slice(0, HERO_COUNT);
+    };
 
     // Recommended = home pager items after the hero, with valid metadata only
     const recommendedItems = () =>
@@ -185,6 +204,7 @@ const HomePage: Component = () => {
                     <HeroBanner
                         videos={heroVideos()}
                         onPlay={openVideo}
+                        onDismissed={() => setDismissRevision(r => r + 1)}
                         intervalMs={10000}
                     />
                 </Show>

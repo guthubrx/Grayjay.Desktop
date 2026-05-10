@@ -75,7 +75,7 @@
     margin: 0 0 20px 0;
 }
 
-/* Action row: Play + Info */
+/* Action row: Play + Watch Later + Info + Dismiss */
 .actions {
     display: flex;
     align-items: center;
@@ -120,6 +120,92 @@
 .infoButton:hover {
     border-color: #ffffff;
     background: rgba(255, 255, 255, 0.15);
+}
+
+/* Shared icon button (watch later, etc.) */
+.iconButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    background: transparent;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    padding: 0;
+}
+
+.iconButton img {
+    width: 18px;
+    height: 18px;
+    opacity: 0.85;
+}
+
+.iconButton:hover {
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.iconButtonActive {
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* Dismiss button — slightly distinct */
+.dismissButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    background: transparent;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    padding: 0;
+    margin-left: 4px;
+}
+
+.dismissButton img {
+    width: 18px;
+    height: 18px;
+    opacity: 0.6;
+}
+
+.dismissButton:hover {
+    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 0, 0, 0.15);
+}
+
+.dismissButton:hover img {
+    opacity: 1;
+}
+
+/* Inline dismiss feedback */
+.dismissMessage {
+    margin: 12px 0 0 0;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.65);
+    animation: fadeInMessage 0.2s ease;
+}
+
+.dismissLink {
+    text-decoration: underline;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.85);
+    transition: color 0.15s ease;
+}
+
+.dismissLink:hover {
+    color: #ffffff;
+}
+
+@keyframes fadeInMessage {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Navigation arrows */
@@ -227,6 +313,13 @@
     font-size: 13px;
     color: rgba(255, 255, 255, 0.5);
     margin-bottom: 20px;
+}
+
+/* Overlay action row: Play + Watch Later */
+.overlayActions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .overlayPlayButton {

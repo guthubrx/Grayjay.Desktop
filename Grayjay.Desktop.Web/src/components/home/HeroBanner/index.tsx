@@ -2,13 +2,47 @@ import { Component, createEffect, createSignal, onCleanup, Show } from 'solid-js
 import { Portal } from 'solid-js/web';
 
 import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
+import { WatchLaterBackend } from '../../../backend/WatchLaterBackend';
 import styles from './index.module.css';
+
+import iconWatchLater from '../../../assets/icons/icon24_watch_later.svg';
+import iconClose from '../../../assets/icons/icon24_close.svg';
 
 interface HeroBannerProps {
     videos: IPlatformVideo[];
     onPlay: (video: IPlatformVideo) => void;
+    onDismissed?: (url: string) => void;
     intervalMs?: number;
 }
+
+// ── localStorage helpers ──────────────────────────────────────────────────────
+
+const STORAGE_DISMISSED_VIDEOS = 'grayjay_dismissed_videos';
+const STORAGE_DISMISSED_CHANNELS = 'grayjay_dismissed_channels';
+
+function getDismissedVideos(): Set<string> {
+    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_DISMISSED_VIDEOS) ?? '[]')); }
+    catch { return new Set(); }
+}
+
+function dismissVideo(url: string): void {
+    const set = getDismissedVideos();
+    set.add(url);
+    localStorage.setItem(STORAGE_DISMISSED_VIDEOS, JSON.stringify([...set]));
+}
+
+function getDismissedChannels(): Set<string> {
+    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_DISMISSED_CHANNELS) ?? '[]')); }
+    catch { return new Set(); }
+}
+
+function dismissChannel(url: string): void {
+    const set = getDismissedChannels();
+    set.add(url);
+    localStorage.setItem(STORAGE_DISMISSED_CHANNELS, JSON.stringify([...set]));
+}
+
+// ── Formatters ────────────────────────────────────────────────────────────────
 
 function getBestThumbnail(v: IPlatformVideo): string | undefined {
     return v.thumbnails?.sources?.sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0))[0]?.url?.replace('u0026', '&');
@@ -31,9 +65,15 @@ function formatViews(n: number): string {
     return `${n} views`;
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 const HeroBanner: Component<HeroBannerProps> = (props) => {
     const [currentIndex, setCurrentIndex] = createSignal(0);
     const [showInfo, setShowInfo] = createSignal(false);
+    const [addedToWatchLater, setAddedToWatchLater] = createSignal(false);
+    const [overlayAddedToWatchLater, setOverlayAddedToWatchLater] = createSignal(false);
+    const [dismissState, setDismissState] = createSignal<'none' | 'video' | 'channel'>('none');
+
     const intervalMs = () => props.intervalMs ?? 10000;
 
     let timerId: ReturnType<typeof setInterval> | undefined;
@@ -64,9 +104,38 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     const thumbnailUrl = () => getBestThumbnail(currentVideo()) ?? '';
     const multiSlide = () => props.videos.length > 1;
 
-    function goTo(index: number) { setCurrentIndex(index); startTimer(); }
+    function goTo(index: number) {
+        setCurrentIndex(index);
+        setDismissState('none');
+        startTimer();
+    }
     function goPrev() { goTo((currentIndex() - 1 + props.videos.length) % props.videos.length); }
     function goNext() { goTo((currentIndex() + 1) % props.videos.length); }
+
+    function handleWatchLater(setActive: (v: boolean) => void) {
+        const v = currentVideo();
+        if (!v) return;
+        WatchLaterBackend.add(v).catch(() => {});
+        setActive(true);
+        setTimeout(() => setActive(false), 1000);
+    }
+
+    function handleDismissVideo() {
+        const v = currentVideo();
+        if (!v?.url) return;
+        dismissVideo(v.url);
+        props.onDismissed?.(v.url);
+        setDismissState('video');
+        goNext();
+    }
+
+    function handleDismissChannel() {
+        const v = currentVideo();
+        if (!v?.author?.url) return;
+        dismissChannel(v.author.url);
+        setDismissState('channel');
+        setTimeout(() => setDismissState('none'), 1000);
+    }
 
     return (
         <>
@@ -84,6 +153,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                 <div class={styles.meta}>
                     <p class={styles.title}>{currentVideo()?.name}</p>
                     <p class={styles.channel}>{currentVideo()?.author?.name}</p>
+
                     <div class={styles.actions}>
                         <button
                             class={styles.playButton}
@@ -92,13 +162,45 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                             &#9654; Play
                         </button>
                         <button
+                            class={`${styles.iconButton} ${addedToWatchLater() ? styles.iconButtonActive : ''}`}
+                            onClick={() => handleWatchLater(setAddedToWatchLater)}
+                            title="Watch later"
+                        >
+                            <img src={iconWatchLater} alt="Watch later" />
+                        </button>
+                        <button
                             class={styles.infoButton}
                             onClick={() => setShowInfo(true)}
                             title="More info"
                         >
                             i
                         </button>
+                        <button
+                            class={styles.dismissButton}
+                            onClick={handleDismissVideo}
+                            title="Dismiss"
+                        >
+                            <img src={iconClose} alt="Dismiss" />
+                        </button>
                     </div>
+
+                    <Show when={dismissState() === 'video'}>
+                        <p class={styles.dismissMessage}>
+                            Video hidden —{' '}
+                            <span
+                                class={styles.dismissLink}
+                                onClick={handleDismissChannel}
+                                role="button"
+                                tabindex={0}
+                                onKeyDown={e => e.key === 'Enter' && handleDismissChannel()}
+                            >
+                                Hide channel "{currentVideo()?.author?.name}" too
+                            </span>
+                        </p>
+                    </Show>
+                    <Show when={dismissState() === 'channel'}>
+                        <p class={styles.dismissMessage}>Channel hidden</p>
+                    </Show>
                 </div>
             </div>
 
@@ -113,7 +215,6 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
             </Show>
         </div>
 
-        {/* Info overlay — rendered via Portal to escape overflow:hidden */}
         <Show when={showInfo()}>
             <Portal>
                 <div class={styles.overlayBackdrop} onClick={() => setShowInfo(false)}>
@@ -136,12 +237,21 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                                     <span>{new Date(currentVideo()!.dateTime!).toLocaleDateString()}</span>
                                 </Show>
                             </div>
-                            <button
-                                class={styles.overlayPlayButton}
-                                onClick={() => { const v = currentVideo(); if (v) { props.onPlay(v); setShowInfo(false); } }}
-                            >
-                                &#9654; Play
-                            </button>
+                            <div class={styles.overlayActions}>
+                                <button
+                                    class={styles.overlayPlayButton}
+                                    onClick={() => { const v = currentVideo(); if (v) { props.onPlay(v); setShowInfo(false); } }}
+                                >
+                                    &#9654; Play
+                                </button>
+                                <button
+                                    class={`${styles.iconButton} ${overlayAddedToWatchLater() ? styles.iconButtonActive : ''}`}
+                                    onClick={() => handleWatchLater(setOverlayAddedToWatchLater)}
+                                    title="Watch later"
+                                >
+                                    <img src={iconWatchLater} alt="Watch later" />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
