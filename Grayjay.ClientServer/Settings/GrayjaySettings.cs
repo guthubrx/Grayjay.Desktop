@@ -24,7 +24,7 @@ namespace Grayjay.ClientServer.Settings
         public HomeSettings Home { get; set; } = new HomeSettings();
         public class HomeSettings
         {
-            [SettingsField("Netflix Style Home", SettingsField.TOGGLE, "Use the Netflix-style home with hero banner and content carousels", 0)]
+            [SettingsField("Highlights", SettingsField.TOGGLE, "Show hero banner and content carousels on the home page", 0)]
             public bool NetflixStyleHome { get; set; } = true;
 
             public bool ProgressBar { get; set; } = true;

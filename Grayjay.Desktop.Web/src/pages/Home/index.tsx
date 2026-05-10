@@ -333,7 +333,7 @@ const HomePage: Component = () => {
                         onClick={switchToClassic}
                         title="Switch to classic home"
                     >
-                        Classic view
+                        Classic
                     </button>
                 </div>
             } />
