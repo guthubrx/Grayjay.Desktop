@@ -141,16 +141,20 @@ const HomePage: Component = () => {
 
     onMount(async () => {
         try {
-            const [subGroups, cached] = await Promise.all([
-                SubscriptionsBackend.subscriptionGroups(),
-                SubscriptionsBackend.subscriptionsCacheLoad()
-            ]);
+            // Phase 0 : cache disque seul — le plus rapide, débloque le hero immédiatement
+            const cached = await SubscriptionsBackend.subscriptionsCacheLoad();
             if (groupsAborted) return;
+            const cachedVideos = cached.results as IPlatformVideo[];
+            if (cachedVideos.length > 0)
+                setGroupCarousels(buildGroupCarousels([], cachedVideos));
 
-            // Phase 1: display cache immediately
-            setGroupCarousels(buildGroupCarousels(subGroups, cached.results as IPlatformVideo[]));
+            // Phase 1 : groupes disponibles — réorganise les carousels sans attendre le réseau
+            const subGroups = await SubscriptionsBackend.subscriptionGroups();
+            if (groupsAborted) return;
+            if (cachedVideos.length > 0)
+                setGroupCarousels(buildGroupCarousels(subGroups, cachedVideos));
 
-            // Phase 2: refresh in background
+            // Phase 2 : refresh réseau en arrière-plan
             if (subGroups.length > 0) {
                 for (const group of subGroups) {
                     SubscriptionsBackend.subscriptionGroupLoad(group.id, true)
