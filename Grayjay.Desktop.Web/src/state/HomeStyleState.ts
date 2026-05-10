@@ -5,12 +5,14 @@ export type HomeStyle = 'netflix' | 'classic';
 
 const [homeStyle$, setHomeStyleSignal] = createSignal<HomeStyle>('netflix');
 
-SettingsBackend.settings().then(s => {
-    const val = (s?.object as any)?.home?.netflixStyleHome;
-    if (val === false) setHomeStyleSignal('classic');
-}).catch(() => {});
+SettingsBackend.settings().then(s => applyHomeStyleFromSettings(s?.object)).catch(() => {});
 
 export { homeStyle$ };
+
+export function applyHomeStyleFromSettings(obj: any) {
+    const val = obj?.home?.netflixStyleHome;
+    setHomeStyleSignal(val === false ? 'classic' : 'netflix');
+}
 
 export async function setHomeStyle(style: HomeStyle) {
     setHomeStyleSignal(style);
