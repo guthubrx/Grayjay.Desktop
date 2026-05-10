@@ -183,16 +183,37 @@ const HomePage: Component = () => {
         video?.actions.openVideo(v);
     }
 
-    // Hero videos — live pager data preferred, localStorage cache as immediate fallback
+    // Hero videos — 1:1 interleave of recent subs + platform recos, thumbnail required
     const heroVideos = () => {
         void dismissRevision();
-        const { videos, channels } = getDismissed();
+        const { videos: dVideos, channels: dChannels } = getDismissed();
         const watched = new Set((historyItems() ?? []).map(h => h.video?.url).filter(Boolean));
+        const exclude = (v: IPlatformVideo) =>
+            dVideos.has(v.url ?? '') || dChannels.has(v.author?.url ?? '') ||
+            watched.has(v.url ?? '') || !(v.thumbnails?.sources?.some(s => s?.url));
+
+        // Subs: flatten groupCarousels (already loaded, no extra request)
+        const subs = groupCarousels()
+            .flatMap(g => g.videos)
+            .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
+            .filter(v => !exclude(v));
+
+        // Recos: live pager preferred, cache as fallback
         const live = (homePager()?.data ?? []) as IPlatformVideo[];
-        const source = live.length > 0 ? live : homeCached();
-        return source
-            .filter(v => !videos.has(v.url ?? '') && !channels.has(v.author?.url ?? '') && !watched.has(v.url ?? ''))
-            .slice(0, HERO_COUNT);
+        const recos = (live.length > 0 ? live : homeCached()).filter(v => !exclude(v));
+
+        // 1:1 interleave: sub, reco, sub, reco…
+        const seen = new Set<string>();
+        const result: IPlatformVideo[] = [];
+        const max = Math.max(subs.length, recos.length);
+        for (let i = 0; i < max && result.length < HERO_COUNT; i++) {
+            for (const pool of [subs, recos]) {
+                if (result.length >= HERO_COUNT) break;
+                const v = pool[i];
+                if (v && !seen.has(v.url ?? '')) { seen.add(v.url ?? ''); result.push(v); }
+            }
+        }
+        return result;
     };
 
     // Recommended = home pager items after the hero, with valid metadata only
