@@ -220,6 +220,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                 class={styles.blurredBg}
                 style={{ 'background-image': thumbnailUrl() ? `url(${thumbnailUrl()})` : 'none' }}
             />
+            <div class={styles.gradientTop} />
             <div class={styles.gradient} />
 
             <div class={`${styles.inner} ${fading() ? styles.innerFading : ''}`}>
