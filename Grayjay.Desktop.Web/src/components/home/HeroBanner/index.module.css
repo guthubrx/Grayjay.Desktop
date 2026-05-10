@@ -69,10 +69,25 @@
     overflow: hidden;
 }
 
+.channelRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 20px 0;
+}
+
+.channelAvatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+
 .channel {
     font-size: 13px;
     color: rgba(255, 255, 255, 0.6);
-    margin: 0 0 20px 0;
 }
 
 /* Action row: Play + Watch Later + Info + Dismiss */

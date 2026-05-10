@@ -212,7 +212,12 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                 </Show>
                 <div class={styles.meta}>
                     <p class={styles.title}>{currentVideo()?.name}</p>
-                    <p class={styles.channel}>{currentVideo()?.author?.name}</p>
+                    <div class={styles.channelRow}>
+                        <Show when={currentVideo()?.author?.thumbnail}>
+                            <img class={styles.channelAvatar} src={currentVideo()!.author!.thumbnail} alt="" />
+                        </Show>
+                        <span class={styles.channel}>{currentVideo()?.author?.name}</span>
+                    </div>
 
                     <div class={styles.actions}>
                         <button
