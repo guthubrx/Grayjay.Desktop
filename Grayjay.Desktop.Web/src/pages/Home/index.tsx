@@ -30,8 +30,8 @@ const MAX_CHANNEL_CAROUSELS = 10;
 
 const MIN_CHANNEL_VIDEOS = 3;
 
-interface ChannelGroup {
-    author: IPlatformVideo['author'];
+interface GroupCarousel {
+    name: string;
     videos: IPlatformVideo[];
 }
 
@@ -76,33 +76,40 @@ const HomePage: Component = () => {
         }
     });
 
-    // Per-channel carousels from subscriptions cache
-    const [channelCarousels] = createResource(async (): Promise<{ dedicated: ChannelGroup[], misc: IPlatformVideo[] }> => {
+    // Subscription group carousels — one carousel per configured group, fallback to per-channel
+    const [groupCarousels] = createResource(async (): Promise<GroupCarousel[]> => {
         try {
-            const result = await SubscriptionsBackend.subscriptionsCacheLoad();
-            const groups = new Map<string, ChannelGroup>();
-            for (const video of result.results as IPlatformVideo[]) {
-                const key = video.author?.url ?? video.author?.name ?? 'unknown';
-                if (!groups.has(key)) groups.set(key, { author: video.author, videos: [] });
-                groups.get(key)!.videos.push(video);
+            const [subGroups, cached] = await Promise.all([
+                SubscriptionsBackend.subscriptionGroups(),
+                SubscriptionsBackend.subscriptionsCacheLoad()
+            ]);
+
+            const videosByChannel = new Map<string, IPlatformVideo[]>();
+            for (const v of cached.results as IPlatformVideo[]) {
+                const key = v.author?.url ?? '';
+                if (!videosByChannel.has(key)) videosByChannel.set(key, []);
+                videosByChannel.get(key)!.push(v);
             }
-            const sorted = [...groups.values()].sort((a, b) => {
-                const da = new Date(a.videos[0]?.dateTime ?? 0).getTime();
-                const db = new Date(b.videos[0]?.dateTime ?? 0).getTime();
-                return db - da;
-            });
-            // Channels with enough videos get their own carousel
-            const dedicated = sorted
-                .filter(g => g.videos.length >= MIN_CHANNEL_VIDEOS)
-                .slice(0, MAX_CHANNEL_CAROUSELS);
-            // Channels with too few videos are aggregated
-            const misc = sorted
-                .filter(g => g.videos.length < MIN_CHANNEL_VIDEOS)
-                .flatMap(g => g.videos)
-                .slice(0, MAX_CAROUSEL_ITEMS);
-            return { dedicated, misc };
+
+            if (subGroups.length > 0) {
+                // User has configured groups — one carousel per group
+                return subGroups.map(g => ({
+                    name: g.name,
+                    videos: g.urls
+                        .flatMap(url => videosByChannel.get(url) ?? [])
+                        .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
+                        .slice(0, MAX_CAROUSEL_ITEMS)
+                })).filter(g => g.videos.length > 0);
+            }
+
+            // Fallback: per channel, only channels with enough content
+            return [...videosByChannel.values()]
+                .filter(vs => vs.length >= MIN_CHANNEL_VIDEOS)
+                .sort((a, b) => new Date(b[0]?.dateTime ?? 0).getTime() - new Date(a[0]?.dateTime ?? 0).getTime())
+                .slice(0, MAX_CHANNEL_CAROUSELS)
+                .map(vs => ({ name: vs[0]?.author?.name ?? 'Unknown', videos: vs.slice(0, MAX_CAROUSEL_ITEMS) }));
         } catch {
-            return { dedicated: [], misc: [] };
+            return [];
         }
     });
 
@@ -113,8 +120,10 @@ const HomePage: Component = () => {
     // First N videos for the hero slider — available as soon as pager starts loading
     const heroVideos = () => homePager()?.data?.slice(0, HERO_COUNT) ?? [];
 
-    // Recommended = everything after the hero videos
-    const recommendedItems = () => homePager()?.data?.slice(HERO_COUNT) ?? [];
+    // Recommended = home pager items after the hero, with valid metadata only
+    const recommendedItems = () =>
+        (homePager()?.data?.slice(HERO_COUNT) ?? [])
+            .filter(v => v.name && v.name.trim() && (v as IPlatformVideo).duration > 0) as IPlatformVideo[];
 
     return (
         <div class={styles.container}>
@@ -175,13 +184,13 @@ const HomePage: Component = () => {
                     />
                 </Show>
 
-                {/* Per-channel carousels — only channels with enough videos */}
-                <Show when={(channelCarousels()?.dedicated?.length ?? 0) > 0}>
-                    <For each={channelCarousels()!.dedicated}>
+                {/* Subscription group carousels */}
+                <Show when={(groupCarousels()?.length ?? 0) > 0}>
+                    <For each={groupCarousels()}>
                         {(group) => (
                             <HomeCarousel
-                                title={group.author?.name ?? 'Unknown channel'}
-                                items={group.videos.slice(0, MAX_CAROUSEL_ITEMS)}
+                                title={group.name}
+                                items={group.videos}
                                 builder={(_, item: IPlatformVideo) => (
                                     <VideoThumbnailView
                                         style={THUMB_STYLE}
@@ -192,21 +201,6 @@ const HomePage: Component = () => {
                             />
                         )}
                     </For>
-                </Show>
-
-                {/* Aggregate carousel for channels with few videos */}
-                <Show when={(channelCarousels()?.misc?.length ?? 0) > 0}>
-                    <HomeCarousel
-                        title="From your subscriptions"
-                        items={channelCarousels()!.misc}
-                        builder={(_, item: IPlatformVideo) => (
-                            <VideoThumbnailView
-                                style={THUMB_STYLE}
-                                video={item}
-                                onClick={() => openVideo(item)}
-                            />
-                        )}
-                    />
                 </Show>
 
                 {/* Recommended — fallback/complement from home pager */}
