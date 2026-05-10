@@ -2,7 +2,7 @@ import { Component, createEffect, createSignal, For, onCleanup, Show } from 'sol
 import { Portal } from 'solid-js/web';
 
 import { DetailsBackend } from '../../../backend/DetailsBackend';
-import { LocalRecommendationsBackend } from '../../../backend/LocalRecommendationsBackend';
+import { SubscriptionsBackend } from '../../../backend/SubscriptionsBackend';
 import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
 import { WatchLaterBackend } from '../../../backend/WatchLaterBackend';
 import VideoThumbnailView from '../../content/VideoThumbnailView';
@@ -137,10 +137,28 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
         if (!v?.url) return;
         setOverlayLoading(true);
 
-        // Channel videos from local cache — fast, show independently
-        LocalRecommendationsBackend.forVideo(v.author?.url ?? '', 6)
-            .then(vids => setOverlayChannelVideos((vids as IPlatformVideo[]).filter(cv => cv.url !== v.url).slice(0, 5)))
+        // Phase 1: subscription cache (disk, fast) filtered by this channel
+        const channelUrl = v.author?.url ?? '';
+        SubscriptionsBackend.subscriptionsCacheLoad()
+            .then(res => {
+                const fromCache = (res.results as IPlatformVideo[])
+                    .filter(cv => cv.author?.url === channelUrl && cv.url !== v.url)
+                    .slice(0, 5);
+                if (fromCache.length > 0) setOverlayChannelVideos(fromCache);
+            })
             .catch(() => {});
+
+        // Phase 2: fresh platform fetch (slow), updates display when ready
+        if (channelUrl) {
+            SubscriptionsBackend.subscriptionsFilterChannelLoad(channelUrl)
+                .then(res => {
+                    const fresh = (res.results as IPlatformVideo[])
+                        .filter(cv => cv.url !== v.url)
+                        .slice(0, 5);
+                    if (fresh.length > 0) setOverlayChannelVideos(fresh);
+                })
+                .catch(() => {});
+        }
 
         // Full description — slow network fetch, clears spinner when done
         DetailsBackend.videoLoad(v.url)
