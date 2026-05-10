@@ -90,7 +90,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                     ... props.openChannelButton === true ? [ new MenuItemButton("Open channel", iconCreator, undefined, ()=>{
                         const author = content?.author;
                         if(author) {
-                            if (video?.state$() === VideoState.Maximized)
+                            if (video?.state() === VideoState.Maximized)
                                 video.actions.setState(VideoState.Minimized);
                             navigate("/web/channel?url=" + encodeURIComponent(author.url), { state: { author } });
                         }
