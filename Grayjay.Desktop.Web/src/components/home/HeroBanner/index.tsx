@@ -71,8 +71,12 @@ function formatViews(n: number): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+const FADE_MS = 400;
+
 const HeroBanner: Component<HeroBannerProps> = (props) => {
-    const [currentIndex, setCurrentIndex] = createSignal(0);
+    const [currentIndex, setCurrentIndex] = createSignal(0);  // dot / navigation target
+    const [displayIndex, setDisplayIndex] = createSignal(0);  // content actually rendered
+    const [fading, setFading] = createSignal(false);
     const [showInfo, setShowInfo] = createSignal(false);
     const [addedToWatchLater, setAddedToWatchLater] = createSignal(false);
     const [overlayAddedToWatchLater, setOverlayAddedToWatchLater] = createSignal(false);
@@ -82,14 +86,26 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     const [overlayChannelVideos, setOverlayChannelVideos] = createSignal<IPlatformVideo[]>([]);
     const [overlayLoading, setOverlayLoading] = createSignal(false);
 
-    const intervalMs = () => props.intervalMs ?? 10000;
+    const intervalMs = () => props.intervalMs ?? 15000;
 
     let timerId: ReturnType<typeof setInterval> | undefined;
+    let fadeTimerId: ReturnType<typeof setTimeout> | undefined;
+
+    function transitionTo(index: number) {
+        if (index === currentIndex() && index === displayIndex()) return;
+        clearTimeout(fadeTimerId);
+        setCurrentIndex(index);
+        setFading(true);
+        fadeTimerId = setTimeout(() => {
+            setDisplayIndex(index);
+            setFading(false);
+        }, FADE_MS);
+    }
 
     function startTimer() {
         clearInterval(timerId);
         timerId = setInterval(() => {
-            setCurrentIndex(i => (i + 1) % props.videos.length);
+            transitionTo((currentIndex() + 1) % props.videos.length);
         }, intervalMs());
     }
 
@@ -100,7 +116,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
         else clearInterval(timerId);
     });
 
-    onCleanup(() => clearInterval(timerId));
+    onCleanup(() => { clearInterval(timerId); clearTimeout(fadeTimerId); });
 
     createEffect(() => {
         if (props.videos.length <= 1) return;
@@ -109,7 +125,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
         if (url) { const img = new Image(); img.src = url; }
     });
 
-    const currentVideo = () => props.videos[currentIndex()];
+    const currentVideo = () => props.videos[displayIndex()];
     const thumbnailUrl = () => getBestThumbnail(currentVideo()) ?? '';
     const multiSlide = () => props.videos.length > 1;
 
@@ -121,7 +137,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     });
 
     function goTo(index: number) {
-        setCurrentIndex(index);
+        transitionTo(index);
         setDismissState('none');
         startTimer();
     }
@@ -206,7 +222,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
             />
             <div class={styles.gradient} />
 
-            <div class={styles.inner}>
+            <div class={`${styles.inner} ${fading() ? styles.innerFading : ''}`}>
                 <Show when={thumbnailUrl()}>
                     <img class={styles.thumbnail} src={thumbnailUrl()} alt={currentVideo()?.name ?? ''} />
                 </Show>

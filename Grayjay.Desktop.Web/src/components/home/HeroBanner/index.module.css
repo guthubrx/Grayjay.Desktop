@@ -14,6 +14,7 @@
     background-size: cover;
     background-position: center;
     filter: blur(28px) brightness(0.35);
+    transition: background-image 0s, opacity 0.4s ease;
 }
 
 /* Bottom gradient fade into page background */
@@ -39,6 +40,11 @@
     align-items: center;
     gap: 36px;
     padding: 0 56px;
+    transition: opacity 0.4s ease;
+}
+
+.innerFading {
+    opacity: 0;
 }
 
 /* Sharp thumbnail — wider */

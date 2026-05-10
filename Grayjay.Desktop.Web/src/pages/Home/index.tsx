@@ -25,7 +25,7 @@ import iconSources from "../../assets/icons/ic_circles.svg";
 const THUMB_STYLE = { width: '280px', "flex-shrink": '0' };
 const MAX_CAROUSEL_ITEMS = 20;
 const MIN_WATCH_POSITION = 30;
-const HERO_COUNT = 5;
+const HERO_COUNT = 10;
 const MAX_CHANNEL_CAROUSELS = 10;
 
 const STORAGE_HOME_CACHE = 'grayjay_home_cache';
@@ -260,7 +260,7 @@ const HomePage: Component = () => {
                         videos={heroVideos()}
                         onPlay={openVideo}
                         onDismissed={() => setDismissRevision(r => r + 1)}
-                        intervalMs={10000}
+                        intervalMs={15000}
                         watchLaterUrls={() => new Set((watchLaterItems() ?? []).map(v => v.url ?? '').filter(Boolean))}
                     />
                 </Show>
