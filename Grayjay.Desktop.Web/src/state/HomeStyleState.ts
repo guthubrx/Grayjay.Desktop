@@ -1,17 +1,29 @@
 import { createSignal } from 'solid-js';
+import { SettingsBackend } from '../backend/SettingsBackend';
 
-const KEY = 'grayjay_home_style';
+export type HomeStyle = 'netflix' | 'classic';
 
-type HomeStyle = 'netflix' | 'classic';
+const [homeStyle$, setHomeStyleSignal] = createSignal<HomeStyle>('netflix');
 
-function read(): HomeStyle {
-    const v = localStorage.getItem(KEY);
-    return v === 'classic' ? 'classic' : 'netflix';
-}
+SettingsBackend.settings().then(s => {
+    const val = (s?.object as any)?.home?.netflixStyleHome;
+    if (val === false) setHomeStyleSignal('classic');
+}).catch(() => {});
 
-export const [homeStyle$, setHomeStyleRaw] = createSignal<HomeStyle>(read());
+export { homeStyle$ };
 
-export function setHomeStyle(style: HomeStyle) {
-    localStorage.setItem(KEY, style);
-    setHomeStyleRaw(style);
+export async function setHomeStyle(style: HomeStyle) {
+    setHomeStyleSignal(style);
+    try {
+        const s = await SettingsBackend.settings();
+        if (s?.object) {
+            (s.object as any).home = {
+                ...(s.object as any).home,
+                netflixStyleHome: style === 'netflix'
+            };
+            await SettingsBackend.settingsSave(s.object);
+        }
+    } catch (e) {
+        console.error('Failed to save home style setting', e);
+    }
 }

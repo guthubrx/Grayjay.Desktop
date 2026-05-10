@@ -20,11 +20,12 @@ namespace Grayjay.ClientServer.Settings
         }
 
         //Home
+        [SettingsField("Home", "group", "Configure home page appearance", 1)]
         public HomeSettings Home { get; set; } = new HomeSettings();
         public class HomeSettings
         {
-            //[SettingsField("Preview Feed Items", SettingsField.TOGGLE, "When the preview feedstyle is used, if items should auto-preview when scrolling over them", 6)]
-            //public bool PreviewFeedItems { get; set; } = true;
+            [SettingsField("Netflix Style Home", SettingsField.TOGGLE, "Use the Netflix-style home with hero banner and content carousels", 0)]
+            public bool NetflixStyleHome { get; set; } = true;
 
             public bool ProgressBar { get; set; } = true;
 
