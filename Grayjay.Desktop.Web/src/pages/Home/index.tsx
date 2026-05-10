@@ -1,4 +1,4 @@
-import { createResource, type Component, Show, For, onMount, onCleanup } from 'solid-js';
+import { createSignal, createResource, type Component, Show, For, onMount, onCleanup } from 'solid-js';
 
 import styles from './index.module.css';
 import { HistoryBackend } from '../../backend/HistoryBackend';
@@ -33,6 +33,29 @@ const MIN_CHANNEL_VIDEOS = 3;
 interface GroupCarousel {
     name: string;
     videos: IPlatformVideo[];
+}
+
+function buildGroupCarousels(subGroups: ISubscriptionGroup[], allVideos: IPlatformVideo[]): GroupCarousel[] {
+    const byChannel = new Map<string, IPlatformVideo[]>();
+    for (const v of allVideos) {
+        const key = v.author?.url ?? '';
+        if (!byChannel.has(key)) byChannel.set(key, []);
+        byChannel.get(key)!.push(v);
+    }
+    if (subGroups.length > 0) {
+        return subGroups.map(g => ({
+            name: g.name,
+            videos: g.urls
+                .flatMap(url => byChannel.get(url) ?? [])
+                .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
+                .slice(0, MAX_CAROUSEL_ITEMS)
+        })).filter(g => g.videos.length > 0);
+    }
+    return [...byChannel.values()]
+        .filter(vs => vs.length >= MIN_CHANNEL_VIDEOS)
+        .sort((a, b) => new Date(b[0]?.dateTime ?? 0).getTime() - new Date(a[0]?.dateTime ?? 0).getTime())
+        .slice(0, MAX_CHANNEL_CAROUSELS)
+        .map(vs => ({ name: vs[0]?.author?.name ?? 'Unknown', videos: vs.slice(0, MAX_CAROUSEL_ITEMS) }));
 }
 
 const HomePage: Component = () => {
@@ -76,41 +99,51 @@ const HomePage: Component = () => {
         }
     });
 
-    // Subscription group carousels — one carousel per configured group, fallback to per-channel
-    const [groupCarousels] = createResource(async (): Promise<GroupCarousel[]> => {
+    // Subscription group carousels — stale-while-revalidate:
+    // Phase 1 (fast): show cached data immediately
+    // Phase 2 (background): refresh per group and update as results arrive
+    const [groupCarousels, setGroupCarousels] = createSignal<GroupCarousel[]>([]);
+    let groupsAborted = false;
+    onCleanup(() => { groupsAborted = true; });
+
+    onMount(async () => {
         try {
             const [subGroups, cached] = await Promise.all([
                 SubscriptionsBackend.subscriptionGroups(),
                 SubscriptionsBackend.subscriptionsCacheLoad()
             ]);
+            if (groupsAborted) return;
 
-            const videosByChannel = new Map<string, IPlatformVideo[]>();
-            for (const v of cached.results as IPlatformVideo[]) {
-                const key = v.author?.url ?? '';
-                if (!videosByChannel.has(key)) videosByChannel.set(key, []);
-                videosByChannel.get(key)!.push(v);
-            }
+            // Phase 1: display cache immediately
+            setGroupCarousels(buildGroupCarousels(subGroups, cached.results as IPlatformVideo[]));
 
+            // Phase 2: refresh in background
             if (subGroups.length > 0) {
-                // User has configured groups — one carousel per group
-                return subGroups.map(g => ({
-                    name: g.name,
-                    videos: g.urls
-                        .flatMap(url => videosByChannel.get(url) ?? [])
-                        .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
-                        .slice(0, MAX_CAROUSEL_ITEMS)
-                })).filter(g => g.videos.length > 0);
+                for (const group of subGroups) {
+                    SubscriptionsBackend.subscriptionGroupLoad(group.id, true)
+                        .then(fresh => {
+                            if (groupsAborted) return;
+                            const freshVideos = (fresh.results as IPlatformVideo[])
+                                .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
+                                .slice(0, MAX_CAROUSEL_ITEMS);
+                            if (freshVideos.length === 0) return;
+                            setGroupCarousels(prev => {
+                                const existing = prev.find(g => g.name === group.name);
+                                if (existing) return prev.map(g => g.name === group.name ? { ...g, videos: freshVideos } : g);
+                                return [...prev, { name: group.name, videos: freshVideos }];
+                            });
+                        })
+                        .catch(() => {});
+                }
+            } else {
+                SubscriptionsBackend.subscriptionsLoad(true)
+                    .then(fresh => {
+                        if (groupsAborted) return;
+                        setGroupCarousels(buildGroupCarousels(subGroups, fresh.results as IPlatformVideo[]));
+                    })
+                    .catch(() => {});
             }
-
-            // Fallback: per channel, only channels with enough content
-            return [...videosByChannel.values()]
-                .filter(vs => vs.length >= MIN_CHANNEL_VIDEOS)
-                .sort((a, b) => new Date(b[0]?.dateTime ?? 0).getTime() - new Date(a[0]?.dateTime ?? 0).getTime())
-                .slice(0, MAX_CHANNEL_CAROUSELS)
-                .map(vs => ({ name: vs[0]?.author?.name ?? 'Unknown', videos: vs.slice(0, MAX_CAROUSEL_ITEMS) }));
-        } catch {
-            return [];
-        }
+        } catch {}
     });
 
     function openVideo(v: IPlatformVideo) {
