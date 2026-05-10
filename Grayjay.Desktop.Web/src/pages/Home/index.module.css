@@ -23,13 +23,3 @@
     height: 100%;
     overflow: hidden;
 }
-
-@keyframes carouselFadeIn {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-.carouselRow {
-    animation: carouselFadeIn 350ms ease forwards;
-    opacity: 0;
-}
