@@ -88,7 +88,8 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     createEffect(() => {
         void props.videos.length;
         void intervalMs();
-        startTimer();
+        if (!showInfo()) startTimer();
+        else clearInterval(timerId);
     });
 
     onCleanup(() => clearInterval(timerId));
