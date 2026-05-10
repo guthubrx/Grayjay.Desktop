@@ -1591,7 +1591,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const inQueue = c ? (video?.queue()?.some(x => x.url === c.url) ?? false) : false;
         const inContinueWatching = c ? continueWatchingItems$().some(x => x.url === c.url) : false;
         return { title: "", items: c ? [
-            new MenuItemButton("Open channel", iconCreator, undefined, () => c.author && navigate("/web/channel?url=" + encodeURIComponent(c.author.url), { state: { author: c.author } })),
+            new MenuItemButton("Open channel", iconCreator, undefined, () => { if (c.author) { minimize(); navigate("/web/channel?url=" + encodeURIComponent(c.author.url), { state: { author: c.author } }); } }),
             inQueue
                 ? new MenuItemButton("Remove from queue", iconQueue, undefined, () => removeFromQueue(c))
                 : new MenuItemButton("Add to queue", iconQueue, undefined, () => video?.actions.addToQueue(c)),
