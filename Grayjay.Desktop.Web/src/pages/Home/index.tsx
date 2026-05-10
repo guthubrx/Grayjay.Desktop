@@ -163,12 +163,13 @@ const HomePage: Component = () => {
         video?.actions.openVideo(v);
     }
 
-    // First N videos for the hero slider — filtered by dismissed videos/channels
+    // First N videos for the hero slider — exclude dismissed and already-watched videos
     const heroVideos = () => {
         void dismissRevision();
         const { videos, channels } = getDismissed();
+        const watched = new Set((historyItems() ?? []).map(h => h.video?.url).filter(Boolean));
         return (homePager()?.data ?? [])
-            .filter(v => !videos.has(v.url ?? '') && !channels.has(v.author?.url ?? ''))
+            .filter(v => !videos.has(v.url ?? '') && !channels.has(v.author?.url ?? '') && !watched.has(v.url ?? ''))
             .slice(0, HERO_COUNT);
     };
 
