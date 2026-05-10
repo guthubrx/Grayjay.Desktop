@@ -89,8 +89,11 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                 ... (content?.contentType === ContentType.MEDIA ? [ 
                     ... props.openChannelButton === true ? [ new MenuItemButton("Open channel", iconCreator, undefined, ()=>{
                         const author = content?.author;
-                        if(author)
+                        if(author) {
+                            if (video?.state$() === VideoState.Maximized)
+                                video.actions.setState(VideoState.Minimized);
                             navigate("/web/channel?url=" + encodeURIComponent(author.url), { state: { author } });
+                        }
                     }) ] : [],
                     new MenuItemButton("Add to queue", iconQueue, undefined, ()=>{
                         video?.actions.addToQueue(content as IPlatformVideo);
