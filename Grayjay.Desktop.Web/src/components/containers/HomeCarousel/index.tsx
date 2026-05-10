@@ -10,6 +10,8 @@ interface HomeCarouselProps {
     builder: (index: number, item: any) => JSX.Element;
     onTitleClick?: () => void;
     onEnd?: () => void;
+    class?: string;
+    style?: JSX.CSSProperties;
 }
 
 const HomeCarousel: Component<HomeCarouselProps> = (props) => {
@@ -30,7 +32,7 @@ const HomeCarousel: Component<HomeCarouselProps> = (props) => {
     }
 
     return (
-        <div class={styles.carousel}>
+        <div class={`${styles.carousel}${props.class ? ` ${props.class}` : ''}`} style={props.style}>
             <div class={styles.header}>
                 <span
                     class={props.onTitleClick ? styles.titleClickable : styles.title}

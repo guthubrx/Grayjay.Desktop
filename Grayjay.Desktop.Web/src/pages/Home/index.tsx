@@ -345,6 +345,8 @@ const HomePage: Component = () => {
                     <HomeCarousel
                         title="Continue watching"
                         items={continueWatchingItems()}
+                        class={styles.carouselRow}
+                        style={{ "animation-delay": "0ms" }}
                         builder={(_, item: IHistoryVideo) => (
                             <VideoThumbnailView
                                 style={THUMB_STYLE}
@@ -352,6 +354,7 @@ const HomePage: Component = () => {
                                 onClick={() => openVideo(item.video)}
                                 onSettings={(el, c) => openVideoMenu(el, c)}
                                 settingsOnHover={true}
+                                showHoverCard={true}
                             />
                         )}
                     />
@@ -361,6 +364,8 @@ const HomePage: Component = () => {
                     <HomeCarousel
                         title="Watch later"
                         items={watchLaterItems()!}
+                        class={styles.carouselRow}
+                        style={{ "animation-delay": "80ms" }}
                         builder={(_, item: IPlatformVideo) => (
                             <VideoThumbnailView
                                 style={THUMB_STYLE}
@@ -368,6 +373,7 @@ const HomePage: Component = () => {
                                 onClick={() => openVideo(item)}
                                 onSettings={(el, c) => openVideoMenu(el, c)}
                                 settingsOnHover={true}
+                                showHoverCard={true}
                             />
                         )}
                     />
@@ -376,13 +382,15 @@ const HomePage: Component = () => {
                 {/* Subscription group carousels — watched videos excluded */}
                 <Show when={(groupCarousels()?.length ?? 0) > 0}>
                     <For each={groupCarousels()}>
-                        {(group) => {
+                        {(group, groupIndex) => {
                             const items = () => group.videos.filter(v => !watchedUrls().has(v.url ?? ''));
                             return (
                                 <Show when={items().length > 0}>
                                     <HomeCarousel
                                         title={group.name}
                                         items={items()}
+                                        class={styles.carouselRow}
+                                        style={{ "animation-delay": `${(groupIndex() + 2) * 80}ms` }}
                                         builder={(_, item: IPlatformVideo) => (
                                             <VideoThumbnailView
                                                 style={THUMB_STYLE}
@@ -390,6 +398,7 @@ const HomePage: Component = () => {
                                                 onClick={() => openVideo(item)}
                                                 onSettings={(el, c) => openVideoMenu(el, c)}
                                                 settingsOnHover={true}
+                                                showHoverCard={true}
                                             />
                                         )}
                                     />
@@ -404,6 +413,8 @@ const HomePage: Component = () => {
                     <HomeCarousel
                         title="Recommended"
                         items={recommendedItems()}
+                        class={styles.carouselRow}
+                        style={{ "animation-delay": "160ms" }}
                         builder={(_, item: IPlatformVideo) => (
                             <VideoThumbnailView
                                 style={THUMB_STYLE}
@@ -411,6 +422,7 @@ const HomePage: Component = () => {
                                 onClick={() => openVideo(item)}
                                 onSettings={(el, c) => openVideoMenu(el, c)}
                                 settingsOnHover={true}
+                                showHoverCard={true}
                             />
                         )}
                     />

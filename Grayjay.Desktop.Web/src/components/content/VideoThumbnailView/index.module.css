@@ -195,3 +195,23 @@
     height: 3px;
     background-color: #3333FFAA;
 }
+
+.durationRemaining {
+    border-radius: 4px;
+    background: #000000EE;
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    color: #4fc3f7;
+    padding: 6px 8px;
+    font-family: Inter;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 200;
+    line-height: normal;
+}
+
+@keyframes hoverCardIn {
+    from { opacity: 0; transform: scale(0.95) translateY(4px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
