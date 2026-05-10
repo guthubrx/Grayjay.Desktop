@@ -28,6 +28,8 @@ const MIN_WATCH_POSITION = 30;
 const HERO_COUNT = 5;
 const MAX_CHANNEL_CAROUSELS = 10;
 
+const MIN_CHANNEL_VIDEOS = 3;
+
 interface ChannelGroup {
     author: IPlatformVideo['author'];
     videos: IPlatformVideo[];
@@ -75,28 +77,32 @@ const HomePage: Component = () => {
     });
 
     // Per-channel carousels from subscriptions cache
-    const [channelCarousels] = createResource(async (): Promise<ChannelGroup[]> => {
+    const [channelCarousels] = createResource(async (): Promise<{ dedicated: ChannelGroup[], misc: IPlatformVideo[] }> => {
         try {
             const result = await SubscriptionsBackend.subscriptionsCacheLoad();
             const groups = new Map<string, ChannelGroup>();
             for (const video of result.results as IPlatformVideo[]) {
                 const key = video.author?.url ?? video.author?.name ?? 'unknown';
-                if (!groups.has(key)) {
-                    groups.set(key, { author: video.author, videos: [] });
-                }
+                if (!groups.has(key)) groups.set(key, { author: video.author, videos: [] });
                 groups.get(key)!.videos.push(video);
             }
-            return [...groups.values()]
-                .filter(g => g.videos.length >= 1)
-                .sort((a, b) => {
-                    // Most recently uploaded channel first
-                    const da = new Date(a.videos[0]?.dateTime ?? 0).getTime();
-                    const db = new Date(b.videos[0]?.dateTime ?? 0).getTime();
-                    return db - da;
-                })
+            const sorted = [...groups.values()].sort((a, b) => {
+                const da = new Date(a.videos[0]?.dateTime ?? 0).getTime();
+                const db = new Date(b.videos[0]?.dateTime ?? 0).getTime();
+                return db - da;
+            });
+            // Channels with enough videos get their own carousel
+            const dedicated = sorted
+                .filter(g => g.videos.length >= MIN_CHANNEL_VIDEOS)
                 .slice(0, MAX_CHANNEL_CAROUSELS);
+            // Channels with too few videos are aggregated
+            const misc = sorted
+                .filter(g => g.videos.length < MIN_CHANNEL_VIDEOS)
+                .flatMap(g => g.videos)
+                .slice(0, MAX_CAROUSEL_ITEMS);
+            return { dedicated, misc };
         } catch {
-            return [];
+            return { dedicated: [], misc: [] };
         }
     });
 
@@ -137,7 +143,7 @@ const HomePage: Component = () => {
                     <HeroBanner
                         videos={heroVideos()}
                         onPlay={openVideo}
-                        intervalMs={5000}
+                        intervalMs={10000}
                     />
                 </Show>
 
@@ -169,9 +175,9 @@ const HomePage: Component = () => {
                     />
                 </Show>
 
-                {/* Per-channel carousels from subscriptions */}
-                <Show when={(channelCarousels()?.length ?? 0) > 0}>
-                    <For each={channelCarousels()}>
+                {/* Per-channel carousels — only channels with enough videos */}
+                <Show when={(channelCarousels()?.dedicated?.length ?? 0) > 0}>
+                    <For each={channelCarousels()!.dedicated}>
                         {(group) => (
                             <HomeCarousel
                                 title={group.author?.name ?? 'Unknown channel'}
@@ -186,6 +192,21 @@ const HomePage: Component = () => {
                             />
                         )}
                     </For>
+                </Show>
+
+                {/* Aggregate carousel for channels with few videos */}
+                <Show when={(channelCarousels()?.misc?.length ?? 0) > 0}>
+                    <HomeCarousel
+                        title="From your subscriptions"
+                        items={channelCarousels()!.misc}
+                        builder={(_, item: IPlatformVideo) => (
+                            <VideoThumbnailView
+                                style={THUMB_STYLE}
+                                video={item}
+                                onClick={() => openVideo(item)}
+                            />
+                        )}
+                    />
                 </Show>
 
                 {/* Recommended — fallback/complement from home pager */}

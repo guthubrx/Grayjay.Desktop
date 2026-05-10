@@ -1,47 +1,66 @@
 .banner {
     position: relative;
     width: 100%;
-    height: 400px;
+    height: 360px;
+    overflow: hidden;
+    background: #111;
+    flex-shrink: 0;
+}
+
+/* Full-width blurred background — fills sides on wide screens */
+.blurredBg {
+    position: absolute;
+    inset: -20px; /* oversized to hide blur edges */
     background-size: cover;
     background-position: center;
-    flex-shrink: 0;
-    /* Fade transition driven by background-image change */
-    transition: background-image 0s, opacity 0.3s ease;
+    filter: blur(28px) brightness(0.35);
 }
 
-.gradient {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 220px;
-    background: linear-gradient(to bottom, transparent, rgba(18, 18, 18, 0.85) 60%, rgba(18, 18, 18, 1) 100%);
-}
-
-.content {
-    position: absolute;
-    bottom: 24px;
-    left: 32px;
-    right: 32px;
+/* Centered content container */
+.inner {
+    position: relative;
     z-index: 1;
+    max-width: 960px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    padding: 0 48px;
+}
+
+/* Sharp thumbnail — natural size, constrained */
+.thumbnail {
+    height: 240px;
+    width: auto;
+    max-width: 426px; /* 16:9 at 240px height */
+    object-fit: cover;
+    border-radius: 8px;
+    flex-shrink: 0;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.meta {
+    flex: 1;
+    min-width: 0;
 }
 
 .title {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 700;
     color: #ffffff;
-    margin: 0 0 6px 0;
+    margin: 0 0 8px 0;
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
 .channel {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.65);
-    margin: 0 0 16px 0;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0 0 20px 0;
 }
 
 .playButton {
@@ -60,7 +79,7 @@
 }
 
 .playButton:hover {
-    background: rgba(255, 255, 255, 1);
+    background: #ffffff;
 }
 
 /* Navigation arrows */
@@ -70,14 +89,13 @@
     top: 50%;
     transform: translateY(-50%);
     z-index: 2;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(0, 0, 0, 0.5);
     color: #ffffff;
     border: none;
     border-radius: 50%;
     width: 40px;
     height: 40px;
     font-size: 24px;
-    line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -85,28 +103,22 @@
     transition: background 0.15s ease;
 }
 
-.arrowLeft {
-    left: 16px;
-}
-
-.arrowRight {
-    right: 16px;
-}
+.arrowLeft { left: 12px; }
+.arrowRight { right: 12px; }
 
 .arrowLeft:hover,
 .arrowRight:hover {
-    background: rgba(0, 0, 0, 0.72);
+    background: rgba(0, 0, 0, 0.75);
 }
 
-/* Dots indicator */
+/* Dots */
 .dots {
     position: absolute;
-    bottom: 12px;
+    bottom: 10px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 2;
     display: flex;
-    flex-direction: row;
     gap: 6px;
     align-items: center;
 }
@@ -122,11 +134,5 @@
     transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.dot {
-    background: rgba(255, 255, 255, 0.4);
-}
-
-.dotActive {
-    background: rgba(255, 255, 255, 1);
-    transform: scale(1.25);
-}
+.dot { background: rgba(255, 255, 255, 0.35); }
+.dotActive { background: #ffffff; transform: scale(1.3); }
