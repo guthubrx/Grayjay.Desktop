@@ -1,6 +1,7 @@
 import { Component, createEffect, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
+import { DetailsBackend } from '../../../backend/DetailsBackend';
 import { SubscriptionsBackend } from '../../../backend/SubscriptionsBackend';
 import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
 import { WatchLaterBackend } from '../../../backend/WatchLaterBackend';
@@ -75,6 +76,8 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     const [addedToWatchLater, setAddedToWatchLater] = createSignal(false);
     const [overlayAddedToWatchLater, setOverlayAddedToWatchLater] = createSignal(false);
     const [dismissState, setDismissState] = createSignal<'none' | 'video' | 'channel'>('none');
+    const [overlayDescription, setOverlayDescription] = createSignal<string | null>(null);
+    const [overlayDescExpanded, setOverlayDescExpanded] = createSignal(false);
     const [overlayChannelVideos, setOverlayChannelVideos] = createSignal<IPlatformVideo[]>([]);
     const [overlayLoading, setOverlayLoading] = createSignal(false);
 
@@ -127,6 +130,8 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
 
     function openInfoOverlay() {
         setShowInfo(true);
+        setOverlayDescription(null);
+        setOverlayDescExpanded(false);
         setOverlayChannelVideos([]);
         const v = currentVideo();
         if (!v?.url) return;
@@ -153,11 +158,14 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                         .slice(0, 5);
                     if (fresh.length > 0) setOverlayChannelVideos(fresh);
                 })
-                .catch(() => {})
-                .finally(() => setOverlayLoading(false));
-        } else {
-            setOverlayLoading(false);
+                .catch(() => {});
         }
+
+        // Description only — no history side-effect (dedicated endpoint)
+        DetailsBackend.videoDescription(v.url)
+            .then(desc => { if (desc) setOverlayDescription(desc); })
+            .catch(() => {})
+            .finally(() => setOverlayLoading(false));
     }
 
     function handleDismissVideo() {
@@ -279,6 +287,14 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                             </div>
                             <Show when={overlayLoading()}>
                                 <p class={styles.overlayLoading}>Chargement…</p>
+                            </Show>
+                            <Show when={overlayDescription()}>
+                                <p class={`${styles.overlayDescription} ${overlayDescExpanded() ? styles.overlayDescriptionExpanded : ''}`}>
+                                    {overlayDescription()}
+                                </p>
+                                <button class={styles.overlayDescriptionToggle} onClick={() => setOverlayDescExpanded(v => !v)}>
+                                    {overlayDescExpanded() ? 'Voir moins' : 'Voir plus'}
+                                </button>
                             </Show>
                             <Show when={overlayChannelVideos().length > 0}>
                                 <p class={styles.overlaySectionTitle}>Autres vidéos</p>
