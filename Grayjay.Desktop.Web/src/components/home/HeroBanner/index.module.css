@@ -410,3 +410,20 @@
     letter-spacing: 0.08em;
     margin-bottom: 10px;
 }
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+    .banner { height: 320px; }
+    .inner { padding: 0 24px; gap: 20px; }
+    .thumbnail { height: 200px; max-width: 356px; }
+    .title { font-size: 17px; }
+    .playButton { padding: 8px 16px; font-size: 13px; }
+}
+
+@media (max-width: 650px) {
+    .banner { height: 260px; }
+    .inner { padding: 0 16px; }
+    .thumbnail { display: none; }
+    .title { font-size: 15px; -webkit-line-clamp: 2; }
+}
