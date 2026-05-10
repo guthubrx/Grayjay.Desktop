@@ -195,8 +195,12 @@ const HomePage: Component = () => {
                                 .slice(0, MAX_CAROUSEL_ITEMS);
                             if (freshVideos.length === 0) return;
                             setGroupCarousels(prev => {
-                                const existing = prev.find(g => g.name === group.name);
-                                if (existing) return prev.map(g => g.name === group.name ? { ...g, videos: freshVideos } : g);
+                                const idx = prev.findIndex(g => g.name === group.name);
+                                if (idx >= 0) {
+                                    const next = [...prev];
+                                    next[idx] = { ...next[idx], videos: freshVideos };
+                                    return next;
+                                }
                                 return [...prev, { name: group.name, videos: freshVideos }];
                             });
                         })

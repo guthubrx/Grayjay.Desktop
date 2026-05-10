@@ -146,7 +146,6 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     };
     const closeVideo = () => {
         batch(()=>{
-            console.log("Closing video");
             setIndex(undefined);
             setQueue(undefined);
             setStartTime(undefined);
@@ -157,7 +156,6 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     const refetchWatchLater = async () => {
         const videos = await WatchLaterBackend.getAll();
         setWatchLater(videos);
-        console.log("set watch later", videos);
     }
     const [watchLater, setWatchLater] = createSignal<IOrderedPlatformVideo[]>();
     onMount(async () => {
@@ -180,7 +178,6 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     };
 
     StateWebsocket.registerHandlerNew("WatchLaterChanged", (packet)=>{
-        console.log("WatchLater changed");
         refetchWatchLater();
     }, "videoProvider");
     

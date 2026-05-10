@@ -13,6 +13,7 @@ namespace Grayjay.ClientServer.Controllers
         {
             if (string.IsNullOrWhiteSpace(channelUrl))
                 return new List<PlatformContent>();
+            if (limit <= 0 || limit > 100) limit = 20;
 
             var neighborUrls = StateSubscriptions.GetGroups()
                 .Where(g => g.Urls != null && g.Urls.Contains(channelUrl))

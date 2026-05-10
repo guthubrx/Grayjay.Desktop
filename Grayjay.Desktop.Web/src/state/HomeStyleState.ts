@@ -14,18 +14,3 @@ export function applyHomeStyleFromSettings(obj: any) {
     setHomeStyleSignal(val === false ? 'classic' : 'netflix');
 }
 
-export async function setHomeStyle(style: HomeStyle) {
-    setHomeStyleSignal(style);
-    try {
-        const s = await SettingsBackend.settings();
-        if (s?.object) {
-            (s.object as any).home = {
-                ...(s.object as any).home,
-                netflixStyleHome: style === 'netflix'
-            };
-            await SettingsBackend.settingsSave(s.object);
-        }
-    } catch (e) {
-        console.error('Failed to save home style setting', e);
-    }
-}

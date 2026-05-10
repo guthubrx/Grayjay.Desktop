@@ -23,7 +23,7 @@ interface HeroBannerProps {
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 function getBestThumbnail(v: IPlatformVideo): string | undefined {
-    return v.thumbnails?.sources?.sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0))[0]?.url?.replace('u0026', '&');
+    return v.thumbnails?.sources?.slice().sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0))[0]?.url?.replace('u0026', '&');
 }
 
 function formatDuration(seconds: number): string {
