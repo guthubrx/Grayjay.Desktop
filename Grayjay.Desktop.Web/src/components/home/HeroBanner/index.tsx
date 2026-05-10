@@ -16,6 +16,7 @@ interface HeroBannerProps {
     onPlay: (video: IPlatformVideo) => void;
     onDismissed?: (url: string) => void;
     intervalMs?: number;
+    watchLaterUrls?: () => Set<string>;
 }
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
@@ -112,21 +113,31 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     const thumbnailUrl = () => getBestThumbnail(currentVideo()) ?? '';
     const multiSlide = () => props.videos.length > 1;
 
+    createEffect(() => {
+        const url = currentVideo()?.url ?? '';
+        const inWL = props.watchLaterUrls?.().has(url) ?? false;
+        setAddedToWatchLater(inWL);
+        setOverlayAddedToWatchLater(inWL);
+    });
+
     function goTo(index: number) {
         setCurrentIndex(index);
         setDismissState('none');
-        setAddedToWatchLater(false);
-        setOverlayAddedToWatchLater(false);
         startTimer();
     }
     function goPrev() { goTo((currentIndex() - 1 + props.videos.length) % props.videos.length); }
     function goNext() { goTo((currentIndex() + 1) % props.videos.length); }
 
-    function handleWatchLater(setActive: (v: boolean) => void) {
+    function handleWatchLater(active: () => boolean, setActive: (v: boolean) => void) {
         const v = currentVideo();
         if (!v) return;
-        WatchLaterBackend.add(v).catch(() => {});
-        setActive(true);
+        if (active()) {
+            WatchLaterBackend.remove(v.url ?? '').catch(() => {});
+            setActive(false);
+        } else {
+            WatchLaterBackend.add(v).catch(() => {});
+            setActive(true);
+        }
     }
 
     function openInfoOverlay() {
@@ -212,8 +223,8 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                         </button>
                         <button
                             class={`${styles.iconButton} ${addedToWatchLater() ? styles.iconButtonActive : ''}`}
-                            onClick={() => handleWatchLater(setAddedToWatchLater)}
-                            title="Watch later"
+                            onClick={() => handleWatchLater(addedToWatchLater, setAddedToWatchLater)}
+                            title={addedToWatchLater() ? 'Remove from Watch later' : 'Watch later'}
                         >
                             <img src={iconWatchLater} alt="Watch later" />
                         </button>
@@ -320,8 +331,8 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                                 </button>
                                 <button
                                     class={`${styles.iconButton} ${overlayAddedToWatchLater() ? styles.iconButtonActive : ''}`}
-                                    onClick={() => handleWatchLater(setOverlayAddedToWatchLater)}
-                                    title="Watch later"
+                                    onClick={() => handleWatchLater(overlayAddedToWatchLater, setOverlayAddedToWatchLater)}
+                                    title={overlayAddedToWatchLater() ? 'Remove from Watch later' : 'Watch later'}
                                 >
                                     <img src={iconWatchLater} alt="Watch later" />
                                 </button>

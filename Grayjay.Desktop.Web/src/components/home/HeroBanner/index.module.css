@@ -150,11 +150,11 @@
 
 .iconButtonActive {
     border-color: #ffffff;
-    background: rgba(255, 255, 255, 0.30);
+    background: #ffffff;
 }
 
 .iconButtonActive img {
-    filter: brightness(0) invert(1);
+    filter: brightness(0);
     opacity: 1;
 }
 

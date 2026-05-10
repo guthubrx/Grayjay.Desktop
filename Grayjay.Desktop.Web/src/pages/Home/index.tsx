@@ -257,6 +257,7 @@ const HomePage: Component = () => {
                         onPlay={openVideo}
                         onDismissed={() => setDismissRevision(r => r + 1)}
                         intervalMs={10000}
+                        watchLaterUrls={() => new Set((watchLaterItems() ?? []).map(v => v.url ?? '').filter(Boolean))}
                     />
                 </Show>
 
