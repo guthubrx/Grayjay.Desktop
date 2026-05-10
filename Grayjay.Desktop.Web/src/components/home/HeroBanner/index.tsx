@@ -115,6 +115,8 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     function goTo(index: number) {
         setCurrentIndex(index);
         setDismissState('none');
+        setAddedToWatchLater(false);
+        setOverlayAddedToWatchLater(false);
         startTimer();
     }
     function goPrev() { goTo((currentIndex() - 1 + props.videos.length) % props.videos.length); }
@@ -125,7 +127,6 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
         if (!v) return;
         WatchLaterBackend.add(v).catch(() => {});
         setActive(true);
-        setTimeout(() => setActive(false), 1000);
     }
 
     function openInfoOverlay() {

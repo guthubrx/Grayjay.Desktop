@@ -150,7 +150,12 @@
 
 .iconButtonActive {
     border-color: #ffffff;
-    background: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.30);
+}
+
+.iconButtonActive img {
+    filter: brightness(0) invert(1);
+    opacity: 1;
 }
 
 /* Dismiss button — slightly distinct */
