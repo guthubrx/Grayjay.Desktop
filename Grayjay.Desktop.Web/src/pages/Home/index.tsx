@@ -183,11 +183,16 @@ const HomePage: Component = () => {
         video?.actions.openVideo(v);
     }
 
+    // Reactive set of already-watched video URLs (position > MIN_WATCH_POSITION)
+    const watchedUrls = () => new Set(
+        (historyItems() ?? []).map(h => h.video?.url).filter(Boolean) as string[]
+    );
+
     // Hero videos — 1:1 interleave of recent subs + platform recos, thumbnail required
     const heroVideos = () => {
         void dismissRevision();
         const { videos: dVideos, channels: dChannels } = getDismissed();
-        const watched = new Set((historyItems() ?? []).map(h => h.video?.url).filter(Boolean));
+        const watched = watchedUrls();
         const exclude = (v: IPlatformVideo) =>
             dVideos.has(v.url ?? '') || dChannels.has(v.author?.url ?? '') ||
             watched.has(v.url ?? '') || !(v.thumbnails?.sources?.some(s => s?.url));
@@ -216,10 +221,12 @@ const HomePage: Component = () => {
         return result;
     };
 
-    // Recommended = home pager items after the hero, with valid metadata only
-    const recommendedItems = () =>
-        (homePager()?.data?.slice(HERO_COUNT) ?? [])
-            .filter(v => v.name && v.name.trim() && (v as IPlatformVideo).duration > 0) as IPlatformVideo[];
+    // Recommended = home pager items after the hero, with valid metadata only, excluding watched
+    const recommendedItems = () => {
+        const watched = watchedUrls();
+        return (homePager()?.data?.slice(HERO_COUNT) ?? [])
+            .filter(v => v.name && v.name.trim() && (v as IPlatformVideo).duration > 0 && !watched.has((v as IPlatformVideo).url ?? '')) as IPlatformVideo[];
+    };
 
     return (
         <div class={styles.container}>
@@ -281,22 +288,27 @@ const HomePage: Component = () => {
                     />
                 </Show>
 
-                {/* Subscription group carousels */}
+                {/* Subscription group carousels — watched videos excluded */}
                 <Show when={(groupCarousels()?.length ?? 0) > 0}>
                     <For each={groupCarousels()}>
-                        {(group) => (
-                            <HomeCarousel
-                                title={group.name}
-                                items={group.videos}
-                                builder={(_, item: IPlatformVideo) => (
-                                    <VideoThumbnailView
-                                        style={THUMB_STYLE}
-                                        video={item}
-                                        onClick={() => openVideo(item)}
+                        {(group) => {
+                            const items = () => group.videos.filter(v => !watchedUrls().has(v.url ?? ''));
+                            return (
+                                <Show when={items().length > 0}>
+                                    <HomeCarousel
+                                        title={group.name}
+                                        items={items()}
+                                        builder={(_, item: IPlatformVideo) => (
+                                            <VideoThumbnailView
+                                                style={THUMB_STYLE}
+                                                video={item}
+                                                onClick={() => openVideo(item)}
+                                            />
+                                        )}
                                     />
-                                )}
-                            />
-                        )}
+                                </Show>
+                            );
+                        }}
                     </For>
                 </Show>
 
