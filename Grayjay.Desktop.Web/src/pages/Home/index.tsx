@@ -101,12 +101,12 @@ const HomePage: Component = () => {
 
     const [dismissRevision, setDismissRevision] = createSignal(0);
 
-    // Hero cache — populated from localStorage, refreshed when pager resolves
+    // Hero cache — starts from localStorage, updated when pager has live data
     const [homeCached, setHomeCached] = createSignal<IPlatformVideo[]>(loadHomeCache());
     createEffect(() => {
         const pager = homePager();
         if (!pager) return;
-        void pager.hadInitialUpdate$?.(); // re-run on first WebSocket push too
+        void pager.hadInitialUpdate$?.();
         const data = pager.data as IPlatformVideo[];
         if (data.length === 0) return;
         try { localStorage.setItem(STORAGE_HOME_CACHE, JSON.stringify(data.slice(0, HOME_CACHE_SIZE))); } catch {}
@@ -183,12 +183,14 @@ const HomePage: Component = () => {
         video?.actions.openVideo(v);
     }
 
-    // Hero videos — served from cache immediately, refreshed when pager resolves
+    // Hero videos — live pager data preferred, localStorage cache as immediate fallback
     const heroVideos = () => {
         void dismissRevision();
         const { videos, channels } = getDismissed();
         const watched = new Set((historyItems() ?? []).map(h => h.video?.url).filter(Boolean));
-        return homeCached()
+        const live = (homePager()?.data ?? []) as IPlatformVideo[];
+        const source = live.length > 0 ? live : homeCached();
+        return source
             .filter(v => !videos.has(v.url ?? '') && !channels.has(v.author?.url ?? '') && !watched.has(v.url ?? ''))
             .slice(0, HERO_COUNT);
     };
