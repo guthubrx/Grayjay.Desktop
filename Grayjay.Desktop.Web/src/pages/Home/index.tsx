@@ -1,4 +1,4 @@
-import { createSignal, createResource, type Component, Show, For, onMount, onCleanup } from 'solid-js';
+import { createSignal, createResource, createEffect, type Component, Show, For, onMount, onCleanup } from 'solid-js';
 
 import styles from './index.module.css';
 import { HistoryBackend } from '../../backend/HistoryBackend';
@@ -27,6 +27,14 @@ const MAX_CAROUSEL_ITEMS = 20;
 const MIN_WATCH_POSITION = 30;
 const HERO_COUNT = 5;
 const MAX_CHANNEL_CAROUSELS = 10;
+
+const STORAGE_HOME_CACHE = 'grayjay_home_cache';
+const HOME_CACHE_SIZE = 20;
+
+function loadHomeCache(): IPlatformVideo[] {
+    try { return JSON.parse(localStorage.getItem(STORAGE_HOME_CACHE) ?? '[]'); }
+    catch { return []; }
+}
 
 function getDismissed(): { videos: Set<string>; channels: Set<string> } {
     const parse = (key: string): Set<string> => {
@@ -92,6 +100,18 @@ const HomePage: Component = () => {
     onCleanup(() => window.removeEventListener("keydown", onKeyDown));
 
     const [dismissRevision, setDismissRevision] = createSignal(0);
+
+    // Hero cache — populated from localStorage, refreshed when pager resolves
+    const [homeCached, setHomeCached] = createSignal<IPlatformVideo[]>(loadHomeCache());
+    createEffect(() => {
+        const pager = homePager();
+        if (!pager) return;
+        void pager.hadInitialUpdate$?.(); // re-run on first WebSocket push too
+        const data = pager.data as IPlatformVideo[];
+        if (data.length === 0) return;
+        try { localStorage.setItem(STORAGE_HOME_CACHE, JSON.stringify(data.slice(0, HOME_CACHE_SIZE))); } catch {}
+        setHomeCached([...data]);
+    });
 
     const [historyItems] = createResource(async () => {
         try {
@@ -163,12 +183,12 @@ const HomePage: Component = () => {
         video?.actions.openVideo(v);
     }
 
-    // First N videos for the hero slider — exclude dismissed and already-watched videos
+    // Hero videos — served from cache immediately, refreshed when pager resolves
     const heroVideos = () => {
         void dismissRevision();
         const { videos, channels } = getDismissed();
         const watched = new Set((historyItems() ?? []).map(h => h.video?.url).filter(Boolean));
-        return (homePager()?.data ?? [])
+        return homeCached()
             .filter(v => !videos.has(v.url ?? '') && !channels.has(v.author?.url ?? '') && !watched.has(v.url ?? ''))
             .slice(0, HERO_COUNT);
     };
@@ -273,7 +293,7 @@ const HomePage: Component = () => {
                 </Show>
 
                 {/* Empty state — only when pager is done and truly empty */}
-                <Show when={homePager.state === 'ready' && (homePager()?.data?.length ?? 0) === 0}>
+                <Show when={homePager.state === 'ready' && (homePager()?.data?.length ?? 0) === 0 && homeCached().length === 0}>
                     <EmptyContentView
                         icon={iconHome}
                         title='No home results'
