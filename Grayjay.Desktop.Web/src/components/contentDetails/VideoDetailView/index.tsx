@@ -223,7 +223,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     let errorCounter: number = 0;
     const [playerPosition$, setPlayerPosition] = createSignal<number>(0);
     const [nextUpCancelled$, setNextUpCancelled] = createSignal<boolean>(false);
-    const [nextUpCountdownSeconds$, setNextUpCountdownSeconds] = createSignal<number>(0);
     const video = useVideo();
     const focus = useFocus()!;
     const casting = useCasting()!;
@@ -748,23 +747,16 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         return queueLength !== undefined && queueLength > 1 ? true : false;
     });
 
-    // Load next-up countdown setting once on mount
-    onMount(async () => {
-        try {
-            const s = await SettingsBackend.settings();
-            const countdownIndex: number = s?.object?.playback?.nextUpCountdown ?? 2;
-            const countdownMap = [0, 3, 5, 10, 15];
-            setNextUpCountdownSeconds(countdownMap[countdownIndex] ?? 5);
-        } catch (_) {
-            setNextUpCountdownSeconds(5);
-        }
-    });
-
     // Reset cancelled flag when the video changes
     createEffect(on(() => video?.index(), () => {
         setNextUpCancelled(false);
         setPlayerPosition(0);
     }));
+
+    const nextUpCountdownSeconds$ = createMemo(() => {
+        const idx: number = StateGlobal.settings$()?.object?.playback?.nextUpCountdown ?? 2;
+        return [0, 3, 5, 10, 15][idx] ?? 5;
+    });
 
     const nextUpVideo$ = createMemo(() => {
         const q = video?.queue();
@@ -774,7 +766,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     });
 
     const nextUpTimeLeft$ = createMemo(() => {
-        const dur = currentVideo$()?.duration ?? 0;
+        const dur = videoLoaded$()?.duration ?? currentVideo$()?.duration ?? 0;
         const pos = playerPosition$();
         if (dur <= 0) return Infinity;
         return Math.max(0, dur - pos);
@@ -782,7 +774,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
 
     const showNextUp$ = createMemo(() => {
         const countdown = nextUpCountdownSeconds$();
+        const state = video?.state();
         return countdown > 0
+            && (state === VideoState.Maximized || state === VideoState.Fullscreen)
             && !nextUpCancelled$()
             && nextUpVideo$() !== undefined
             && nextUpTimeLeft$() > 0
@@ -2555,7 +2549,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             <Portal>
                 <SettingsMenu menu={recMenu$()} show={recMenuShow$()} onHide={() => setRecMenuShow(false)} anchor={recMenuAnchor$()} />
             </Portal>
-            <Show when={video?.state() === VideoState.Maximized && showNextUp$() && nextUpVideo$()}>
+            <Show when={showNextUp$() && nextUpVideo$()}>
                 <NextUpOverlay
                     visible={showNextUp$()}
                     timeLeft={nextUpTimeLeft$()}
