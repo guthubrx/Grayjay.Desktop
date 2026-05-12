@@ -62,6 +62,7 @@ import { RefItem } from "../../../backend/models/RefItem";
 import { ISerializedComment } from "../../../backend/models/comments/ISerializedComment";
 import icon_back from '../../../assets/icons/icon24_back.svg';
 import icon_close from '../../../assets/icons/icon24_close.svg';
+import NextUpOverlay from '../../player/NextUpOverlay';
 import pinned_fill from '../../../assets/icons/pinned-fill.svg';
 import pinned from '../../../assets/icons/pinned.svg';
 import loop_inactive from '../../../assets/icons/icon_loop_inactive.svg';
@@ -220,6 +221,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     let isScrubbing = false;
     let position: Duration | undefined = undefined;
     let errorCounter: number = 0;
+    const [playerPosition$, setPlayerPosition] = createSignal<number>(0);
+    const [nextUpCancelled$, setNextUpCancelled] = createSignal<boolean>(false);
+    const [nextUpCountdownSeconds$, setNextUpCountdownSeconds] = createSignal<number>(0);
     const video = useVideo();
     const focus = useFocus()!;
     const casting = useCasting()!;
@@ -615,6 +619,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
 
     const handlePositionChanged = (p: Duration) => {
         position = p;
+        setPlayerPosition(p.as("seconds"));
     };
     
     const [currentPlayerHeight$, setCurrentPlayerHeight] = createSignal<number>();
@@ -741,6 +746,47 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const shouldShowQueue = createMemo(() => {
         const queueLength = video?.queue()?.length;
         return queueLength !== undefined && queueLength > 1 ? true : false;
+    });
+
+    // Load next-up countdown setting once on mount
+    onMount(async () => {
+        try {
+            const s = await SettingsBackend.settings();
+            const countdownIndex: number = s?.object?.playback?.nextUpCountdown ?? 2;
+            const countdownMap = [0, 3, 5, 10, 15];
+            setNextUpCountdownSeconds(countdownMap[countdownIndex] ?? 5);
+        } catch (_) {
+            setNextUpCountdownSeconds(5);
+        }
+    });
+
+    // Reset cancelled flag when the video changes
+    createEffect(on(() => video?.index(), () => {
+        setNextUpCancelled(false);
+        setPlayerPosition(0);
+    }));
+
+    const nextUpVideo$ = createMemo(() => {
+        const q = video?.queue();
+        const i = video?.index();
+        if (!q || i === undefined || i + 1 >= q.length) return undefined;
+        return q[i + 1];
+    });
+
+    const nextUpTimeLeft$ = createMemo(() => {
+        const dur = currentVideo$()?.duration ?? 0;
+        const pos = playerPosition$();
+        if (dur <= 0) return Infinity;
+        return Math.max(0, dur - pos);
+    });
+
+    const showNextUp$ = createMemo(() => {
+        const countdown = nextUpCountdownSeconds$();
+        return countdown > 0
+            && !nextUpCancelled$()
+            && nextUpVideo$() !== undefined
+            && nextUpTimeLeft$() > 0
+            && nextUpTimeLeft$() <= countdown;
     });
 
     const videoLoadedIsValid$ = createMemo(() => videoLoaded$()?.url === currentVideo$()?.url);
@@ -2509,6 +2555,18 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             <Portal>
                 <SettingsMenu menu={recMenu$()} show={recMenuShow$()} onHide={() => setRecMenuShow(false)} anchor={recMenuAnchor$()} />
             </Portal>
+            <Show when={video?.state() === VideoState.Maximized && showNextUp$() && nextUpVideo$()}>
+                <NextUpOverlay
+                    visible={showNextUp$()}
+                    timeLeft={nextUpTimeLeft$()}
+                    nextVideo={nextUpVideo$()!}
+                    onCancel={() => setNextUpCancelled(true)}
+                    onPlayNow={() => {
+                        const i = video?.index();
+                        if (i !== undefined) video?.actions.setIndex(i + 1);
+                    }}
+                />
+            </Show>
         </div>
     );
 };
