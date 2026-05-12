@@ -3,10 +3,13 @@ import StateGlobal from "../state/StateGlobal";
 import { range, shuffleArray } from "../utility";
 import { IOrderedPlatformVideo, WatchLaterBackend } from "../backend/WatchLaterBackend";
 import { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
+import { IPlatformContent } from "../backend/models/content/IPlatformContent";
+import { ContentType } from "../backend/models/ContentType";
 import { Duration } from "luxon";
 import { SettingsBackend } from "../backend/SettingsBackend";
 import StateWebsocket from "../state/StateWebsocket";
 import { DetailsBackend } from "../backend/DetailsBackend";
+import { Pager } from "../backend/models/pagers/Pager";
 
 export enum VideoState {
     Closed = 0,
@@ -38,6 +41,7 @@ export interface VideoContextValue {
     desiredMode: Accessor<VideoMode>;
     theatrePinned: Accessor<boolean>;
     volume: Accessor<number>;
+    bingeChannelUrl: Accessor<string | undefined>;
     //queueType watch later, playlist en queue of undefined
     actions: {
         openVideo: (video: IPlatformVideo, time?: Duration, videoState?: VideoState) => void;
@@ -55,6 +59,8 @@ export interface VideoContextValue {
         setTheatrePinned: (pinned: boolean) => void;
         setVolume: (volume: number) => void;
         setStartTime: (startTime: Duration | undefined) => void;
+        startBinge: (channelUrl: string, videos: IPlatformVideo[], pager: Pager<IPlatformContent>) => void;
+        stopBinge: () => void;
     }
 };
 
@@ -73,6 +79,9 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     const [desiredMode, setDesiredModeInternal] = createSignal<VideoMode>(VideoMode.Theatre);
     const [theatrePinned, setTheatrePinnedInternal] = createSignal<boolean>(true);
     const [volume, setVolumeInternal] = createSignal<number>(1);
+    const [bingePager, setBingePager] = createSignal<Pager<IPlatformContent> | undefined>();
+    const [bingeChannelUrl, setBingeChannelUrl] = createSignal<string | undefined>();
+    const [bingeLoading, setBingeLoading] = createSignal<boolean>(false);
     const video = createMemo(() => {
         const q = queue();
         const i = index();
@@ -144,12 +153,53 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             setStartTime(undefined);
         });
     };
+
+    const stopBinge = () => {
+        batch(() => {
+            setBingeChannelUrl(undefined);
+            setBingePager(undefined);
+        });
+    };
+
+    const startBinge = (channelUrl: string, videos: IPlatformVideo[], pager: Pager<IPlatformContent>) => {
+        if (videos.length === 0) return;
+        batch(() => {
+            setBingeChannelUrl(channelUrl);
+            setBingePager(pager);
+            sq(0, videos);
+        });
+    };
+
+    // Auto-extend the queue when fewer than 5 videos remain ahead in a binge session
+    createEffect(() => {
+        const q = queue();
+        const i = index();
+        const pager = bingePager();
+        if (!q || i === undefined || !pager || bingeLoading()) return;
+        if (q.length - 1 - i >= 5) return;
+        if (!pager.hasMore) return;
+        setBingeLoading(true);
+        pager.nextPage()
+            .then(() => {
+                const newItems = (pager.data as IPlatformContent[]).slice(q.length);
+                const videos = newItems.filter((v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA);
+                if (videos.length > 0) {
+                    setQueue([...(queue() ?? []), ...videos]);
+                }
+            })
+            .catch(() => {})
+            .finally(() => setBingeLoading(false));
+    });
+
+
     const closeVideo = () => {
         batch(()=>{
             setIndex(undefined);
             setQueue(undefined);
             setStartTime(undefined);
             setState(VideoState.Closed);
+            setBingeChannelUrl(undefined);
+            setBingePager(undefined);
         });
     };
 
@@ -193,6 +243,7 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         desiredMode,
         theatrePinned,
         volume,
+        bingeChannelUrl,
         actions: {
             setIndex: (i: number) => {
                 batch(() => {
@@ -207,7 +258,6 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             closeVideo,
             addToQueue,
             setState: (videoState: VideoState) => {
-                console.info("VIDEO STATE CHANGED", videoState);
                 setState(videoState);
             },
             setRepeat,
@@ -216,7 +266,9 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             setTheatrePinned,
             setVolume,
             refetchWatchLater,
-            setStartTime
+            setStartTime,
+            startBinge,
+            stopBinge
         }
     };
 

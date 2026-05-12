@@ -16,21 +16,27 @@ import ButtonGroup from '../../components/ButtonGroup';
 import SubscribeButton from '../../components/buttons/SubscribeButton';
 
 import more from '../../assets/icons/more_horiz_FILL0_wght400_GRAD0_opsz24.svg';
+import ic_queue from '../../assets/icons/icon24_queue.svg';
 import NavigationBar from '../../components/topbars/NavigationBar';
-import SettingsMenu, { Menu, MenuItem, ShowEvent } from '../../components/menus/Overlays/SettingsMenu';
+import SettingsMenu, { Menu, MenuItem, MenuItemButton, MenuSeperator, ShowEvent } from '../../components/menus/Overlays/SettingsMenu';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import ic_search from '../../assets/icons/search.svg';
 import InputText from '../../components/basics/inputs/InputText';
 import { Pager } from '../../backend/models/pagers/Pager';
 import { IPlatformContent } from '../../backend/models/content/IPlatformContent';
+import { IPlatformVideo } from '../../backend/models/content/IPlatformVideo';
+import { ContentType } from '../../backend/models/ContentType';
 import Anchor, { AnchorStyle } from '../../utility/Anchor';
 import StateGlobal from '../../state/StateGlobal';
 import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
+import { SettingsBackend } from '../../backend/SettingsBackend';
+import { HistoryBackend } from '../../backend/HistoryBackend';
 import { Menus } from '../../Menus';
 import { Portal } from 'solid-js/web';
 import UIOverlay from '../../state/UIOverlay';
 import { useFocus } from '../../FocusProvider';
 import IconButton from '../../components/buttons/IconButton';
+import { useVideo } from '../../contexts/VideoProvider';
 
 interface ChannelTopBarInit {
   hideSubscriptionSettings: () => void;
@@ -51,6 +57,7 @@ interface ChannelTopBarProps {
 
 const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
   const focus = useFocus();
+  const video = useVideo();
 
   let moreElement: HTMLDivElement | undefined;
 
@@ -58,13 +65,52 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
     menu: Menu,
     subscription?: ISubscription,
     subscriptionSettings?: ISubscriptionSettings
-  }>({ 
-    menu: { title: "", items: []  } 
+  }>({
+    menu: { title: "", items: []  }
   });
   const [showSettings$, setShowSettings] = createSignal(false);
   const anchor = new Anchor(null, showSettings$, AnchorStyle.BottomRight);
-  const showSubscriptionSettings = async (el: HTMLElement, subscription: ISubscription | undefined) => {
+
+  const startBingeWatching = async (includeWatched: boolean) => {
+    if (!props.authorUrl) return;
+    const pager = await ChannelBackend.channelContentPager(props.authorUrl);
+    let videos = (pager.data as IPlatformContent[]).filter(
+      (v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA
+    );
+
+    const settings = await SettingsBackend.settings();
+    const playback = settings?.object?.playback;
+    const order: number = playback?.bingeWatchOrder ?? 0;
+    const excludeWatched: boolean = playback?.bingeWatchExcludeWatched ?? true;
+
+    if (order === 1) {
+      videos = [...videos].reverse();
+    }
+
+    if (!includeWatched && excludeWatched) {
+      const historyResult = await HistoryBackend.historyLoad();
+      const watchedUrls = new Set(
+        (historyResult?.results ?? []).map((h) => h.video?.url).filter(Boolean)
+      );
+      videos = videos.filter((v) => !watchedUrls.has(v.url ?? ''));
+    }
+
+    if (videos.length === 0) return;
+    video?.actions.startBinge(props.authorUrl, videos, pager);
+  };
+
+  const showChannelMenu = async (el: HTMLElement, subscription: ISubscription | undefined) => {
+    anchor.setElement(el);
+
+    const bingeItems = [
+      new MenuSeperator(),
+      new MenuItemButton("Binge watch", ic_queue, undefined, () => startBingeWatching(false)),
+      new MenuItemButton("Binge from scratch (include watched)", ic_queue, undefined, () => startBingeWatching(true))
+    ];
+
     if (!subscription) {
+      setSubscriptionMenu({ menu: { title: "", items: [...bingeItems.slice(1)] } });
+      setShowSettings(true);
       return;
     }
 
@@ -74,27 +120,31 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
       SubscriptionsBackend.subscriptionGroups().catch(() => [] as ISubscriptionGroup[])
     ]);
     anchor.setElement(el);
-    setSubscriptionMenu(Menus.getSubscriptionMenu(subscription, subscriptionSettings, sourceState, groups));
+    const base = Menus.getSubscriptionMenu(subscription, subscriptionSettings, sourceState, groups);
+    setSubscriptionMenu({
+      ...base,
+      menu: { title: "", items: [...base.menu.items, ...bingeItems] }
+    });
     setShowSettings(true);
   };
 
   const hideSubscriptionSettings = () => {
     const subscription = subscriptionMenu$().subscription;
     if (!subscription) {
+      setShowSettings(false);
       return;
     }
 
     const subscriptionSettings = subscriptionMenu$().subscriptionSettings;
     if (!subscriptionSettings) {
+      setShowSettings(false);
       return;
     }
-
-    console.log("subscriptionSettings", subscriptionSettings);
 
     SubscriptionsBackend.updateSubscriptionSettings(subscription.channel.url, subscriptionSettings);
     setShowSettings(false);
   };
-  
+
   const progress = useShrinkProgress();
   const p = createMemo(() => easeOutExpo(progress()));
   const [subscription$, subscriptionResource] = createResourceDefault(props.authorUrl, async (u) => await SubscriptionsBackend.subscription(u));
@@ -131,27 +181,6 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
           <div style="flex-grow: 1"></div>
           <Show when={!focus?.isControllerMode()}>
             <div class={styles.containerChannelButtons}>
-              <Show when={subscription$()}>
-                <IconButton
-                  ref={moreElement}
-                  icon={more}
-                  variant="ghost"
-                  shape="rounded"
-                  width="42px"
-                  height="42px"
-                  iconInset="12px"
-                  onClick={(ev) =>
-                    showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)
-                  }
-                />
-              </Show>
-              <SubscribeButton small={true} author={props.authorUrl} style={{"width": "110px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
-            </div>
-          </Show>
-        </div>
-        <Show when={focus?.isControllerMode()}>
-          <div class={styles.containerChannelButtons}>
-            <Show when={subscription$()}>
               <IconButton
                 ref={moreElement}
                 icon={more}
@@ -161,13 +190,30 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
                 height="42px"
                 iconInset="12px"
                 onClick={(ev) =>
-                  showSubscriptionSettings(ev.target as HTMLElement, subscription$()!)
+                  showChannelMenu(ev.target as HTMLElement, subscription$())
                 }
-                focusableOpts={{
-                  onPress: (el) => showSubscriptionSettings(el, subscription$()!)
-                }}
               />
-            </Show>
+              <SubscribeButton small={true} author={props.authorUrl} style={{"width": "110px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
+            </div>
+          </Show>
+        </div>
+        <Show when={focus?.isControllerMode()}>
+          <div class={styles.containerChannelButtons}>
+            <IconButton
+              ref={moreElement}
+              icon={more}
+              variant="ghost"
+              shape="rounded"
+              width="42px"
+              height="42px"
+              iconInset="12px"
+              onClick={(ev) =>
+                showChannelMenu(ev.target as HTMLElement, subscription$())
+              }
+              focusableOpts={{
+                onPress: (el) => showChannelMenu(el, subscription$())
+              }}
+            />
             <SubscribeButton small={true} author={props.authorUrl} style={{"width": "300px"}} onIsSubscribedChanged={() => subscriptionResource.refetch()} focusable={true} />
           </div>
         </Show>

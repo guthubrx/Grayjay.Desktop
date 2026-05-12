@@ -206,6 +206,30 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Persist Queue", SettingsField.TOGGLE, "Restore your playback queue between sessions", 8)]
             public bool PersistQueue { get; set; } = true;
 
+            [SettingsField("Binge Watch Order", SettingsField.DROPDOWN, "Order in which channel videos are queued when starting a binge watch session", 9)]
+            [SettingsDropdownOptions("Newest first", "Oldest first")]
+            public int BingeWatchOrder { get; set; } = 0;
+
+            [SettingsField("Binge Watch Exclude Watched", SettingsField.TOGGLE, "Exclude videos you have already watched when starting a binge watch session", 10)]
+            public bool BingeWatchExcludeWatched { get; set; } = true;
+
+            [SettingsField("Next Up Countdown", SettingsField.DROPDOWN, "Seconds before automatically playing the next video in the queue. Set to Off to disable the next-up overlay.", 11)]
+            [SettingsDropdownOptions("Off", "3 seconds", "5 seconds", "10 seconds", "15 seconds")]
+            public int NextUpCountdown { get; set; } = 2;
+
+            public int GetNextUpCountdownSeconds()
+            {
+                return NextUpCountdown switch
+                {
+                    0 => 0,
+                    1 => 3,
+                    2 => 5,
+                    3 => 10,
+                    4 => 15,
+                    _ => 5
+                };
+            }
+
 
             /*
             [SettingsField("Preferred Preview Quality", SettingsField.DROPDOWN, "Default qaulity while previewing a video in a feed", 4)]
