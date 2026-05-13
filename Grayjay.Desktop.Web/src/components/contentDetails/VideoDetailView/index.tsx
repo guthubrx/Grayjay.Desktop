@@ -2557,7 +2557,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     onCancel={() => setNextUpCancelled(true)}
                     onPlayNow={() => {
                         const i = video?.index();
-                        if (i !== undefined) video?.actions.setIndex(i + 1);
+                        if (i !== undefined) video?.actions.consumeAndSetIndex(i + 1);
                     }}
                 />
             </Show>

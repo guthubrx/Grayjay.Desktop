@@ -187,6 +187,9 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         const beforeLength = pager.data.length;
         pager.nextPage()
             .then(() => {
+                // The user may have closed the video or started a different binge while the
+                // page was loading. In both cases the captured pager is no longer current.
+                if (bingePager() !== pager || queue() === undefined) return;
                 const newItems = (pager.data as IPlatformContent[]).slice(bingePagerConsumed);
                 bingePagerConsumed = pager.data.length;
                 if (pager.data.length === beforeLength) return;

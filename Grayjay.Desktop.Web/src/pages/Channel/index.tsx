@@ -75,10 +75,11 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
     if (!props.authorUrl) return;
 
     // Fetch pager, settings and history in parallel — startup latency was 3×RTT otherwise.
+    // History failure must not abort the binge; degrade gracefully to "no exclusion".
     const [pager, settings, historyResult] = await Promise.all([
       ChannelBackend.channelContentPager(props.authorUrl),
       SettingsBackend.settings(),
-      includeWatched ? Promise.resolve(undefined) : HistoryBackend.historyLoad(),
+      includeWatched ? Promise.resolve(undefined) : HistoryBackend.historyLoad().catch(() => undefined),
     ]);
 
     const playback = settings?.object?.playback;
