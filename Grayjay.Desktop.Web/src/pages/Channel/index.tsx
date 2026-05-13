@@ -74,12 +74,10 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
   const startBingeWatching = async (includeWatched: boolean) => {
     if (!props.authorUrl) return;
 
-    // Fetch pager, settings and history in parallel — startup latency was 3×RTT otherwise.
-    // History failure must not abort the binge; degrade gracefully to "no exclusion".
-    const [pager, settings, historyResult] = await Promise.all([
+    // Fetch pager and settings in parallel — startup latency was 3×RTT otherwise.
+    const [pager, settings] = await Promise.all([
       ChannelBackend.channelContentPager(props.authorUrl),
       SettingsBackend.settings(),
-      includeWatched ? Promise.resolve(undefined) : HistoryBackend.historyLoad().catch(() => undefined),
     ]);
 
     const playback = settings?.object?.playback;
@@ -94,11 +92,30 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
       videos = [...videos].reverse();
     }
 
-    if (!includeWatched && excludeWatched && historyResult) {
-      const watchedUrls = new Set(
-        (historyResult?.results ?? []).map((h) => h.video?.url).filter(Boolean)
-      );
-      videos = videos.filter((v) => !watchedUrls.has(v.url ?? ''));
+    if (!includeWatched && excludeWatched && videos.length > 0) {
+      // Walk the history pager looking for matches with our channel videos.
+      // Stop as soon as all candidates are accounted for, or after a safety bound
+      // of pages (history can be very long; we don't want to scan all of it).
+      const targetUrls = new Set(videos.map((v) => v.url).filter(Boolean) as string[]);
+      const watchedUrls = new Set<string>();
+      const MAX_HISTORY_PAGES = 20;
+      try {
+        const historyPager = await HistoryBackend.historyPager();
+        let pages = 0;
+        while (pages < MAX_HISTORY_PAGES) {
+          for (const h of historyPager.data) {
+            const url = h.video?.url;
+            if (url && targetUrls.has(url)) watchedUrls.add(url);
+          }
+          if (watchedUrls.size === targetUrls.size) break;
+          if (!historyPager.hasMore) break;
+          await historyPager.nextPage();
+          pages++;
+        }
+      } catch { /* degrade gracefully to no exclusion */ }
+      if (watchedUrls.size > 0) {
+        videos = videos.filter((v) => !watchedUrls.has(v.url ?? ''));
+      }
     }
 
     if (videos.length === 0) return;
