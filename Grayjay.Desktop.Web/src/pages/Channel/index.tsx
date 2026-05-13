@@ -74,7 +74,6 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
   const startBingeWatching = async (includeWatched: boolean) => {
     if (!props.authorUrl) return;
 
-    // Fetch pager and settings in parallel — startup latency was 3×RTT otherwise.
     const [pager, settings] = await Promise.all([
       ChannelBackend.channelContentPager(props.authorUrl),
       SettingsBackend.settings(),
@@ -83,42 +82,51 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
     const playback = settings?.object?.playback;
     const order: number = playback?.bingeWatchOrder ?? 0;
     const excludeWatched: boolean = playback?.bingeWatchExcludeWatched ?? true;
+    const doFilter = !includeWatched && excludeWatched;
 
-    let videos = (pager.data as IPlatformContent[]).filter(
-      (v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA
-    );
+    // The channel pager only loads a couple of pages up front. If exclude-watched
+    // is enabled, we may need to walk further into the catalog before finding
+    // anything unwatched — otherwise the binge starts on items the user has
+    // already finished. Cache lookups so each URL is queried only once.
+    const TARGET_UNWATCHED = 10;
+    const MAX_CHANNEL_PAGES = 10;
+    const watchedCache = new Map<string, boolean>();
 
-    if (order === 1) {
-      videos = [...videos].reverse();
-    }
-
-    const initialVideos = videos;
-
-    if (!includeWatched && excludeWatched && videos.length > 0) {
-      // Lookup per-URL is O(1) backend-side and much cheaper than paginating the
-      // whole history pager when it can hold thousands of entries.
-      const results = await Promise.all(
-        videos.map(async (v) => {
-          if (!v.url) return null;
+    const collectFiltered = async (): Promise<IPlatformVideo[]> => {
+      const all = (pager.data as IPlatformContent[]).filter(
+        (v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA
+      );
+      if (!doFilter) return all;
+      const toQuery = all.filter((v) => v.url && !watchedCache.has(v.url));
+      await Promise.all(
+        toQuery.map(async (v) => {
           try {
-            const pos = await HistoryBackend.getHistoricalPosition(v.url);
-            return pos > 0 ? v.url : null;
+            const pos = await HistoryBackend.getHistoricalPosition(v.url!);
+            watchedCache.set(v.url!, pos > 0);
           } catch {
-            return null;
+            watchedCache.set(v.url!, false);
           }
         })
       );
-      const watchedUrls = new Set(results.filter(Boolean) as string[]);
-      if (watchedUrls.size > 0) {
-        videos = videos.filter((v) => !watchedUrls.has(v.url ?? ''));
-      }
+      return all.filter((v) => v.url && watchedCache.get(v.url) === false);
+    };
+
+    let videos = await collectFiltered();
+    let pages = 0;
+    while (videos.length < TARGET_UNWATCHED && pager.hasMore && pages < MAX_CHANNEL_PAGES) {
+      await pager.nextPage();
+      pages++;
+      videos = await collectFiltered();
     }
 
-    // If the filter consumed everything, fall back to the full list so the
-    // explicit user action never results in a silent no-op.
+    if (order === 1) videos = [...videos].reverse();
+
     if (videos.length === 0) {
-      if (initialVideos.length === 0) return;
-      videos = initialVideos;
+      const allUnfiltered = (pager.data as IPlatformContent[]).filter(
+        (v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA
+      );
+      if (allUnfiltered.length === 0) return;
+      videos = order === 1 ? [...allUnfiltered].reverse() : allUnfiltered;
       StateGlobal.toast({ text: 'All videos already watched — starting binge from scratch' });
     }
 
