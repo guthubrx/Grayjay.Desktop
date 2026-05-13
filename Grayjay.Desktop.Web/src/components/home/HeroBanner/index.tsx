@@ -20,8 +20,6 @@ interface HeroBannerProps {
     watchLaterUrls?: () => Set<string>;
 }
 
-// ── Formatters ────────────────────────────────────────────────────────────────
-
 function getBestThumbnail(v: IPlatformVideo): string | undefined {
     return v.thumbnails?.sources?.slice().sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0))[0]?.url?.replace('u0026', '&');
 }
@@ -42,8 +40,6 @@ function formatViews(n: number): string {
     if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K views`;
     return `${n} views`;
 }
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 const FADE_MS = 400;
 

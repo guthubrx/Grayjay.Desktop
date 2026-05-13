@@ -15,53 +15,53 @@ import iconHome from '../../assets/icons/icon_nav_home.svg';
 import iconSources from '../../assets/icons/ic_circles.svg';
 
 const HomeClassicPage: Component = () => {
-    const homePager = StateGlobal.home$;
-    const nav = useNavigate();
+  const homePager = StateGlobal.home$;
+  const nav = useNavigate();
 
-    const lastHomeMillis = Math.abs(StateGlobal.lastHomeTime$()?.diffNow().toMillis() ?? 0);
-    if (lastHomeMillis > 2 * 60 * 1000) {
-        StateGlobal.reloadHome();
-    }
+  const lastHomeMillis = Math.abs(StateGlobal.lastHomeTime$()?.diffNow().toMillis() ?? 0);
+  if (lastHomeMillis > 2 * 60 * 1000) {
+    StateGlobal.reloadHome();
+  }
 
-    let scrollContainerRef: HTMLDivElement | undefined;
-    return (
-        <div class={styles.container}>
-            <NavigationBar isRoot={true} childrenAfter={
-                <IconButton
-                    icon={iconRefresh}
-                    variant="none"
-                    shape="circle"
-                    width="30px"
-                    height="30px"
-                    iconInset="0px"
-                    style={{ 'margin-left': '24px' }}
-                    onClick={() => StateGlobal.reloadHome()}
-                    focusableOpts={{
-                        groupId: 'nav-bar',
-                        groupIndices: [1],
-                        groupType: 'horizontal',
-                        onPress: () => StateGlobal.reloadHome(),
-                    }}
-                />
-            } />
-            <Show when={homePager.state === 'ready'}>
-                <Show when={homePager() && homePager()!.data.length > 0}>
-                    <ScrollContainer ref={scrollContainerRef}>
-                        <ContentGrid pager={homePager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />
-                    </ScrollContainer>
-                </Show>
-                <Show when={homePager() && homePager()!.data.length === 0}>
-                    <EmptyContentView icon={iconHome} title='No home results' description='Install, configure, or enable more sources' actions={[
-                        {
-                            icon: iconSources,
-                            title: 'Go to Sources',
-                            action: () => nav('/web/sources')
-                        }
-                    ]} />
-                </Show>
-            </Show>
-        </div>
-    );
+  let scrollContainerRef: HTMLDivElement | undefined;
+  return (
+    <div class={styles.container}>
+      <NavigationBar isRoot={true} childrenAfter={
+        <IconButton
+          icon={iconRefresh}
+          variant="none"
+          shape="circle"
+          width="30px"
+          height="30px"
+          iconInset="0px"
+          style={{ 'margin-left': '24px' }}
+          onClick={() => StateGlobal.reloadHome()}
+          focusableOpts={{
+            groupId: 'nav-bar',
+            groupIndices: [1],
+            groupType: 'horizontal',
+            onPress: () => StateGlobal.reloadHome(),
+          }}
+        />
+      } />
+      <Show when={homePager.state === 'ready'}>
+        <Show when={homePager() && homePager()!.data.length > 0}>
+          <ScrollContainer ref={scrollContainerRef}>
+            <ContentGrid pager={homePager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />
+          </ScrollContainer>
+        </Show>
+        <Show when={homePager() && homePager()!.data.length === 0}>
+          <EmptyContentView icon={iconHome} title='No home results' description='Install, configure, or enable more sources' actions={[
+            {
+              icon: iconSources,
+              title: 'Go to Sources',
+              action: () => nav('/web/sources')
+            }
+          ]} />
+        </Show>
+      </Show>
+    </div>
+  );
 };
 
 export default HomeClassicPage;
