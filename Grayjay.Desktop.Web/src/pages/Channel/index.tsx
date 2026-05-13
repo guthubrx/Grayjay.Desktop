@@ -92,6 +92,8 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
       videos = [...videos].reverse();
     }
 
+    const initialVideos = videos;
+
     if (!includeWatched && excludeWatched && videos.length > 0) {
       // Lookup per-URL is O(1) backend-side and much cheaper than paginating the
       // whole history pager when it can hold thousands of entries.
@@ -112,7 +114,14 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
       }
     }
 
-    if (videos.length === 0) return;
+    // If the filter consumed everything, fall back to the full list so the
+    // explicit user action never results in a silent no-op.
+    if (videos.length === 0) {
+      if (initialVideos.length === 0) return;
+      videos = initialVideos;
+      StateGlobal.toast({ text: 'All videos already watched — starting binge from scratch' });
+    }
+
     video?.actions.startBinge(props.authorUrl, videos, pager);
   };
 
