@@ -82,6 +82,7 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     const [bingePager, setBingePager] = createSignal<Pager<IPlatformContent> | undefined>();
     const [bingeChannelUrl, setBingeChannelUrl] = createSignal<string | undefined>();
     const [bingeLoading, setBingeLoading] = createSignal<boolean>(false);
+    let bingePagerConsumed = 0;
     const video = createMemo(() => {
         const q = queue();
         const i = index();
@@ -159,10 +160,12 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             setBingeChannelUrl(undefined);
             setBingePager(undefined);
         });
+        bingePagerConsumed = 0;
     };
 
     const startBinge = (channelUrl: string, videos: IPlatformVideo[], pager: Pager<IPlatformContent>) => {
         if (videos.length === 0) return;
+        bingePagerConsumed = pager.data.length;
         batch(() => {
             setBingeChannelUrl(channelUrl);
             setBingePager(pager);
@@ -170,7 +173,9 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         });
     };
 
-    // Auto-extend the queue when fewer than 5 videos remain ahead in a binge session
+    // Auto-extend the queue when fewer than 5 videos remain ahead in a binge session.
+    // Tracks consumed pager offset separately from queue length so non-video items (posts,
+    // playlists) filtered out of the queue do not corrupt subsequent slice boundaries.
     createEffect(() => {
         const q = queue();
         const i = index();
@@ -179,9 +184,12 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         if (q.length - 1 - i >= 5) return;
         if (!pager.hasMore) return;
         setBingeLoading(true);
+        const beforeLength = pager.data.length;
         pager.nextPage()
             .then(() => {
-                const newItems = (pager.data as IPlatformContent[]).slice(q.length);
+                const newItems = (pager.data as IPlatformContent[]).slice(bingePagerConsumed);
+                bingePagerConsumed = pager.data.length;
+                if (pager.data.length === beforeLength) return;
                 const videos = newItems.filter((v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA);
                 if (videos.length > 0) {
                     setQueue([...(queue() ?? []), ...videos]);

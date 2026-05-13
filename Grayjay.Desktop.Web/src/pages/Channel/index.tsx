@@ -73,22 +73,27 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
 
   const startBingeWatching = async (includeWatched: boolean) => {
     if (!props.authorUrl) return;
-    const pager = await ChannelBackend.channelContentPager(props.authorUrl);
-    let videos = (pager.data as IPlatformContent[]).filter(
-      (v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA
-    );
 
-    const settings = await SettingsBackend.settings();
+    // Fetch pager, settings and history in parallel — startup latency was 3×RTT otherwise.
+    const [pager, settings, historyResult] = await Promise.all([
+      ChannelBackend.channelContentPager(props.authorUrl),
+      SettingsBackend.settings(),
+      includeWatched ? Promise.resolve(undefined) : HistoryBackend.historyLoad(),
+    ]);
+
     const playback = settings?.object?.playback;
     const order: number = playback?.bingeWatchOrder ?? 0;
     const excludeWatched: boolean = playback?.bingeWatchExcludeWatched ?? true;
+
+    let videos = (pager.data as IPlatformContent[]).filter(
+      (v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA
+    );
 
     if (order === 1) {
       videos = [...videos].reverse();
     }
 
-    if (!includeWatched && excludeWatched) {
-      const historyResult = await HistoryBackend.historyLoad();
+    if (!includeWatched && excludeWatched && historyResult) {
       const watchedUrls = new Set(
         (historyResult?.results ?? []).map((h) => h.video?.url).filter(Boolean)
       );
