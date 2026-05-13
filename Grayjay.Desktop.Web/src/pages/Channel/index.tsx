@@ -93,26 +93,20 @@ const ChannelTopBar: Component<ChannelTopBarProps> = (props) => {
     }
 
     if (!includeWatched && excludeWatched && videos.length > 0) {
-      // Walk the history pager looking for matches with our channel videos.
-      // Stop as soon as all candidates are accounted for, or after a safety bound
-      // of pages (history can be very long; we don't want to scan all of it).
-      const targetUrls = new Set(videos.map((v) => v.url).filter(Boolean) as string[]);
-      const watchedUrls = new Set<string>();
-      const MAX_HISTORY_PAGES = 20;
-      try {
-        const historyPager = await HistoryBackend.historyPager();
-        let pages = 0;
-        while (pages < MAX_HISTORY_PAGES) {
-          for (const h of historyPager.data) {
-            const url = h.video?.url;
-            if (url && targetUrls.has(url)) watchedUrls.add(url);
+      // Lookup per-URL is O(1) backend-side and much cheaper than paginating the
+      // whole history pager when it can hold thousands of entries.
+      const results = await Promise.all(
+        videos.map(async (v) => {
+          if (!v.url) return null;
+          try {
+            const pos = await HistoryBackend.getHistoricalPosition(v.url);
+            return pos > 0 ? v.url : null;
+          } catch {
+            return null;
           }
-          if (watchedUrls.size === targetUrls.size) break;
-          if (!historyPager.hasMore) break;
-          await historyPager.nextPage();
-          pages++;
-        }
-      } catch { /* degrade gracefully to no exclusion */ }
+        })
+      );
+      const watchedUrls = new Set(results.filter(Boolean) as string[]);
       if (watchedUrls.size > 0) {
         videos = videos.filter((v) => !watchedUrls.has(v.url ?? ''));
       }
