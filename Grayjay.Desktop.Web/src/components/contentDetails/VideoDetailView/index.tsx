@@ -59,6 +59,7 @@ import SearchBar from "../../topbars/SearchBar";
 import { ContentType } from "../../../backend/models/ContentType";
 import DOMPurify from 'dompurify';
 import { LocalBackend } from "../../../backend/LocalBackend";
+import Globals from "../../../globals";
 import { ILiveChatWindowDescriptor } from "../../../backend/models/comments/ILiveChatWindowDescriptor";
 import LiveChatRemoteWindow from "../../LiveChatRemoteWindow";
 import { HistoryBackend } from "../../../backend/HistoryBackend";
@@ -1197,9 +1198,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
           return;
         }
     
-        console.log(`Open URL: ${url}`);
-        // TODO: Check if should be opened within the app
-        await LocalBackend.open(url);
+        if (!await Globals.handleUrl(url, video!, navigate))
+          await LocalBackend.open(url);
       };
     
     const handleTimestampClick = (timestamp: string) => {
