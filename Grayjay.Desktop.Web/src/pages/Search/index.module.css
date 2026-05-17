@@ -76,3 +76,45 @@
     margin-top: 32px;
     margin-bottom: 16px;
 }
+
+.sortGroup {
+    display: flex;
+    align-items: flex-start;
+    border-radius: 8px;
+    border: 1px solid #353535;
+    overflow: hidden;
+    height: 44px;
+    width: fit-content;
+}
+
+.sortButton {
+    font-family: Inter;
+    font-size: 15px;
+    font-weight: 400;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #8C8C8C;
+    gap: 6px;
+    padding: 0 20px;
+    cursor: pointer;
+    user-select: none;
+    border-left: 1px solid #454545;
+}
+
+.sortButton:first-child {
+    border-left: none;
+}
+
+.sortButtonActive {
+    background: rgba(255, 255, 255, 0.06);
+    color: #FFF;
+}
+
+.sortPriority {
+    font-size: 11px;
+    color: #8082FF;
+    font-weight: 600;
+    line-height: 1;
+}
