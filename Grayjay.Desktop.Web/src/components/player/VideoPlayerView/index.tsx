@@ -63,6 +63,7 @@ interface VideoProps {
     fullscreen?: boolean;
     focusable?: boolean;
     onOptions?: (el: HTMLElement, inputSource: InputSource) => void;
+    onContextMenu?: (event: MouseEvent) => void;
     onReady?: (handle: VideoPlayerViewHandle) => void;
 }
 
@@ -1173,6 +1174,11 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         showControls();
     };
 
+    const handleContextMenu = (e: MouseEvent) => {
+        showControls();
+        props.onContextMenu?.(e);
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
         showControls();
         mouseDownOnVideo = true;
@@ -1319,6 +1325,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             }} 
             onMouseMove={handleMouseMove}
             onMouseLeave={hideControls}
+            onContextMenu={handleContextMenu}
             onDblClick={handleDblClick}
             use:focusable={focusableOpts()}>
 
