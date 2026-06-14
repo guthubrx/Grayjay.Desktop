@@ -121,6 +121,26 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const [xRayOpen$, setXRayOpen] = createSignal(false);
     const [xRayPinned$, setXRayPinned] = createSignal(false);
 
+    // Persiste l'état ouvert/pinné du volet d'une vidéo à l'autre (booléens =
+    // round-trip OK via persist). On n'enregistre qu'après le chargement initial
+    // pour ne pas écraser la valeur persistée avec la valeur par défaut.
+    let xRayPersistReady = false;
+    Promise.all([
+        SettingsBackend.persistGet("xray.open", false),
+        SettingsBackend.persistGet("xray.pinned", false),
+    ]).then(([open, pinned]) => {
+        setXRayOpen(!!open);
+        setXRayPinned(!!pinned);
+    }).catch(() => {}).finally(() => { xRayPersistReady = true; });
+    createEffect(() => {
+        const open = xRayOpen$();
+        if (xRayPersistReady) void SettingsBackend.persistSet("xray.open", open);
+    });
+    createEffect(() => {
+        const pinned = xRayPinned$();
+        if (xRayPersistReady) void SettingsBackend.persistSet("xray.pinned", pinned);
+    });
+
     // Le bouton et le volet X-Ray n'existent que s'il y a quelque chose à montrer
     const hasXRayContent = createMemo(() => {
         const h = props.smartChapterHighlights;
@@ -1474,7 +1494,27 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         }        
     });
 
-    const seek = async (time: Duration) => { 
+    const fadeVolume = (el: HTMLVideoElement, from: number, to: number, ms: number) => new Promise<void>((resolve) => {
+        const steps = 12;
+        let i = 0;
+        const id = setInterval(() => {
+            i++;
+            el.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps)));
+            if (i >= steps) { clearInterval(id); resolve(); }
+        }, ms / steps);
+    });
+    // Saut "en fondu" : baisse le son, saute, remonte le son. Pour les sauts de
+    // section depuis le volet (transition douce plutôt qu'une coupure brutale).
+    const fadeSeek = async (time: Duration) => {
+        const el = videoElement;
+        if (!el || isCasting()) { await seek(time); return; }
+        const target = el.volume;
+        await fadeVolume(el, target, 0, 200);
+        await seek(time);
+        await fadeVolume(el, 0, target, 280);
+    };
+
+    const seek = async (time: Duration) => {
         clearLiveChatOnSeek();
 
         const isLive = props.source?.isLive ?? false;
@@ -1699,7 +1739,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                 smartChapters={props.smartChapterHighlights?.segments}
                 chapters={props.chapters}
                 position={position()}
-                onSeek={(secs) => void seek(Duration.fromMillis(secs * 1000))}
+                onSeek={(secs) => void fadeSeek(Duration.fromMillis(secs * 1000))}
             />
 
             <div ref={videoCaptionsRef} class={styles.captionsContainer} style={{"bottom": controlsVisible$() ? "100px" : "18px"}}></div>
