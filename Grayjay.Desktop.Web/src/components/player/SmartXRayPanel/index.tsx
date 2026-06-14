@@ -4,6 +4,7 @@ import { IVideoHighlightThesis } from "../../../backend/models/highlights/IVideo
 import { IChapter } from "../../../backend/models/contentDetails/IChapter";
 import { Duration } from "luxon";
 import styles from "./index.module.css";
+import iconSidebarClose from "../../../assets/icons/sidebar-close.svg";
 import { xRayState$, saveXRayPanelWidthPercent, MIN_WIDTH_PCT, MAX_WIDTH_PCT } from "../../../state/StateXRay";
 
 export interface SmartXRayPanelProps {
@@ -36,11 +37,13 @@ function truncate(text: string, limit: number): string {
 }
 
 const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
-    let activeRef: HTMLDivElement | undefined;
+    let itemRefs: (HTMLDivElement | undefined)[] = [];
     let panelRef: HTMLDivElement | undefined;
+    let bodyRef: HTMLDivElement | undefined;
     let draggedThisSession = false;
 
     const [widthPct, setWidthPct] = createSignal(xRayState$().panelWidthPercent);
+    const [hovered, setHovered] = createSignal(false);
 
     // Sync width from settings (until user drags)
     createEffect(() => {
@@ -63,11 +66,19 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
         return -1;
     });
 
+    // On positionne la section active dans le tiers superieur du panneau : il
+    // reste ainsi toujours de la marge en dessous pour voir arriver les
+    // prochaines sections. (Le navigateur borne le scroll, donc la premiere
+    // section reste en haut et la derniere en bas, naturellement.)
     createEffect(() => {
-        const _ = activeChapterIndex();
-        if (props.open && activeRef) {
-            activeRef.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }
+        const active = activeChapterIndex();
+        if (!props.open || active < 0) return;
+        const el = itemRefs[active];
+        const container = bodyRef;
+        if (!el || !container) return;
+        const offsetWithin = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+        const target = offsetWithin - container.clientHeight * 0.3;
+        container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
     });
 
     const scoreClass = (score?: number) => {
@@ -84,8 +95,9 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
         (props.chapters?.length ?? 0) > 0
     );
 
-    // Jamais affiché sans contenu (même pinné), ni en miniature (cache la vidéo) ; réapparaît si pinné en grand
-    const effectiveOpen = () => props.open && hasContent() && !props.minimized && (props.pinned || props.controlsVisible);
+    // Jamais affiché sans contenu (même pinné), ni en miniature (cache la vidéo).
+    // Reste visible si pinné, si les contrôles sont visibles, ou si la souris est dessus.
+    const effectiveOpen = () => props.open && hasContent() && !props.minimized && (props.pinned || props.controlsVisible || hovered());
 
     const visibleTheses = createMemo(() => {
         const max = xRayState$().maxTheses;
@@ -120,6 +132,8 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
         <div
             ref={panelRef}
             classList={{ [styles.panel]: true, [styles.open]: effectiveOpen() }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             style={{
                 width: `${widthPct()}%`,
                 background: `rgba(8, 10, 14, ${xRayState$().opacity})`,
@@ -143,11 +157,13 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                             </Show>
                         </svg>
                     </button>
-                    <button class={styles.closeButton} onClick={props.onClose} title="Fermer">&#x2715;</button>
+                    <button class={styles.closeButton} onClick={props.onClose} title="Replier le panneau">
+                        <img src={iconSidebarClose} width="16" height="16" alt="Replier" />
+                    </button>
                 </div>
             </div>
 
-            <div class={styles.body}>
+            <div class={styles.body} ref={bodyRef}>
 
                 <Show when={props.globalSummary}>
                     <section class={styles.section}>
@@ -176,7 +192,7 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                             <Show when={useSmartChapters()}>
                                 <For each={props.smartChapters}>{(seg, i) => (
                                     <div
-                                        ref={i() === activeChapterIndex() ? (el) => { activeRef = el; } : undefined}
+                                        ref={(el) => { itemRefs[i()] = el; }}
                                         classList={{
                                             [styles.chapterItem]: true,
                                             [styles.chapterActive]: i() === activeChapterIndex(),
@@ -199,7 +215,7 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                             <Show when={!useSmartChapters()}>
                                 <For each={props.chapters}>{(ch, i) => (
                                     <div
-                                        ref={i() === activeChapterIndex() ? (el) => { activeRef = el; } : undefined}
+                                        ref={(el) => { itemRefs[i()] = el; }}
                                         classList={{
                                             [styles.chapterItem]: true,
                                             [styles.chapterActive]: i() === activeChapterIndex(),

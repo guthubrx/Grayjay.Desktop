@@ -447,8 +447,8 @@ namespace Grayjay.ClientServer.Settings
             public int Opacity { get; set; } = 3;
 
             [SettingsField("Font size", SettingsField.DROPDOWN, "Text size inside the panel", 1)]
-            [SettingsDropdownOptions("11px", "12px", "14px", "16px")]
-            public int FontSize { get; set; } = 1;
+            [SettingsDropdownOptions("5px", "6px", "7px", "8px", "9px", "10px", "11px", "12px", "13px", "14px", "15px", "16px", "17px", "18px", "19px", "20px", "21px", "22px", "23px", "24px", "25px", "26px", "27px", "28px", "29px", "30px")]
+            public int FontSize { get; set; } = 9;
 
             [SettingsField("Max theses shown", SettingsField.DROPDOWN, "Number of main theses displayed (All = no limit)", 2)]
             [SettingsDropdownOptions("All", "1", "2", "3", "4", "5")]

@@ -1,13 +1,17 @@
 .panel {
     position: absolute;
-    top: 0;
+    /* S'arrête sous la croix de fermeture vidéo (haut) et au-dessus de la
+       seekbar + boutons du player (bas), pour ne pas les masquer. */
+    top: 54px;
     right: 0;
-    bottom: 0;
+    bottom: 96px;
     width: 300px;
     /* background et font-size gérés via inline style depuis StateXRay */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-left: 1px solid rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-right: none;
+    border-radius: 10px 0 0 10px;
     display: flex;
     flex-direction: column;
     transform: translateX(100%);
@@ -39,8 +43,8 @@
 .header {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    padding: 10px 10px 6px 14px;
+    justify-content: flex-start;
+    padding: 10px 14px 6px 12px;
     flex-shrink: 0;
 }
 
@@ -115,7 +119,7 @@
 }
 
 .summaryText {
-    font-size: 12px;
+    font-size: 1em;
     line-height: 1.65;
     color: rgba(255, 255, 255, 0.65);
     margin: 0;
@@ -140,7 +144,7 @@
     border-radius: 50%;
     background: var(--primary, #019BE8);
     color: #fff;
-    font-size: 10px;
+    font-size: 0.85em;
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -149,7 +153,7 @@
 }
 
 .thesisStatement {
-    font-size: 12px;
+    font-size: 1em;
     line-height: 1.55;
     color: rgba(255, 255, 255, 0.70);
 }
@@ -204,7 +208,7 @@
 
 .chapterTime {
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: 0.9em;
     font-variant-numeric: tabular-nums;
     color: rgba(255, 255, 255, 0.4);
     margin-top: 1px;
@@ -219,7 +223,7 @@
 }
 
 .chapterTitle {
-    font-size: 12px;
+    font-size: 1em;
     font-weight: 500;
     color: rgba(255, 255, 255, 0.82);
     line-height: 1.3;
