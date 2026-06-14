@@ -210,7 +210,8 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             return score >= 0.93;
         if (filter === "strong")
             return score >= 0.88 && score < 0.93;
-        return true;
+        // "Smart" : sections notables (vert et au-dessus), sans les "filler" bleus.
+        return score >= 0.55;
     };
     const currentSmartChapterIndex$ = createMemo(() => {
         const posSec = position().milliseconds / 1000;
