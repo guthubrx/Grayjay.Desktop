@@ -88,6 +88,33 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
         return `${styles.scoreDot} ${styles.scoreContext}`;
     };
 
+    // Couleur d'importance de la section (alignée sur les dots et la seekbar).
+    const scoreColor = (score?: number) => {
+        if (score == null) return "#7fb08f";
+        if (score >= 0.93) return "#f4b83f";
+        if (score >= 0.88) return "#e96b55";
+        return "#7fb08f";
+    };
+    const activeColor = createMemo(() =>
+        useSmartChapters() ? scoreColor(props.smartChapters?.[activeChapterIndex()]?.score) : "#7fb08f"
+    );
+    // Avancement (0..1) dans la section en cours, pour remplir la bordure.
+    const activeProgress = createMemo(() => {
+        const idx = activeChapterIndex();
+        const pos = positionSeconds();
+        let start: number | undefined, end: number | undefined;
+        if (useSmartChapters()) {
+            const seg = props.smartChapters?.[idx];
+            start = seg?.start; end = seg?.end;
+        } else {
+            const chs = props.chapters ?? [];
+            start = chs[idx]?.timeStart;
+            end = chs[idx + 1]?.timeStart ?? (start != null ? start + 1 : undefined);
+        }
+        if (start == null || end == null || end <= start) return 0;
+        return Math.max(0, Math.min(1, (pos - start) / (end - start)));
+    });
+
     const hasContent = createMemo(() =>
         !!props.globalSummary ||
         (props.theses?.length ?? 0) > 0 ||
@@ -199,6 +226,9 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                                         }}
                                         onClick={() => props.onSeek(seg.start)}
                                     >
+                                        <Show when={i() === activeChapterIndex()}>
+                                            <span class={styles.activeBar} style={{ background: `linear-gradient(to bottom, ${activeColor()} ${activeProgress() * 100}%, rgba(255,255,255,0.16) ${activeProgress() * 100}%)` }} />
+                                        </Show>
                                         <span class={scoreClass(seg.score)} />
                                         <span class={styles.chapterTime}>{formatSeconds(seg.start)}</span>
                                         <div class={styles.chapterInfo}>
@@ -222,6 +252,9 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                                         }}
                                         onClick={() => props.onSeek(ch.timeStart)}
                                     >
+                                        <Show when={i() === activeChapterIndex()}>
+                                            <span class={styles.activeBar} style={{ background: `linear-gradient(to bottom, ${activeColor()} ${activeProgress() * 100}%, rgba(255,255,255,0.16) ${activeProgress() * 100}%)` }} />
+                                        </Show>
                                         <span class={`${styles.scoreDot} ${styles.scoreContext}`} />
                                         <span class={styles.chapterTime}>{formatSeconds(ch.timeStart)}</span>
                                         <div class={styles.chapterInfo}>

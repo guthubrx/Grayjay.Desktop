@@ -165,6 +165,7 @@
 }
 
 .chapterItem {
+    position: relative;
     display: flex;
     align-items: flex-start;
     gap: 8px;
@@ -178,10 +179,24 @@
     background: rgba(255, 255, 255, 0.05);
 }
 
+/* Le surlignage couvre toute la largeur jusqu'aux bords du volet (le -14px
+   compense le padding de .section). */
 .chapterActive {
-    background: rgba(1, 155, 232, 0.10) !important;
-    border-left: 2px solid var(--primary, #019BE8);
-    padding-left: 6px;
+    background: rgba(255, 255, 255, 0.06) !important;
+    margin: 0 -14px;
+    padding: 7px 22px;
+}
+
+/* Bordure-jauge de la section en cours : sur le bord gauche du volet, coloree
+   selon l'importance, remplie de haut en bas au rythme de la lecture. */
+.activeBar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    pointer-events: none;
 }
 
 /* Couleurs des dots identiques à la barre de progression */
