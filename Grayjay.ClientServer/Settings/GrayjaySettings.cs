@@ -390,6 +390,31 @@ namespace Grayjay.ClientServer.Settings
                 default: return 1;
             }
         }
+
+        [SettingsField("Smart Analysis", "group", "Configure the Smart Analysis side panel", 10)]
+        public XRayPanelSettings XrayPanel { get; set; } = new XRayPanelSettings();
+        public class XRayPanelSettings
+        {
+            [SettingsField("Background opacity", SettingsField.DROPDOWN, "Transparency of the panel background", 0)]
+            [SettingsDropdownOptions("30%", "45%", "55%", "68%", "80%", "92%")]
+            public int Opacity { get; set; } = 3;
+
+            [SettingsField("Font size", SettingsField.DROPDOWN, "Text size inside the panel", 1)]
+            [SettingsDropdownOptions("11px", "12px", "14px", "16px")]
+            public int FontSize { get; set; } = 1;
+
+            [SettingsField("Max theses shown", SettingsField.DROPDOWN, "Number of main theses displayed (All = no limit)", 2)]
+            [SettingsDropdownOptions("All", "1", "2", "3", "4", "5")]
+            public int MaxTheses { get; set; } = 0;
+
+            [SettingsField("Global summary length", SettingsField.DROPDOWN, "Max characters shown in the global summary", 3)]
+            [SettingsDropdownOptions("All", "100", "200", "350", "500")]
+            public int GlobalSummaryChars { get; set; } = 0;
+
+            [SettingsField("Chapter summary length", SettingsField.DROPDOWN, "Max characters shown per chapter summary", 4)]
+            [SettingsDropdownOptions("All", "80", "150", "250", "400")]
+            public int ChapterSummaryChars { get; set; } = 2;
+        }
     }
 
 }

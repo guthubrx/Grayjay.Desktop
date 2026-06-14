@@ -12,6 +12,7 @@ import { ImportBackend } from '../../backend/ImportBackend';
 import UIOverlay from '../../state/UIOverlay';
 import { Event0 } from '../../utility/Event';
 import { ISettingsField } from '../../backend/models/settings/SettingsObject';
+import { applyXRayFromSettings } from '../../state/StateXRay';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import { SyncBackend } from '../../backend/SyncBackend';
 import { focusable } from '../../focusable'; void focusable;
@@ -50,7 +51,9 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
     console.log("Settings closing");
     if(didChange){
       console.log("Settings changed before close, saving");
-      SettingsBackend.settingsSave(settings$()?.object)
+      const obj = settings$()?.object;
+      SettingsBackend.settingsSave(obj);
+      applyXRayFromSettings(obj);
     }
   }
 

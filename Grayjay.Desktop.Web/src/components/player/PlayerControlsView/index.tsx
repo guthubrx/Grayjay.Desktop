@@ -10,11 +10,18 @@ import cast from '../../../assets/icons/icon_32_cast.svg';
 import settings from '../../../assets/icons/icon_32_settings.svg';
 import minimize from '../../../assets/icons/icon_32_minimize.svg';
 import iconTheatre from '../../../assets/icons/icon_theatre.svg';
+import iconSmartPrevious from '../../../assets/icons/chevron_backward_24dp_FFFFFF_FILL0_wght300_GRAD0_opsz24.svg';
+import iconSmartNext from '../../../assets/icons/chevron_right_24dp_FFFFFF_FILL0_wght300_GRAD0_opsz24.svg';
+import iconSidebarOpen from '../../../assets/icons/sidebar-open.svg';
+import iconSidebarClose from '../../../assets/icons/sidebar-close.svg';
 import { dateFromAny, formatDuration } from "../../../utility";
 import { useCasting } from "../../../contexts/Casting";
 import { Event0 } from "../../../utility/Event";
 import { ChapterType, IChapter } from "../../../backend/models/contentDetails/IChapter";
 import { IPlatformVideoDetails } from "../../../backend/models/contentDetails/IPlatformVideoDetails";
+import { IVideoHighlightSegment } from "../../../backend/models/highlights/IVideoHighlightSegment";
+const SMART_CHAPTER_TOOLTIP_WIDTH = 340;
+export type SmartChapterFilter = "video" | "smart" | "top" | "strong";
 
 export interface PlayerControlsProps {
     duration: Duration;
@@ -52,6 +59,16 @@ export interface PlayerControlsProps {
     handleSettingsMenu?: (el: HTMLElement|undefined) => void;
     eventMoved?: Event0;
     chapters?: IChapter[];
+    smartChapterSegments?: IVideoHighlightSegment[];
+    activeSmartChapterIndex?: number;
+    smartChapterFilter?: SmartChapterFilter;
+    onSetSmartChapterFilter?: (filter: SmartChapterFilter) => void;
+    onPreviousSmartChapter?: () => void;
+    onNextSmartChapter?: () => void;
+    hasPreviousSmartChapter?: boolean;
+    hasNextSmartChapter?: boolean;
+    xRayOpen?: boolean;
+    onToggleXRay?: () => void;
     leftButtonContainerStyle?: JSX.CSSProperties;
     rightButtonContainerStyle?: JSX.CSSProperties;
 };
@@ -66,7 +83,17 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     let scrubbing = false;
     let changingVolume = false;
 
+    const smartChapterFilterOptions: { id: SmartChapterFilter; label: string; description: string; }[] = [
+        { id: "video", label: "All", description: "Full video" },
+        { id: "smart", label: "Smart", description: "All Smart Chapters" },
+        { id: "top", label: "Top", description: "Top picks" },
+        { id: "strong", label: "Strong", description: "Strong moments" },
+    ];
+
     const [progressBarChapterHovering$, setProgressBarChapterHovering] = createSignal<number>();
+    const [progressBarSmartChapterHovering$, setProgressBarSmartChapterHovering] = createSignal(-1);
+    const [smartChapterHoverPercent$, setSmartChapterHoverPercent] = createSignal(50);
+    const [smartChapterFilterMenuOpen$, setSmartChapterFilterMenuOpen] = createSignal(false);
 
     const [progressBarDimensions, setProgressBarDimensions] = createSignal({left: 0, width: 0, offsetLeft: 0});
     const calculateWidth = (current: Duration, total: Duration, progressBarWidth: number) => {
@@ -136,6 +163,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
         stopScrubbing(e);
         stopChangingVolume(e);
         setProgressBarChapterHovering(-1);
+        setProgressBarSmartChapterHovering(-1);
     }
     const onMouseMove = (e: MouseEvent) => {
         scrub(e);
@@ -152,6 +180,22 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
         const chapterElement = elements.find(x=>x.classList.contains(styles.progressBarChapter));
         const chapterIndex = (!chapterElement) ? -1 : Array.prototype.indexOf.call(chapterElement.parentNode?.children, chapterElement);
         setProgressBarChapterHovering(chapterIndex);
+
+        const progressBounds = untrack(progressBarDimensions);
+        const durationSecs = untrack(durationSeconds$);
+        if (progressBounds.width <= 0 || durationSecs <= 0) {
+            setProgressBarSmartChapterHovering(-1);
+            return;
+        }
+
+        const pointerFraction = Math.max(0, Math.min(1, (e.clientX - progressBounds.left) / progressBounds.width));
+        const pointerSeconds = pointerFraction * durationSecs;
+        const smartChapterIndex = untrack(smartChapterSegments$).findIndex(segment =>
+            segment.start <= pointerSeconds && segment.end > pointerSeconds
+        );
+
+        setSmartChapterHoverPercent(pointerFraction * 100);
+        setProgressBarSmartChapterHovering(smartChapterIndex);
     };
 
     const onPause = (e: MouseEvent) => {
@@ -173,6 +217,42 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
         if(props.handlePlay)
             props.handlePlay();
         
+        e.stopPropagation();
+        e.preventDefault();
+    };
+
+    const onPreviousSmartChapter = (e: MouseEvent) => {
+        props.onPreviousSmartChapter?.();
+        props.onInteraction?.();
+        e.stopPropagation();
+        e.preventDefault();
+    };
+
+    const onNextSmartChapter = (e: MouseEvent) => {
+        props.onNextSmartChapter?.();
+        props.onInteraction?.();
+        e.stopPropagation();
+        e.preventDefault();
+    };
+
+    const onToggleXRay = (e: MouseEvent) => {
+        props.onToggleXRay?.();
+        props.onInteraction?.();
+        e.stopPropagation();
+        e.preventDefault();
+    };
+
+    const onSmartChapterFilterMenu = (e: MouseEvent) => {
+        setSmartChapterFilterMenuOpen(!smartChapterFilterMenuOpen$());
+        props.onInteraction?.();
+        e.stopPropagation();
+        e.preventDefault();
+    };
+
+    const onSetSmartChapterFilter = (filter: SmartChapterFilter, e: MouseEvent) => {
+        props.onSetSmartChapterFilter?.(filter);
+        setSmartChapterFilterMenuOpen(false);
+        props.onInteraction?.();
         e.stopPropagation();
         e.preventDefault();
     };
@@ -273,6 +353,82 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     const progressWidth = createMemo(() => calculateWidth(props.position, props.duration, progressBarDimensions().width));
     const bufferWidth = createMemo(() => calculateWidth(props.positionBuffered, props.duration, progressBarDimensions().width));
     const progressHandleLeft = createMemo(() => progressWidth() + progressBarDimensions().offsetLeft);
+    const durationSeconds$ = createMemo(() => props.duration.as("seconds"));
+    const smartChapterSegments$ = createMemo(() => {
+        const durationSeconds = durationSeconds$();
+        if (durationSeconds <= 0)
+            return [];
+
+        return (props.smartChapterSegments ?? [])
+            .filter(segment => segment.end > segment.start)
+            .map(segment => ({
+                ...segment,
+                start: Math.max(0, Math.min(durationSeconds, segment.start)),
+                end: Math.max(0, Math.min(durationSeconds, segment.end))
+            }))
+            .filter(segment => segment.end > segment.start);
+    });
+    const smartChapterStyle = (segment: IVideoHighlightSegment) => {
+        const durationSeconds = durationSeconds$();
+        if (durationSeconds <= 0)
+            return {};
+
+        const left = (segment.start / durationSeconds) * 100;
+        const width = ((segment.end - segment.start) / durationSeconds) * 100;
+        return {
+            left: `${left}%`,
+            width: `${Math.max(width, 0.18)}%`
+        };
+    };
+    const smartChapterInterestClass = (segment: IVideoHighlightSegment) => {
+        const score = segment.score ?? 0;
+        if (score >= 0.93)
+            return styles.smartChapterTop;
+        if (score >= 0.88)
+            return styles.smartChapterStrong;
+        return styles.smartChapterContext;
+    };
+    const smartChapterTooltipSegment$ = createMemo(() => {
+        const index = progressBarSmartChapterHovering$();
+        return index >= 0 ? smartChapterSegments$()[index] : undefined;
+    });
+    const smartChapterTooltipStyle = () => {
+        const progressBarWidth = progressBarDimensions().width;
+        if (progressBarWidth <= 0)
+            return {};
+
+        const tooltipWidth = Math.min(SMART_CHAPTER_TOOLTIP_WIDTH, progressBarWidth);
+        const halfTooltipWidth = tooltipWidth / 2;
+        const pointerLeft = (smartChapterHoverPercent$() / 100) * progressBarWidth;
+        const left = Math.max(halfTooltipWidth, Math.min(progressBarWidth - halfTooltipWidth, pointerLeft));
+
+        return {
+            left: `${left}px`,
+            width: `${tooltipWidth}px`
+        };
+    };
+    const smartChapterTooltipSummary = (segment: IVideoHighlightSegment) => {
+        const summary = segment.summary?.trim();
+        if (!summary)
+            return undefined;
+
+        return summary.length > 160 ? `${summary.slice(0, 157).trim()}...` : summary;
+    };
+    const smartChapterFilter$ = createMemo(() => props.smartChapterFilter ?? "smart");
+    const smartChapterFilterLabel$ = createMemo(() => {
+        return smartChapterFilterOptions.find(option => option.id === smartChapterFilter$())?.label ?? "Smart";
+    });
+    const smartChapterFilterClass = (filter: SmartChapterFilter) => {
+        if (filter === "video")
+            return styles.smartChapterVideo;
+        if (filter === "top")
+            return styles.smartChapterTop;
+        if (filter === "strong")
+            return styles.smartChapterStrong;
+        if (filter.startsWith("thesis:"))
+            return styles.smartChapterTop;
+        return styles.smartChapterContext;
+    };
 
     const volumeWidth = createMemo(() => (props.volume ?? 0) * 72);
 
@@ -513,6 +669,33 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
             <div class={styles.progressBarBuffer} style={{ width: `${bufferWidth()}px` }} />
             <div class={styles.progressBarProgress} style={{ width: `${progressWidth()}px` }} />
             <div class={styles.progressBarContainer} ref={progressBarContainer}>
+                <Show when={smartChapterSegments$().length > 0}>
+                    <div class={styles.progressBarSmartChapters}>
+                        <Index each={smartChapterSegments$()}>{(segment$, i: number) =>
+                            <div
+                                classList={{
+                                    [styles.progressBarSmartChapter]: true,
+                                    [smartChapterInterestClass(segment$())]: true,
+                                    [styles.active]: props.activeSmartChapterIndex === i
+                                }}
+                                style={smartChapterStyle(segment$())}
+                            />
+                        }</Index>
+                    </div>
+                    <Show when={smartChapterTooltipSegment$()}>
+                        {(segment) => (
+                            <div class={styles.smartChapterTooltip} style={smartChapterTooltipStyle()}>
+                                <div class={styles.smartChapterTooltipTitle}>{segment().title}</div>
+                                <Show when={smartChapterTooltipSummary(segment())}>
+                                    {(summary) => <div class={styles.smartChapterTooltipSummary}>{summary()}</div>}
+                                </Show>
+                                <Show when={segment().thesisId != null}>
+                                    <div class={styles.smartChapterTooltipThesis}>Thesis {segment().thesisId}</div>
+                                </Show>
+                            </div>
+                        )}
+                    </Show>
+                </Show>
                 <Show when={(props.chapters?.length ?? 0) > 0}>
                     <div class={styles.progressBarChapters}>
                         <Index each={props.chapters}>{ (chapter$, i: number) =>
@@ -588,6 +771,59 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                         </div>
                     </Show>
                 </div>
+                <Show when={smartChapterSegments$().length > 0}>
+                    <div class={styles.smartChapterNav} onDblClick={(e) => e.stopPropagation()}>
+                        <button
+                            class={styles.smartChapterNavButton}
+                            disabled={!props.hasPreviousSmartChapter}
+                            title="Previous Smart Chapter"
+                            onClick={onPreviousSmartChapter}
+                        >
+                            <img src={iconSmartPrevious} alt="Previous Smart Chapter" />
+                        </button>
+                        <button
+                            class={styles.smartChapterFilterButton}
+                            title="Smart Chapter filter"
+                            onClick={onSmartChapterFilterMenu}
+                        >
+                            <span classList={{
+                                [styles.smartChapterFilterMark]: true,
+                                [smartChapterFilterClass(smartChapterFilter$())]: true
+                            }} />
+                            <span class={styles.smartChapterFilterLabel}>{smartChapterFilterLabel$()}</span>
+                        </button>
+                        <button
+                            class={styles.smartChapterNavButton}
+                            disabled={!props.hasNextSmartChapter}
+                            title="Next Smart Chapter"
+                            onClick={onNextSmartChapter}
+                        >
+                            <img src={iconSmartNext} alt="Next Smart Chapter" />
+                        </button>
+                        <Show when={smartChapterFilterMenuOpen$()}>
+                            <div class={styles.smartChapterFilterMenu}>
+                                <For each={smartChapterFilterOptions}>{(option) =>
+                                    <button
+                                        classList={{
+                                            [styles.smartChapterFilterMenuItem]: true,
+                                            [styles.active]: smartChapterFilter$() === option.id
+                                        }}
+                                        onClick={(e) => onSetSmartChapterFilter(option.id, e)}
+                                    >
+                                        <span classList={{
+                                            [styles.smartChapterFilterSwatch]: true,
+                                            [smartChapterFilterClass(option.id)]: true
+                                        }} />
+                                        <span>
+                                            <strong>{option.label}</strong>
+                                            <small>{option.description}</small>
+                                        </span>
+                                    </button>
+                                }</For>
+                            </div>
+                        </Show>
+                    </div>
+                </Show>
             </div>
 
             <div class={styles.buttonContainer} style={props.rightButtonContainerStyle}>
@@ -596,6 +832,17 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                 </Show>
                 <Show when={props.handleTheatre}>
                     <img src={iconTheatre} class={styles.theatre} alt="theatre" onClick={onTheatre} onDblClick={(e) => e.stopPropagation()} />
+                </Show>
+                <Show when={props.onToggleXRay != null}>
+                    <img
+                        src={props.xRayOpen ? iconSidebarClose : iconSidebarOpen}
+                        class={styles.xRayToggle}
+                        classList={{ [styles.xRayToggleActive]: !!props.xRayOpen }}
+                        alt="Smart Analysis"
+                        title="Smart Analysis"
+                        onClick={onToggleXRay}
+                        onDblClick={(e) => e.stopPropagation()}
+                    />
                 </Show>
                 <img src={cast} class={styles.cast} alt="cast" onClick={onCast} onDblClick={(e) => e.stopPropagation()} />
                 <img ref={(el)=>settingsButton = el} src={settings} class={styles.settings} alt="settings" onClick={(ev)=>onSettings(ev)} onDblClick={(e) => e.stopPropagation()} />

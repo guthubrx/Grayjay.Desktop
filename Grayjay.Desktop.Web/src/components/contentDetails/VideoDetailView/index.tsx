@@ -82,6 +82,7 @@ import ControllerOverlay from "../../ControllerOverlay";
 import { useCasting } from "../../../contexts/Casting";
 import { SearchBackend } from "../../../backend/SearchBackend";
 import history from '../../../assets/icons/icon_nav_history.svg';
+import { HighlightsBackend } from "../../../backend/HighlightsBackend";
 
 const SCOPE_ID = "video-detail-view";
 
@@ -166,6 +167,10 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const result = (!url) ? undefined : (await DetailsBackend.getVideoChapters(url));
         console.log("Video chapters:", result);
         return result;
+    });
+    const [videoHighlights$] = createResource(() => currentVideo$()?.url, async (url) => {
+        if (!url) return undefined;
+        return await HighlightsBackend.get(url);
     });
     //const [liveChatWindow$] = createResource<ILiveChatWindowDescriptor | undefined>(() => videoLoaded$(), async (videoLoaded: any) => (!videoLoaded || !videoLoaded.isLive) ? undefined : await DetailsBackend.liveChatWindow());
     const [recomPager$] = createResource<Pager<IPlatformContent>>(() => videoLoaded$(), async (videoLoaded: any) => {
@@ -1610,6 +1615,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             onOptions={() => {
                                 setShowSettings(true);
                             }}
+                            smartChapterHighlights={videoHighlights$()}
+                            minimized={isMinimized()}
                         >
                             <img src={ic_minimize} class={styles.minimize} alt="minimize" onClick={onMinimize} style={{ transform: isMinimized() ? "rotate(-180deg)" : undefined }} onDblClick={(e) => e.stopPropagation()} />
                             <img src={ic_close} class={styles.close} alt="close" onClick={onClose} onDblClick={(e) => e.stopPropagation()} />

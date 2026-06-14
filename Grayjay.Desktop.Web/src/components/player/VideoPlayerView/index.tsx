@@ -1,6 +1,6 @@
 import { Accessor, Component, ErrorBoundary, JSX, Show, batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from 'solid-js';
 import styles from './index.module.css';
-import PlayerControlsView from '../PlayerControlsView';
+import PlayerControlsView, { SmartChapterFilter } from '../PlayerControlsView';
 import { Duration } from 'luxon';
 import { SourceSelected } from '../../contentDetails/VideoDetailView';
 import { DetailsBackend } from '../../../backend/DetailsBackend';
@@ -20,6 +20,10 @@ import { clearLiveChatOnSeek } from '../../../state/StateLiveChat';
 import { focusable } from '../../../focusable'; void focusable;
 import { FocusableOptions, InputSource } from '../../../nav';
 import { SettingsBackend } from '../../../backend/SettingsBackend';
+import { decode } from 'html-entities';
+import { IVideoHighlightSegment } from '../../../backend/models/highlights/IVideoHighlightSegment';
+import { IVideoHighlightSet } from '../../../backend/models/highlights/IVideoHighlightSet';
+import SmartXRayPanel from '../SmartXRayPanel';
 
 interface VideoProps {
     onVideoDimensionsChanged: (width: number, height: number) => void;
@@ -63,6 +67,9 @@ interface VideoProps {
     fullscreen?: boolean;
     focusable?: boolean;
     onOptions?: (el: HTMLElement, inputSource: InputSource) => void;
+    onContextMenu?: (event: MouseEvent) => void;
+    smartChapterHighlights?: IVideoHighlightSet;
+    minimized?: boolean;
     onReady?: (handle: VideoPlayerViewHandle) => void;
 }
 
@@ -70,6 +77,8 @@ export type VideoPlayerViewHandle = {
     toggleMute: () => void;
     toggleFullscreen: () => void;
     seek(time: Duration): Promise<void>;
+    playHighlights(segments: IVideoHighlightSegment[]): Promise<void>;
+    stopHighlights(): void;
 };
 
 const VideoPlayerView: Component<VideoProps> = (props) => {
@@ -99,10 +108,24 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const [resumePositionVisible, setResumePositionVisible] = createSignal(false);
     const [endControlsVisible$, setEndControlsVisible] = createSignal(false);
     const [loaderGameVisible$, setLoaderGameVisible] = createSignal<number>();
+    const [activeHighlightSegments$, setActiveHighlightSegments] = createSignal<IVideoHighlightSegment[]>([]);
+    const [activeHighlightIndex$, setActiveHighlightIndex] = createSignal(-1);
+    const [smartChapterFilter$, setSmartChapterFilter] = createSignal<SmartChapterFilter>("smart");
     let frameRate: number | undefined = undefined; //TODO: Framerate is currently not accurate, not properly exposed by video,hlsjs,dashjs, would need to feed it in from sources
     let currentUrl: string | undefined;
     let loader: LoaderGameHandle | undefined;
     let currentTag = uuidv4();
+    let smartChapterAutoSeeking = false;
+    const [xRayOpen$, setXRayOpen] = createSignal(false);
+    const [xRayPinned$, setXRayPinned] = createSignal(false);
+
+    const hasXRayContent = createMemo(() => {
+        const h = props.smartChapterHighlights;
+        return !!(h?.globalSummary)
+            || (h?.theses?.length ?? 0) > 0
+            || (h?.segments?.length ?? 0) > 0
+            || (props.chapters?.length ?? 0) > 0;
+    });
 
     createEffect(() => {
         if (isPlaying()) {
@@ -145,6 +168,172 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
 
         return next;
     };
+
+    const activeHighlight$ = createMemo(() => {
+        const index = activeHighlightIndex$();
+        const segments = activeHighlightSegments$();
+        return index >= 0 ? segments[index] : undefined;
+    });
+    const smartChapterSegments$ = createMemo(() => {
+        const segments = activeHighlightSegments$();
+        return segments.length > 0 ? segments : (props.smartChapterHighlights?.segments ?? []);
+    });
+    const smartChapterMatchesFilter = (segment: IVideoHighlightSegment, filter = smartChapterFilter$()) => {
+        if (filter === "video")
+            return false;
+        const score = segment.score ?? 0;
+        if (filter === "top")
+            return score >= 0.93;
+        if (filter === "strong")
+            return score >= 0.88 && score < 0.93;
+        return true;
+    };
+    const currentSmartChapterIndex$ = createMemo(() => {
+        const posSec = position().milliseconds / 1000;
+        return smartChapterSegments$().findIndex(segment => segment.start <= posSec && segment.end > posSec);
+    });
+    const displayHighlightIndex$ = createMemo(() => {
+        const activeIndex = activeHighlightIndex$();
+        return activeIndex >= 0 ? activeIndex : currentSmartChapterIndex$();
+    });
+    const isHighlightPlaybackActive$ = createMemo(() => activeHighlightSegments$().length > 0 && activeHighlightIndex$() >= 0);
+    const previousFilteredSmartChapterIndex$ = createMemo(() => {
+        const posSec = position().milliseconds / 1000;
+        const currentIndex = currentSmartChapterIndex$();
+        const candidates = smartChapterSegments$()
+            .map((segment, index) => ({ segment, index }))
+            .filter(item => smartChapterMatchesFilter(item.segment))
+            .filter(item => item.segment.start < posSec - 0.5 || item.index < currentIndex);
+
+        return candidates.length > 0 ? candidates[candidates.length - 1].index : -1;
+    });
+    const nextFilteredSmartChapterIndex$ = createMemo(() => {
+        const posSec = position().milliseconds / 1000;
+        const currentIndex = currentSmartChapterIndex$();
+        const next = smartChapterSegments$()
+            .map((segment, index) => ({ segment, index }))
+            .filter(item => smartChapterMatchesFilter(item.segment))
+            .find(item => item.segment.start > posSec + 0.5 || item.index > currentIndex);
+
+        return next?.index ?? -1;
+    });
+
+    const stopHighlights = () => {
+        batch(() => {
+            setActiveHighlightSegments([]);
+            setActiveHighlightIndex(-1);
+        });
+    };
+
+    const setSmartChapterPlaybackFilter = (filter: SmartChapterFilter) => {
+        setSmartChapterFilter(filter);
+        stopHighlights();
+    };
+
+    const playHighlights = async (segments: IVideoHighlightSegment[]) => {
+        const sorted = segments
+            .filter(s => s && s.end > s.start)
+            .sort((a, b) => a.start - b.start);
+        if (sorted.length === 0)
+            return;
+
+        batch(() => {
+            setActiveHighlightSegments(sorted);
+            setActiveHighlightIndex(0);
+        });
+        await seek(Duration.fromMillis(sorted[0].start * 1000));
+        play();
+        showControls();
+    };
+
+    const seekHighlight = async (index: number) => {
+        const segments = smartChapterSegments$();
+        if (index < 0 || index >= segments.length)
+            return;
+
+        if (isHighlightPlaybackActive$())
+            setActiveHighlightIndex(index);
+
+        await seek(Duration.fromMillis(segments[index].start * 1000));
+        if (isHighlightPlaybackActive$())
+            play();
+
+        showControls();
+    };
+
+    const previousFilteredSmartChapter = () => {
+        const index = previousFilteredSmartChapterIndex$();
+        if (index >= 0)
+            void seekHighlight(index);
+    };
+
+    const nextFilteredSmartChapter = () => {
+        const index = nextFilteredSmartChapterIndex$();
+        if (index >= 0)
+            void seekHighlight(index);
+    };
+
+    const nextFilteredSmartChapterIndexFrom = (posSec: number, filter = smartChapterFilter$()) => {
+        return smartChapterSegments$().findIndex(segment =>
+            smartChapterMatchesFilter(segment, filter) &&
+            segment.start > posSec + 0.25
+        );
+    };
+
+    createEffect(() => {
+        const filter = smartChapterFilter$();
+        const segments = smartChapterSegments$();
+        const posSec = position().milliseconds / 1000;
+
+        if (
+            filter === "video" ||
+            segments.length === 0 ||
+            !isPlaying() ||
+            isScrubbing() ||
+            isHighlightPlaybackActive$() ||
+            smartChapterAutoSeeking
+        ) {
+            return;
+        }
+
+        const currentIndex = currentSmartChapterIndex$();
+        if (currentIndex >= 0 && smartChapterMatchesFilter(segments[currentIndex], filter))
+            return;
+
+        const nextIndex = nextFilteredSmartChapterIndexFrom(posSec, filter);
+        if (nextIndex < 0) {
+            pause();
+            return;
+        }
+
+        smartChapterAutoSeeking = true;
+        void seek(Duration.fromMillis(segments[nextIndex].start * 1000)).finally(() => {
+            smartChapterAutoSeeking = false;
+        });
+        showControls();
+    });
+
+    createEffect(on(position, async (pos) => {
+        const segment = activeHighlight$();
+        if (!segment)
+            return;
+
+        const posSec = pos.milliseconds / 1000;
+        if (posSec < segment.end)
+            return;
+
+        const nextIndex = activeHighlightIndex$() + 1;
+        const segments = activeHighlightSegments$();
+        if (nextIndex >= segments.length) {
+            stopHighlights();
+            pause();
+            return;
+        }
+
+        setActiveHighlightIndex(nextIndex);
+        await seek(Duration.fromMillis(segments[nextIndex].start * 1000));
+        play();
+    }));
 
     let lastSkip: IChapter | undefined = undefined;
     let skippedOnce: IChapter[] = [];
@@ -1131,7 +1320,9 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         props.onReady?.({
             toggleFullscreen: toggleFullscreen,
             toggleMute: toggleVolume,
-            seek
+            seek,
+            playHighlights,
+            stopHighlights
         });
     });
 
@@ -1409,10 +1600,27 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     eventMoved={props.eventMoved}
                     buttons={props.buttons}
                     leftButtonContainerStyle={props.leftButtonContainerStyle}
-                    rightButtonContainerStyle={props.rightButtonContainerStyle}>
+                    rightButtonContainerStyle={props.rightButtonContainerStyle}
+                    xRayOpen={xRayOpen$()}
+                    onToggleXRay={hasXRayContent() ? (() => setXRayOpen(v => !v)) : undefined}>
                     {props.children}
                 </PlayerControlsView>
             </div>
+
+            <SmartXRayPanel
+                open={xRayOpen$()}
+                pinned={xRayPinned$()}
+                controlsVisible={controlsVisible$()}
+                minimized={props.minimized ?? false}
+                onClose={() => setXRayOpen(false)}
+                onTogglePin={() => setXRayPinned(v => !v)}
+                globalSummary={props.smartChapterHighlights?.globalSummary}
+                theses={props.smartChapterHighlights?.theses}
+                smartChapters={props.smartChapterHighlights?.segments}
+                chapters={props.chapters}
+                position={position()}
+                onSeek={(secs) => void seek(Duration.fromMillis(secs * 1000))}
+            />
 
             <div ref={videoCaptionsRef} class={styles.captionsContainer} style={{"bottom": controlsVisible$() ? "100px" : "18px"}}></div>
 
