@@ -105,6 +105,7 @@ def parse_args() -> argparse.Namespace:
     fallback.add_argument("--no-whisper", action="store_true", help="Do not use Whisper fallback.")
     fallback.add_argument("--whisper-script", default=str(DEFAULT_WHISPER_SCRIPT), help="Path to whisper.cpp transcribe.sh.")
     fallback.add_argument("--whisper-model", default="base", help="Whisper model passed to transcribe.sh.")
+    fallback.add_argument("--cookies-from-browser", help="Pass browser cookies to yt-dlp (e.g. firefox) to avoid HTTP 429 on subtitles.")
 
     output = parser.add_argument_group("output")
     output.add_argument("--grayjay-dir", default=str(DEFAULT_GRAYJAY_DIR), help="Grayjay application data directory.")
@@ -485,13 +486,17 @@ def run_command(cmd: list[str], *, cwd: Path | None = None, check: bool = True) 
     )
 
 
-def fetch_video_metadata(task: VideoTask) -> VideoTask:
+def ytdlp_cookie_args(args: argparse.Namespace) -> list[str]:
+    return ["--cookies-from-browser", args.cookies_from_browser] if getattr(args, "cookies_from_browser", None) else []
+
+
+def fetch_video_metadata(task: VideoTask, args: argparse.Namespace) -> VideoTask:
     if task.title and task.duration:
         return task
     if not extract_youtube_id(task.url):
         return task
     try:
-        proc = run_command(["yt-dlp", "--dump-json", "--skip-download", task.url], check=True)
+        proc = run_command(["yt-dlp", "--dump-json", "--skip-download", *ytdlp_cookie_args(args), task.url], check=True)
         data = json.loads(proc.stdout)
         task.title = task.title or data.get("title")
         task.duration = task.duration or to_float(data.get("duration"))
@@ -623,11 +628,16 @@ def get_youtube_subtitle_transcript(url: str, args: argparse.Namespace, workdir:
         "vtt/best",
         "-o",
         "%(id)s.%(ext)s",
+        # Attenuer le rate-limit YouTube (HTTP 429) sur les sous-titres.
+        "--retries", "3",
+        "--sleep-subtitles", "1",
+        *ytdlp_cookie_args(args),
         url,
     ]
-    proc = run_command(cmd, cwd=workdir, check=False)
-    if proc.returncode != 0:
-        return []
+    # On ignore le returncode : yt-dlp peut echouer sur une langue (ex 429 sur
+    # fr) tout en ayant ecrit une autre (en). On se fie aux .vtt reellement
+    # produits.
+    run_command(cmd, cwd=workdir, check=False)
 
     candidates = [path for path in workdir.glob("*.vtt") if path not in before]
     candidates += [path for path in workdir.glob("*.vtt") if path not in candidates]
@@ -1065,7 +1075,7 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], analysis: 
 
 
 def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
-    task = fetch_video_metadata(task)
+    task = fetch_video_metadata(task, args)
     title = task.title or task.url
     log(f"\n==> {title}")
     log(f"  url: {task.url}")
