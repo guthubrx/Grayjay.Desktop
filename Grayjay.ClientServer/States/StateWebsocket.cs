@@ -47,6 +47,28 @@ public class StateWebsocket
             await GrayjayServer.Instance.WebSocket.Broadcast(null, "WatchLaterChanged");
         });
     }
+
+    public static void HighlightsChanged(string url)
+    {
+        var instance = GrayjayServer.Instance;
+        if (instance == null)
+            return;
+        Task.Run(async () =>
+        {
+            await instance.WebSocket.Broadcast(url, "HighlightsChanged");
+        });
+    }
+
+    public static void HighlightsIndexChanged(object job)
+    {
+        var instance = GrayjayServer.Instance;
+        if (instance == null)
+            return;
+        Task.Run(async () =>
+        {
+            await instance.WebSocket.Broadcast(job, "HighlightsIndexChanged");
+        });
+    }
     public static void EnabledClientsChanged()
     {
         var instance = GrayjayServer.Instance;

@@ -43,4 +43,22 @@ public class HighlightsController : ControllerBase
     {
         return StateHighlights.Delete(url) ? Ok() : NotFound();
     }
+
+    public class GenerateRequest
+    {
+        public required string Url { get; set; }
+        public required string Command { get; set; }
+    }
+
+    [HttpPost]
+    public ActionResult<StateHighlightsIndexer.IndexJob> Generate([FromBody] GenerateRequest request)
+    {
+        return Ok(StateHighlightsIndexer.Enqueue(request.Url, request.Command));
+    }
+
+    [HttpGet]
+    public ActionResult<List<StateHighlightsIndexer.IndexJob>> QueueStatus()
+    {
+        return Ok(StateHighlightsIndexer.GetJobs());
+    }
 }
