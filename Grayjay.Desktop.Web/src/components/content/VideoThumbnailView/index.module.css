@@ -61,6 +61,10 @@
     font-weight: 200;
     line-height: normal;
 }
+/* Marqueur "video indexee" : anneau bleu autour de la duree (sans decaler le layout) */
+.durationIndexed {
+    box-shadow: 0 0 0 1.5px #019BE8;
+}
 .isLive {
     border-radius: 4px;
     background: red;

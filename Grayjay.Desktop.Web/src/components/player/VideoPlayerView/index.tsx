@@ -121,6 +121,26 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const [xRayOpen$, setXRayOpen] = createSignal(false);
     const [xRayPinned$, setXRayPinned] = createSignal(false);
 
+    // Persiste l'état ouvert/pinné du volet d'une vidéo à l'autre (booléens =
+    // round-trip OK via persist). On n'enregistre qu'après le chargement initial
+    // pour ne pas écraser la valeur persistée avec la valeur par défaut.
+    let xRayPersistReady = false;
+    Promise.all([
+        SettingsBackend.persistGet("xray.open", false),
+        SettingsBackend.persistGet("xray.pinned", false),
+    ]).then(([open, pinned]) => {
+        setXRayOpen(!!open);
+        setXRayPinned(!!pinned);
+    }).catch(() => {}).finally(() => { xRayPersistReady = true; });
+    createEffect(() => {
+        const open = xRayOpen$();
+        if (xRayPersistReady) void SettingsBackend.persistSet("xray.open", open);
+    });
+    createEffect(() => {
+        const pinned = xRayPinned$();
+        if (xRayPersistReady) void SettingsBackend.persistSet("xray.pinned", pinned);
+    });
+
     // Le bouton et le volet X-Ray n'existent que s'il y a quelque chose à montrer
     const hasXRayContent = createMemo(() => {
         const h = props.smartChapterHighlights;
@@ -190,7 +210,8 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             return score >= 0.93;
         if (filter === "strong")
             return score >= 0.88 && score < 0.93;
-        return true;
+        // "Smart" : sections notables (vert et au-dessus), sans les "filler" bleus.
+        return score >= 0.55;
     };
     const currentSmartChapterIndex$ = createMemo(() => {
         const posSec = position().milliseconds / 1000;
@@ -258,7 +279,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         if (isHighlightPlaybackActive$())
             setActiveHighlightIndex(index);
 
-        await seek(Duration.fromMillis(segments[index].start * 1000));
+        await fadeSeek(Duration.fromMillis(segments[index].start * 1000));
         if (isHighlightPlaybackActive$())
             play();
 
@@ -1474,7 +1495,33 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         }        
     });
 
-    const seek = async (time: Duration) => { 
+    const fadeVolume = (el: HTMLVideoElement, from: number, to: number, ms: number) => new Promise<void>((resolve) => {
+        const steps = 12;
+        let i = 0;
+        const id = setInterval(() => {
+            i++;
+            el.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps)));
+            if (i >= steps) { clearInterval(id); resolve(); }
+        }, ms / steps);
+    });
+    // Saut "en fondu" : baisse le son, saute, remonte le son. Appliqué seulement
+    // aux sauts vers une section NON adjacente (vraie discontinuité) ; une
+    // transition naturelle vers la section voisine reste sans fondu.
+    const fadeSeek = async (time: Duration) => {
+        const el = videoElement;
+        const segs = smartChapterSegments$();
+        const idxAt = (t: number) => segs.findIndex(s => s.start <= t && s.end > t);
+        const curIdx = idxAt(position().milliseconds / 1000);
+        const tgtIdx = idxAt(time.toMillis() / 1000);
+        const adjacent = curIdx >= 0 && tgtIdx >= 0 && Math.abs(tgtIdx - curIdx) <= 1;
+        if (!el || isCasting() || adjacent) { await seek(time); return; }
+        const target = el.volume;
+        await fadeVolume(el, target, 0, 200);
+        await seek(time);
+        await fadeVolume(el, 0, target, 280);
+    };
+
+    const seek = async (time: Duration) => {
         clearLiveChatOnSeek();
 
         const isLive = props.source?.isLive ?? false;
@@ -1699,7 +1746,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                 smartChapters={props.smartChapterHighlights?.segments}
                 chapters={props.chapters}
                 position={position()}
-                onSeek={(secs) => void seek(Duration.fromMillis(secs * 1000))}
+                onSeek={(secs) => void fadeSeek(Duration.fromMillis(secs * 1000))}
             />
 
             <div ref={videoCaptionsRef} class={styles.captionsContainer} style={{"bottom": controlsVisible$() ? "100px" : "18px"}}></div>

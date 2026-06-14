@@ -105,6 +105,7 @@ def parse_args() -> argparse.Namespace:
     fallback.add_argument("--no-whisper", action="store_true", help="Do not use Whisper fallback.")
     fallback.add_argument("--whisper-script", default=str(DEFAULT_WHISPER_SCRIPT), help="Path to whisper.cpp transcribe.sh.")
     fallback.add_argument("--whisper-model", default="base", help="Whisper model passed to transcribe.sh.")
+    fallback.add_argument("--cookies-from-browser", help="Pass browser cookies to yt-dlp (e.g. firefox) to avoid HTTP 429 on subtitles.")
 
     output = parser.add_argument_group("output")
     output.add_argument("--grayjay-dir", default=str(DEFAULT_GRAYJAY_DIR), help="Grayjay application data directory.")
@@ -485,13 +486,17 @@ def run_command(cmd: list[str], *, cwd: Path | None = None, check: bool = True) 
     )
 
 
-def fetch_video_metadata(task: VideoTask) -> VideoTask:
+def ytdlp_cookie_args(args: argparse.Namespace) -> list[str]:
+    return ["--cookies-from-browser", args.cookies_from_browser] if getattr(args, "cookies_from_browser", None) else []
+
+
+def fetch_video_metadata(task: VideoTask, args: argparse.Namespace) -> VideoTask:
     if task.title and task.duration:
         return task
     if not extract_youtube_id(task.url):
         return task
     try:
-        proc = run_command(["yt-dlp", "--dump-json", "--skip-download", task.url], check=True)
+        proc = run_command(["yt-dlp", "--dump-json", "--skip-download", *ytdlp_cookie_args(args), task.url], check=True)
         data = json.loads(proc.stdout)
         task.title = task.title or data.get("title")
         task.duration = task.duration or to_float(data.get("duration"))
@@ -623,11 +628,16 @@ def get_youtube_subtitle_transcript(url: str, args: argparse.Namespace, workdir:
         "vtt/best",
         "-o",
         "%(id)s.%(ext)s",
+        # Attenuer le rate-limit YouTube (HTTP 429) sur les sous-titres.
+        "--retries", "3",
+        "--sleep-subtitles", "1",
+        *ytdlp_cookie_args(args),
         url,
     ]
-    proc = run_command(cmd, cwd=workdir, check=False)
-    if proc.returncode != 0:
-        return []
+    # On ignore le returncode : yt-dlp peut echouer sur une langue (ex 429 sur
+    # fr) tout en ayant ecrit une autre (en). On se fie aux .vtt reellement
+    # produits.
+    run_command(cmd, cwd=workdir, check=False)
 
     candidates = [path for path in workdir.glob("*.vtt") if path not in before]
     candidates += [path for path in workdir.glob("*.vtt") if path not in candidates]
@@ -875,15 +885,13 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
 
     Rules:
     - Use seconds for start/end.
-    - Select passages that best serve the theses: key arguments, definitions, turning points, conclusions, supporting evidence, counterarguments addressed.
-    - Deprioritize: introductions, anecdotes, digressions, transitions, repeated points.
-    - Keep {args.max_segments} segments or fewer.
-    - Prefer segments between {args.min_segment_seconds} and {args.max_segment_seconds} seconds when possible.
-    - Do not overlap segments.
-    - score >= 0.93: directly proves or illustrates a thesis. 0.88-0.92: strong supporting point. 0.55-0.87: useful context.
-    - thesis_id: which thesis ({thesis_ids}) this segment primarily serves. Use null for intro/outro/transition segments.
+    - COVER THE ENTIRE VIDEO: the sections must be CONTIGUOUS and span the full duration, from 0 to the end. Each section's start must equal the previous section's end. No gaps, no overlaps. Do not skip "boring" parts: include them as their own low-score sections.
+    - Keep around {args.max_segments} sections (merge flat stretches into longer sections rather than dropping them).
+    - Prefer sections between {args.min_segment_seconds} and {args.max_segment_seconds} seconds, but extend low-interest stretches into longer sections so the whole video stays covered.
+    - score reflects importance: >= 0.93 directly proves/illustrates a thesis ; 0.88-0.92 strong supporting point ; 0.55-0.87 useful context ; 0.0-0.54 filler / intro / transition / digression (still included, just low).
+    - thesis_id: which thesis ({thesis_ids}) this section primarily serves. Use null for intro/outro/transition/filler sections.
     - Titles and summaries must be in the video's main language.
-    - If the transcript is sparse, infer cautiously from available timestamps.
+    - NEVER invent content. Base every title and summary strictly on what the transcript ACTUALLY says for that time span. Do NOT claim "music", "silence", "no dialogue", "intro sequence" or similar unless the transcript truly has no words there. If the transcript has text in a span, describe THAT text; if a span has no transcript text, merge it into an adjacent section rather than fabricating a description.
 
     Video title: {task.title or "(unknown)"}
     Video URL: {task.url}
@@ -1028,6 +1036,10 @@ def validate_segments(data: dict[str, Any], duration: float | None, args: argpar
 
     if not cleaned:
         raise RuntimeError("No valid Smart Chapter segments were generated.")
+    # Couvre jusqu'a la vraie fin : si le LLM s'est arrete avant (souvent parce
+    # que les sous-titres ne couvrent pas l'outro), on etend la derniere section.
+    if duration and cleaned[-1]["end"] < duration - 1:
+        cleaned[-1]["end"] = round(float(duration), 3)
     return cleaned
 
 
@@ -1065,7 +1077,7 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], analysis: 
 
 
 def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
-    task = fetch_video_metadata(task)
+    task = fetch_video_metadata(task, args)
     title = task.title or task.url
     log(f"\n==> {title}")
     log(f"  url: {task.url}")

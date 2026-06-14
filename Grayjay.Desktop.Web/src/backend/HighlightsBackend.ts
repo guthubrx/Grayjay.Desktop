@@ -26,4 +26,18 @@ export abstract class HighlightsBackend {
     static async delete(url: string): Promise<void> {
         await Backend.DELETE("/highlights/Delete?url=" + encodeURIComponent(url));
     }
+
+    static async generate(url: string, command: string): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command }), "application/json") as IHighlightIndexJob;
+    }
+
+    static async queueStatus(): Promise<IHighlightIndexJob[]> {
+        return await Backend.GET("/highlights/QueueStatus") as IHighlightIndexJob[];
+    }
+}
+
+export interface IHighlightIndexJob {
+    url: string;
+    status: "queued" | "running" | "done" | "error";
+    error?: string;
 }

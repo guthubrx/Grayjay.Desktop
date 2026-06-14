@@ -4,6 +4,7 @@ import { IVideoHighlightThesis } from "../../../backend/models/highlights/IVideo
 import { IChapter } from "../../../backend/models/contentDetails/IChapter";
 import { Duration } from "luxon";
 import styles from "./index.module.css";
+import iconSidebarClose from "../../../assets/icons/sidebar-close.svg";
 import { xRayState$, saveXRayPanelWidthPercent, MIN_WIDTH_PCT, MAX_WIDTH_PCT } from "../../../state/StateXRay";
 
 export interface SmartXRayPanelProps {
@@ -36,11 +37,13 @@ function truncate(text: string, limit: number): string {
 }
 
 const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
-    let activeRef: HTMLDivElement | undefined;
+    let itemRefs: (HTMLDivElement | undefined)[] = [];
     let panelRef: HTMLDivElement | undefined;
+    let bodyRef: HTMLDivElement | undefined;
     let draggedThisSession = false;
 
     const [widthPct, setWidthPct] = createSignal(xRayState$().panelWidthPercent);
+    const [hovered, setHovered] = createSignal(false);
 
     // Sync width from settings (until user drags)
     createEffect(() => {
@@ -63,19 +66,57 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
         return -1;
     });
 
+    // On positionne la section active dans le tiers superieur du panneau : il
+    // reste ainsi toujours de la marge en dessous pour voir arriver les
+    // prochaines sections. (Le navigateur borne le scroll, donc la premiere
+    // section reste en haut et la derniere en bas, naturellement.)
     createEffect(() => {
-        const _ = activeChapterIndex();
-        if (props.open && activeRef) {
-            activeRef.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }
+        const active = activeChapterIndex();
+        if (!props.open || active < 0) return;
+        const el = itemRefs[active];
+        const container = bodyRef;
+        if (!el || !container) return;
+        const offsetWithin = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+        const target = offsetWithin - container.clientHeight * 0.3;
+        container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
     });
 
+    // 4 niveaux + bleu par défaut quand pas de score (vidéo non analysée).
     const scoreClass = (score?: number) => {
-        if (score == null) return styles.scoreDot;
+        if (score == null) return `${styles.scoreDot} ${styles.scoreFiller}`;
         if (score >= 0.93) return `${styles.scoreDot} ${styles.scoreTop}`;
         if (score >= 0.88) return `${styles.scoreDot} ${styles.scoreStrong}`;
-        return `${styles.scoreDot} ${styles.scoreContext}`;
+        if (score >= 0.55) return `${styles.scoreDot} ${styles.scoreContext}`;
+        return `${styles.scoreDot} ${styles.scoreFiller}`;
     };
+
+    // Couleur d'importance de la section (alignée sur les dots et la seekbar).
+    const scoreColor = (score?: number) => {
+        if (score == null) return "#019BE8";
+        if (score >= 0.93) return "#f4b83f";
+        if (score >= 0.88) return "#e96b55";
+        if (score >= 0.55) return "#7fb08f";
+        return "#019BE8";
+    };
+    const activeColor = createMemo(() =>
+        useSmartChapters() ? scoreColor(props.smartChapters?.[activeChapterIndex()]?.score) : "#019BE8"
+    );
+    // Avancement (0..1) dans la section en cours, pour remplir la bordure.
+    const activeProgress = createMemo(() => {
+        const idx = activeChapterIndex();
+        const pos = positionSeconds();
+        let start: number | undefined, end: number | undefined;
+        if (useSmartChapters()) {
+            const seg = props.smartChapters?.[idx];
+            start = seg?.start; end = seg?.end;
+        } else {
+            const chs = props.chapters ?? [];
+            start = chs[idx]?.timeStart;
+            end = chs[idx + 1]?.timeStart ?? (start != null ? start + 1 : undefined);
+        }
+        if (start == null || end == null || end <= start) return 0;
+        return Math.max(0, Math.min(1, (pos - start) / (end - start)));
+    });
 
     const hasContent = createMemo(() =>
         !!props.globalSummary ||
@@ -84,8 +125,9 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
         (props.chapters?.length ?? 0) > 0
     );
 
-    // Jamais affiché sans contenu (même pinné), ni en miniature (cache la vidéo) ; réapparaît si pinné en grand
-    const effectiveOpen = () => props.open && hasContent() && !props.minimized && (props.pinned || props.controlsVisible);
+    // Jamais affiché sans contenu (même pinné), ni en miniature (cache la vidéo).
+    // Reste visible si pinné, si les contrôles sont visibles, ou si la souris est dessus.
+    const effectiveOpen = () => props.open && hasContent() && !props.minimized && (props.pinned || props.controlsVisible || hovered());
 
     const visibleTheses = createMemo(() => {
         const max = xRayState$().maxTheses;
@@ -120,6 +162,8 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
         <div
             ref={panelRef}
             classList={{ [styles.panel]: true, [styles.open]: effectiveOpen() }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             style={{
                 width: `${widthPct()}%`,
                 background: `rgba(8, 10, 14, ${xRayState$().opacity})`,
@@ -143,11 +187,13 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                             </Show>
                         </svg>
                     </button>
-                    <button class={styles.closeButton} onClick={props.onClose} title="Fermer">&#x2715;</button>
+                    <button class={styles.closeButton} onClick={props.onClose} title="Replier le panneau">
+                        <img src={iconSidebarClose} width="16" height="16" alt="Replier" />
+                    </button>
                 </div>
             </div>
 
-            <div class={styles.body}>
+            <div class={styles.body} ref={bodyRef}>
 
                 <Show when={props.globalSummary}>
                     <section class={styles.section}>
@@ -176,13 +222,16 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                             <Show when={useSmartChapters()}>
                                 <For each={props.smartChapters}>{(seg, i) => (
                                     <div
-                                        ref={i() === activeChapterIndex() ? (el) => { activeRef = el; } : undefined}
+                                        ref={(el) => { itemRefs[i()] = el; }}
                                         classList={{
                                             [styles.chapterItem]: true,
                                             [styles.chapterActive]: i() === activeChapterIndex(),
                                         }}
                                         onClick={() => props.onSeek(seg.start)}
                                     >
+                                        <Show when={i() === activeChapterIndex()}>
+                                            <span class={styles.activeBar} style={{ background: `linear-gradient(to bottom, ${activeColor()} ${activeProgress() * 100}%, rgba(255,255,255,0.16) ${activeProgress() * 100}%)` }} />
+                                        </Show>
                                         <span class={scoreClass(seg.score)} />
                                         <span class={styles.chapterTime}>{formatSeconds(seg.start)}</span>
                                         <div class={styles.chapterInfo}>
@@ -199,14 +248,17 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                             <Show when={!useSmartChapters()}>
                                 <For each={props.chapters}>{(ch, i) => (
                                     <div
-                                        ref={i() === activeChapterIndex() ? (el) => { activeRef = el; } : undefined}
+                                        ref={(el) => { itemRefs[i()] = el; }}
                                         classList={{
                                             [styles.chapterItem]: true,
                                             [styles.chapterActive]: i() === activeChapterIndex(),
                                         }}
                                         onClick={() => props.onSeek(ch.timeStart)}
                                     >
-                                        <span class={`${styles.scoreDot} ${styles.scoreContext}`} />
+                                        <Show when={i() === activeChapterIndex()}>
+                                            <span class={styles.activeBar} style={{ background: `linear-gradient(to bottom, ${activeColor()} ${activeProgress() * 100}%, rgba(255,255,255,0.16) ${activeProgress() * 100}%)` }} />
+                                        </Show>
+                                        <span class={`${styles.scoreDot} ${styles.scoreFiller}`} />
                                         <span class={styles.chapterTime}>{formatSeconds(ch.timeStart)}</span>
                                         <div class={styles.chapterInfo}>
                                             <span class={styles.chapterTitle}>{ch.name}</span>

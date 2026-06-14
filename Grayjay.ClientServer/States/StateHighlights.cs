@@ -23,6 +23,42 @@ public static class StateHighlights
         }
     }
 
+    private static FileSystemWatcher? _watcher;
+    private static System.Threading.Timer? _debounce;
+
+    // Surveille le dossier highlights : toute creation/modif/suppression de
+    // fichier (par l'app, le script de batch, ou a la main) notifie le frontend
+    // pour qu'il rafraichisse le panneau et les marqueurs sans redemarrer.
+    static StateHighlights()
+    {
+        try
+        {
+            var dir = StoreDirectory;
+            _watcher = new FileSystemWatcher(dir.FullName, "*.json")
+            {
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+                EnableRaisingEvents = true
+            };
+            FileSystemEventHandler onChange = (_, _) => NotifyDebounced();
+            _watcher.Created += onChange;
+            _watcher.Changed += onChange;
+            _watcher.Deleted += onChange;
+            _watcher.Renamed += (_, _) => NotifyDebounced();
+        }
+        catch (Exception ex)
+        {
+            Logger.w(nameof(StateHighlights), $"Failed to start highlights watcher: {ex.Message}");
+        }
+    }
+
+    // Regroupe les rafales d'evenements (une ecriture = plusieurs events) en une
+    // seule notification.
+    private static void NotifyDebounced()
+    {
+        _debounce?.Dispose();
+        _debounce = new System.Threading.Timer(_ => StateWebsocket.HighlightsChanged(""), null, 500, Timeout.Infinite);
+    }
+
     public static VideoHighlightSet? Get(string videoUrl)
     {
         if (string.IsNullOrWhiteSpace(videoUrl))

@@ -44,6 +44,8 @@ import iconPinned from '../../../assets/icons/pinned.svg';
 import iconPinnedFill from '../../../assets/icons/pinned-fill.svg';
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
+import StateWebsocket from "../../../state/StateWebsocket";
+import { indexVideo, hasGeneratorCommand, setGeneratorCommand } from "../../../state/StateHighlightsIndexer";
 import Loader from "../../basics/loaders/Loader";
 import Anchor, { AnchorStyle } from "../../../utility/Anchor";
 import DragArea from "../../basics/DragArea";
@@ -297,6 +299,10 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }
         return undefined;
     });
+    // Recharge les highlights quand l'indexeur en a généré de nouveaux.
+    StateWebsocket.registerHandlerNew("HighlightsChanged", () => {
+        videoHighlightsResource.refetch();
+    }, "videoDetailHighlights");
     //const [liveChatWindow$] = createResource<ILiveChatWindowDescriptor | undefined>(() => videoLoaded$(), async (videoLoaded: any) => (!videoLoaded || !videoLoaded.isLive) ? undefined : await DetailsBackend.liveChatWindow());
     const [recomPager$] = createResource<Pager<IPlatformContent>>(() => videoLoaded$(), async (videoLoaded: any) => {
         if(!videoLoaded)
@@ -1509,6 +1515,30 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         UIOverlay.overlayAddToPlaylist(loadedVideo, ()=>{});
     }
 
+    function indexCurrentVideo() {
+        const url = currentVideo$()?.url;
+        if (!url) return;
+        const launch = () => {
+            indexVideo(url)
+                .then(() => UIOverlay.toast("Smart chapters generation started…"))
+                .catch((e) => UIOverlay.toast("Generation failed: " + (e?.message ?? e)));
+        };
+        if (!hasGeneratorCommand()) {
+            UIOverlay.overlayTextPrompt(
+                "Configure smart chapters generator",
+                "External command that generates the smart highlights for a video. Use {url} where the video URL should go (otherwise the URL is appended at the end). Runs on your machine with its own dependencies.",
+                "e.g. python3 /path/to/generate_smart_chapters.py --url {url} --overwrite",
+                "Save and run",
+                async (cmd) => {
+                    await setGeneratorCommand(cmd);
+                    launch();
+                }
+            );
+        } else {
+            launch();
+        }
+    }
+
     function playSmartChapters() {
         const highlights = videoHighlights$();
         if (!highlights?.segments?.length) return;
@@ -1550,7 +1580,10 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             ...(!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? [
                 new MenuItemButton("Download", iconDownload, undefined, downloadCurrentVideo)
             ] : []),
-            new MenuItemButton("Add to", add, undefined, addCurrentVideoToPlaylist)
+            new MenuItemButton("Add to", add, undefined, addCurrentVideoToPlaylist),
+            ...(!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? [
+                new MenuItemButton("Generate smart chapters", ic_sync, undefined, indexCurrentVideo)
+            ] : [])
         ]
     }));
 
