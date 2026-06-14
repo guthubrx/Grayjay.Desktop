@@ -18,6 +18,8 @@ import { focusable } from '../../focusable'; void focusable;
 import { createResourceDefault } from '../../utility';
 import { ISettingsFieldGroup } from '../../backend/models/settings/fields/SettingsFieldGroup';
 import Toggle from '../../components/basics/inputs/Toggle';
+import { applyHomeStyleFromSettings } from '../../state/HomeStyleState';
+import { applyXRayFromSettings } from '../../state/StateXRay';
 
 
 export interface SettingsPageProps {
@@ -50,7 +52,10 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
     console.log("Settings closing");
     if(didChange){
       console.log("Settings changed before close, saving");
-      SettingsBackend.settingsSave(settings$()?.object)
+      const obj = settings$()?.object;
+      SettingsBackend.settingsSave(obj);
+      applyHomeStyleFromSettings(obj);
+      applyXRayFromSettings(obj);
     }
   }
 

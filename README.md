@@ -146,6 +146,9 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 - **Recommendations as a horizontal carousel** in theater mode (toggle).
 - **Per-channel playback speed** — a speed override remembered per channel.
 - **Hold to fast-forward** at a configurable speed (long press), with a speed chip overlay.
+- **Video context menu** — right-click the video surface to access the same actions as the buttons under the player, including Share, Download and Add to.
+
+![Video context menu](imgs/video-context-menu.PNG)
 
 ### Video & navigation
 
@@ -188,6 +191,7 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 - **Recommandations en carrousel horizontal** en mode théâtre (activable).
 - **Vitesse de lecture par chaîne** — une vitesse mémorisée pour chaque chaîne.
 - **Avance rapide maintenue** à une vitesse configurable (appui long), avec une pastille de vitesse.
+- **Menu contextuel vidéo** — clic droit sur la vidéo pour accéder aux mêmes actions que les boutons sous le lecteur, dont Partager, Télécharger et Ajouter à.
 
 ### Vidéo & navigation
 

@@ -465,7 +465,7 @@ namespace Grayjay.Desktop.CEF
                                     StatusCode = vt.Result.StatusCode,
                                     StatusText = vt.Result.StatusText,
                                     Headers = vt.Result.Headers,
-                                    BodyStream = vt.Result.BodyStream
+                                    DataSource = new StreamDataSource(vt.Result.BodyStream!)
                                 };
                             }
                             else

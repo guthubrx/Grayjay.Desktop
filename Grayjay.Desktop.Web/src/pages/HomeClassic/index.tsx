@@ -1,0 +1,67 @@
+import { type Component, Show } from 'solid-js';
+
+import styles from './index.module.css';
+import ContentGrid from '../../components/containers/ContentGrid';
+import NavigationBar from '../../components/topbars/NavigationBar';
+import ScrollContainer from '../../components/containers/ScrollContainer';
+import StateGlobal from '../../state/StateGlobal';
+import IconButton from '../../components/buttons/IconButton';
+import { useNavigate } from '@solidjs/router';
+import EmptyContentView from '../../components/EmptyContentView';
+import { focusable } from '../../focusable'; void focusable;
+
+import iconRefresh from '../../assets/icons/icon_reload_temp.svg';
+import iconHome from '../../assets/icons/icon_nav_home.svg';
+import iconSources from '../../assets/icons/ic_circles.svg';
+
+const HomeClassicPage: Component = () => {
+  const homePager = StateGlobal.home$;
+  const nav = useNavigate();
+
+  const lastHomeMillis = Math.abs(StateGlobal.lastHomeTime$()?.diffNow().toMillis() ?? 0);
+  if (lastHomeMillis > 2 * 60 * 1000) {
+    StateGlobal.reloadHome();
+  }
+
+  let scrollContainerRef: HTMLDivElement | undefined;
+  return (
+    <div class={styles.container}>
+      <NavigationBar isRoot={true} childrenAfter={
+        <IconButton
+          icon={iconRefresh}
+          variant="none"
+          shape="circle"
+          width="30px"
+          height="30px"
+          iconInset="0px"
+          style={{ 'margin-left': '24px' }}
+          onClick={() => StateGlobal.reloadHome()}
+          focusableOpts={{
+            groupId: 'nav-bar',
+            groupIndices: [1],
+            groupType: 'horizontal',
+            onPress: () => StateGlobal.reloadHome(),
+          }}
+        />
+      } />
+      <Show when={homePager.state === 'ready'}>
+        <Show when={homePager() && homePager()!.data.length > 0}>
+          <ScrollContainer ref={scrollContainerRef}>
+            <ContentGrid pager={homePager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />
+          </ScrollContainer>
+        </Show>
+        <Show when={homePager() && homePager()!.data.length === 0}>
+          <EmptyContentView icon={iconHome} title='No home results' description='Install, configure, or enable more sources' actions={[
+            {
+              icon: iconSources,
+              title: 'Go to Sources',
+              action: () => nav('/web/sources')
+            }
+          ]} />
+        </Show>
+      </Show>
+    </div>
+  );
+};
+
+export default HomeClassicPage;

@@ -3,7 +3,7 @@
 }
 
 .menu{
-    position: absolute;
+    position: fixed;
     height:auto;
     z-index:9;
     max-height: 100%;

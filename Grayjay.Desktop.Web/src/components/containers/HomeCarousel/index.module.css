@@ -1,0 +1,79 @@
+.carousel {
+    margin-bottom: 32px;
+}
+
+.header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px 12px 24px;
+}
+
+.title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    cursor: default;
+}
+
+.titleClickable {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    cursor: pointer;
+}
+
+.titleClickable:hover {
+    text-decoration: underline;
+}
+
+.navButtons {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.carousel:hover .navButtons {
+    opacity: 1;
+}
+
+.navButton {
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #ffffff;
+    font-size: 16px;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.navButton:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.scrollWrapper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding: 0 24px;
+}
+
+.scrollWrapper::-webkit-scrollbar {
+    display: none;
+}
+
+.itemsRow {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+}
