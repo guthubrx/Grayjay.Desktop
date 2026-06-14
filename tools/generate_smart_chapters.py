@@ -1036,6 +1036,10 @@ def validate_segments(data: dict[str, Any], duration: float | None, args: argpar
 
     if not cleaned:
         raise RuntimeError("No valid Smart Chapter segments were generated.")
+    # Couvre jusqu'a la vraie fin : si le LLM s'est arrete avant (souvent parce
+    # que les sous-titres ne couvrent pas l'outro), on etend la derniere section.
+    if duration and cleaned[-1]["end"] < duration - 1:
+        cleaned[-1]["end"] = round(float(duration), 3)
     return cleaned
 
 
