@@ -8,8 +8,13 @@ const [generatorCommand$, setGeneratorCommandSignal] = createSignal<string>("");
 // Statut des jobs d'indexation par URL, alimenté par le WebSocket.
 const [indexJobs$, setIndexJobs] = createSignal<Record<string, IHighlightIndexJob>>({});
 
-SettingsBackend.persistGet('highlights.generatorCommand', "").then((cmd) => {
-    if (typeof cmd === 'string') setGeneratorCommandSignal(cmd);
+SettingsBackend.persistGet('highlights.generatorCommand', null).then((v: any) => {
+    // Stocke sous forme d'objet {command} : le persist backend ne round-trip
+    // pas les strings simples (value.ToString() retire les guillemets).
+    const cmd = (v && typeof v === 'object' && typeof v.command === 'string')
+        ? v.command
+        : (typeof v === 'string' ? v : "");
+    if (cmd) setGeneratorCommandSignal(cmd);
 }).catch(() => {});
 
 StateWebsocket.registerHandler("HighlightsIndexChanged", (packet) => {
@@ -27,7 +32,7 @@ export function hasGeneratorCommand(): boolean {
 export async function setGeneratorCommand(command: string) {
     const trimmed = command.trim();
     setGeneratorCommandSignal(trimmed);
-    await SettingsBackend.persistSet('highlights.generatorCommand', trimmed);
+    await SettingsBackend.persistSet('highlights.generatorCommand', { command: trimmed });
 }
 
 export function jobFor(url: string | undefined): IHighlightIndexJob | undefined {
