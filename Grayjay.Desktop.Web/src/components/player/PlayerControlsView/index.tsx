@@ -1,4 +1,4 @@
-import { Component, For, Index, JSX, Show, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
+import { Component, For, Index, JSX, Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import styles from './index.module.css';
 import { DateTime, Duration } from "luxon";
 import play from '../../../assets/icons/icon_32_play.svg';
@@ -249,6 +249,18 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
         e.stopPropagation();
         e.preventDefault();
     };
+
+    // Ferme le menu filtre quand on clique en dehors.
+    let smartChapterNavRef: HTMLDivElement | undefined;
+    createEffect(() => {
+        if (!smartChapterFilterMenuOpen$()) return;
+        const onDocMouseDown = (ev: MouseEvent) => {
+            if (smartChapterNavRef && !smartChapterNavRef.contains(ev.target as Node))
+                setSmartChapterFilterMenuOpen(false);
+        };
+        document.addEventListener("mousedown", onDocMouseDown);
+        onCleanup(() => document.removeEventListener("mousedown", onDocMouseDown));
+    });
 
     const onSmartChapterFilterMenu = (e: MouseEvent) => {
         setSmartChapterFilterMenuOpen(!smartChapterFilterMenuOpen$());
@@ -756,7 +768,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                     <img src={iconNext} class={styles.next} alt="next" onClick={(ev)=>onNext(ev)} onDblClick={(e) => e.stopPropagation()} />
                 </Show>
                 <Show when={smartChapterSegments$().length > 0}>
-                    <div class={styles.smartChapterNav} onDblClick={(e) => e.stopPropagation()}>
+                    <div class={styles.smartChapterNav} ref={smartChapterNavRef} onDblClick={(e) => e.stopPropagation()}>
                         <button
                             class={styles.smartChapterNavButton}
                             disabled={!props.hasPreviousSmartChapter}
