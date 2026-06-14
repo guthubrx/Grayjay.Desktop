@@ -1,4 +1,5 @@
 import { createSignal } from 'solid-js';
+import { Backend } from '../backend/Backend';
 import { SettingsBackend } from '../backend/SettingsBackend';
 import { HighlightsBackend, IHighlightIndexJob } from '../backend/HighlightsBackend';
 import StateWebsocket from './StateWebsocket';
@@ -8,14 +9,19 @@ const [generatorCommand$, setGeneratorCommandSignal] = createSignal<string>("");
 // Statut des jobs d'indexation par URL, alimenté par le WebSocket.
 const [indexJobs$, setIndexJobs] = createSignal<Record<string, IHighlightIndexJob>>({});
 
-SettingsBackend.persistGet('highlights.generatorCommand', null).then((v: any) => {
-    // Stocke sous forme d'objet {command} : le persist backend ne round-trip
-    // pas les strings simples (value.ToString() retire les guillemets).
-    const cmd = (v && typeof v === 'object' && typeof v.command === 'string')
-        ? v.command
-        : (typeof v === 'string' ? v : "");
-    if (cmd) setGeneratorCommandSignal(cmd);
-}).catch(() => {});
+// On lit directement (pas via SettingsBackend.persistGet, qui re-parse le JSON
+// et casse les valeurs objet/string). On stocke un objet {command} car le
+// persist backend ne round-trip pas les strings simples.
+(async () => {
+    try {
+        const raw: any = await Backend.GET("/settings/PersistGet?key=highlights.generatorCommand");
+        const obj = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+        if (obj && typeof obj === 'object' && typeof obj.command === 'string')
+            setGeneratorCommandSignal(obj.command);
+    } catch {
+        // pas de commande configurée
+    }
+})();
 
 StateWebsocket.registerHandler("HighlightsIndexChanged", (packet) => {
     const job = packet.payload as IHighlightIndexJob;
