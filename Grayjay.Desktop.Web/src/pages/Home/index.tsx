@@ -5,6 +5,7 @@ import styles from './index.module.css';
 import { HistoryBackend } from '../../backend/HistoryBackend';
 import { WatchLaterBackend } from '../../backend/WatchLaterBackend';
 import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
+import { HighlightsBackend } from '../../backend/HighlightsBackend';
 import NavigationBar from '../../components/topbars/NavigationBar';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import StateGlobal from '../../state/StateGlobal';
@@ -17,6 +18,7 @@ import HeroBanner from '../../components/home/HeroBanner';
 import VideoThumbnailView from '../../components/content/VideoThumbnailView';
 import { IPlatformVideo } from '../../backend/models/content/IPlatformVideo';
 import { IHistoryVideo } from '../../backend/models/content/IHistoryVideo';
+import { IVideoHighlightSummary } from '../../backend/models/highlights/IVideoHighlightSummary';
 import { useVideo } from '../../contexts/VideoProvider';
 import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overlays/SettingsMenu';
 import Anchor, { AnchorStyle } from '../../utility/Anchor';
@@ -162,6 +164,16 @@ const HomePage: Component = () => {
         }
     });
 
+    const [smartChapterItems] = createResource(async () => {
+        try {
+            return (await HighlightsBackend.getAll())
+                .filter((h: IVideoHighlightSummary) => h.segmentCount > 0)
+                .slice(0, MAX_CAROUSEL_ITEMS);
+        } catch {
+            return [] as IVideoHighlightSummary[];
+        }
+    });
+
     // Subscription group carousels — stale-while-revalidate:
     // Phase 1 (fast): show cached data immediately
     // Phase 2 (background): refresh per group and update as results arrive
@@ -219,6 +231,15 @@ const HomePage: Component = () => {
 
     function openVideo(v: IPlatformVideo) {
         video?.actions.openVideo(v);
+    }
+
+    function openSmartChapterVideo(item: IVideoHighlightSummary) {
+        if (item.video) {
+            video?.actions.openVideo(item.video);
+            return;
+        }
+
+        video?.actions.openVideoByUrl(item.videoUrl);
     }
 
     // ── Video context menu (same pattern as VideoDetailView recMenu) ──────────
@@ -373,6 +394,38 @@ const HomePage: Component = () => {
                                 onSettings={(el, c) => openVideoMenu(el, c)}
                                 settingsOnHover={true}
                             />
+                        )}
+                    />
+                </Show>
+
+                <Show when={(smartChapterItems()?.length ?? 0) > 0}>
+                    <HomeCarousel
+                        title="Smart Chapters"
+                        items={smartChapterItems()!}
+                        builder={(_, item: IVideoHighlightSummary) => (
+                            <Show
+                                when={item.video}
+                                fallback={
+                                    <button
+                                        class={styles.smartChapterFallback}
+                                        style={THUMB_STYLE}
+                                        onClick={() => openSmartChapterVideo(item)}
+                                    >
+                                        <span class={styles.smartChapterFallbackKicker}>{item.segmentCount} smart chapters</span>
+                                        <span class={styles.smartChapterFallbackTitle}>{item.videoUrl}</span>
+                                    </button>
+                                }
+                            >
+                                {(videoItem) => (
+                                    <VideoThumbnailView
+                                        style={THUMB_STYLE}
+                                        video={videoItem()}
+                                        onClick={() => openSmartChapterVideo(item)}
+                                        onSettings={(el, c) => openVideoMenu(el, c)}
+                                        settingsOnHover={true}
+                                    />
+                                )}
+                            </Show>
                         )}
                     />
                 </Show>

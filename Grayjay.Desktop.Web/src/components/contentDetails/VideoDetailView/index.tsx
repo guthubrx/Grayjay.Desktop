@@ -86,6 +86,7 @@ import { getKeybinding } from "../../../state/StateKeybindings";
 import StateSync from "../../../state/StateSync";
 import { SyncDevice } from "../../../backend/models/sync/SyncDevice";
 import { SyncBackend } from "../../../backend/SyncBackend";
+import { HighlightsBackend } from "../../../backend/HighlightsBackend";
 import FlexibleArrayList from "../../containers/FlexibleArrayList";
 import { IPlatformContent } from "../../../backend/models/content/IPlatformContent";
 import VideoThumbnailView from "../../content/VideoThumbnailView";
@@ -103,6 +104,7 @@ import ControllerOverlay from "../../ControllerOverlay";
 import { useCasting } from "../../../contexts/Casting";
 import { SearchBackend } from "../../../backend/SearchBackend";
 import history from '../../../assets/icons/icon_nav_history.svg';
+import iconHighlights from '../../../assets/icons/label_important_24dp_FFFFFF_FILL1_wght300_GRAD0_opsz24.svg';
 import { Portal } from "solid-js/web";
 
 const SCOPE_ID = "video-detail-view";
@@ -278,6 +280,22 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const result = (!url) ? undefined : (await DetailsBackend.getVideoChapters(url));
         console.log("Video chapters:", result);
         return result;
+    });
+    const videoHighlightUrls$ = createMemo(() => {
+        return [
+            videoLoaded$()?.url,
+            currentVideo$()?.url,
+            currentVideo$()?.backendUrl
+        ].filter((url, index, urls): url is string => !!url && urls.indexOf(url) === index);
+    });
+    const [videoHighlights$, videoHighlightsResource] = createResourceDefault(() => videoHighlightUrls$(), async (urls) => {
+        for (const url of urls) {
+            const highlights = await HighlightsBackend.get(url);
+            if ((highlights?.segments?.length ?? 0) > 0) {
+                return highlights;
+            }
+        }
+        return undefined;
     });
     //const [liveChatWindow$] = createResource<ILiveChatWindowDescriptor | undefined>(() => videoLoaded$(), async (videoLoaded: any) => (!videoLoaded || !videoLoaded.isLive) ? undefined : await DetailsBackend.liveChatWindow());
     const [recomPager$] = createResource<Pager<IPlatformContent>>(() => videoLoaded$(), async (videoLoaded: any) => {
@@ -984,6 +1002,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     }
 
     const [showSettings$, setShowSettings] = createSignal<boolean>(false);
+    const [showVideoContextMenu$, setShowVideoContextMenu] = createSignal<boolean>(false);
+    const [videoContextMenuPosition$, setVideoContextMenuPosition] = createSignal({ x: 0, y: 0 });
     const [anchor$, setAnchor] = createSignal<Anchor>();
     let lastHideSettingsTime = (new Date()).getTime();
     function onShowSettings() {
@@ -996,6 +1016,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             setShowSettings(false);
             lastHideSettingsTime = (new Date()).getTime();
         }
+    }
+    function onHideVideoContextMenu() {
+        setShowVideoContextMenu(false);
     }
     function setVideoPlayerContainerRef(el: HTMLDivElement) {
         setAnchor(new Anchor(el, showSettings$, AnchorStyle.BottomRight));
@@ -1472,6 +1495,65 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         UIOverlay.overlayDownload(url$());
     }
 
+    function shareCurrentVideo() {
+        UIOverlay.overlayShare(shareUrl$());
+    }
+
+    function downloadCurrentVideo() {
+        download();
+    }
+
+    function addCurrentVideoToPlaylist() {
+        const loadedVideo = videoLoaded$();
+        if (!loadedVideo) return;
+        UIOverlay.overlayAddToPlaylist(loadedVideo, ()=>{});
+    }
+
+    function playSmartChapters() {
+        const highlights = videoHighlights$();
+        if (!highlights?.segments?.length) return;
+        void videoPlayerViewHandle$()?.playHighlights(highlights.segments);
+    }
+
+    function playThesisChapters(thesisId: number) {
+        const highlights = videoHighlights$();
+        if (!highlights?.segments?.length) return;
+        const filtered = highlights.segments.filter(s => s.thesisId === thesisId);
+        if (filtered.length === 0) return;
+        void videoPlayerViewHandle$()?.playHighlights(filtered);
+    }
+
+    function showVideoContextMenu(ev: MouseEvent) {
+        if (isMinimized()) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        setShowSettings(false);
+        const menuWidth = 344;
+        const itemCount = 2
+            + ((StateSync.devicesOnline$()?.length ?? 0) > 0 ? 1 : 0)
+            + (!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? 1 : 0);
+        const menuHeight = 56 + (itemCount * 50);
+        setVideoContextMenuPosition({
+            x: Math.max(0, Math.min(ev.clientX, window.innerWidth - menuWidth)),
+            y: Math.max(0, Math.min(ev.clientY, window.innerHeight - menuHeight))
+        });
+        setShowVideoContextMenu(true);
+    }
+
+    const videoContextMenu$ = createMemo<Menu>(() => ({
+        title: "Video",
+        items: [
+            ...((StateSync.devicesOnline$()?.length ?? 0) > 0 ? [
+                new MenuItemButton("Send To Device", ic_sync, undefined, showSendToDeviceOverlay)
+            ] : []),
+            new MenuItemButton("Share", share, undefined, shareCurrentVideo),
+            ...(!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? [
+                new MenuItemButton("Download", iconDownload, undefined, downloadCurrentVideo)
+            ] : []),
+            new MenuItemButton("Add to", add, undefined, addCurrentVideoToPlaylist)
+        ]
+    }));
+
     const handleDescriptionClick = (ev: MouseEvent) => {
         setFullDescriptionVisible(!fullDescriptionVisible$());
         if (!fullDescriptionVisible$()) {
@@ -1811,7 +1893,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     <div style="height: 100%;" ref={videoContainer}>
                         <VideoPlayerView ref={setVideoPlayerContainerRef}
                             video={videoLoaded$()}
+                            minimized={isMinimized()}
                             chapters={((!isMinimized()) ? videoChapters$() : undefined) ?? undefined}
+                            smartChapterHighlights={videoHighlights$()}
                             eventMoved={eventMoved}
                             eventRestart={eventRestart}
                             resumePosition={resumePosition$()}
@@ -1850,7 +1934,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             sourceQuality={videoQuality$()}
                             onPlayerQualityChanged={(number)=>{setPlayerQuality(number)}}
                             onSettingsDialog={(ev) => onShowSettings()} 
-                            lockOverlay={showSettings$()} 
+                            lockOverlay={showSettings$() || showVideoContextMenu$()}
                             volume={video?.volume()}
                             playbackSpeed={playbackSpeed$()}
                             onVolumeChanged={(volume) => video?.actions?.setVolume?.(volume)}
@@ -1901,6 +1985,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 isScrubbing = scrubbing;
                             }}
                             onVerifyToggle={verifyToggle}
+                            onContextMenu={showVideoContextMenu}
                             buttons={
                                 <>
                                     <Show when={!isMinimized() && mode() === VideoMode.Theatre && focus.lastInputSource() === "pointer"}>
@@ -1970,6 +2055,16 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     menu={settingsDialogMenu$()}
                                     show={showSettings$() ?? false}
                                     onHide={onHideSettings} />
+                                <SettingsMenu
+                                    style={{
+                                        position: "fixed",
+                                        left: `${videoContextMenuPosition$().x}px`,
+                                        top: `${videoContextMenuPosition$().y}px`,
+                                        "z-index": 9999
+                                    }}
+                                    menu={videoContextMenu$()}
+                                    show={showVideoContextMenu$()}
+                                    onHide={onHideVideoContextMenu} />
                             </Show>
                         </VideoPlayerView>
                     </div>
@@ -2089,16 +2184,21 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                             onPress: showSendToDeviceOverlay
                                         }} />
                                     </Show>
-                                    <PillButton icon={share} text="Share" onClick={() => { UIOverlay.overlayShare(shareUrl$()) }} focusableOpts={{
-                                        onPress: () => UIOverlay.overlayShare(shareUrl$())
+                                    <PillButton icon={share} text="Share" onClick={shareCurrentVideo} focusableOpts={{
+                                        onPress: shareCurrentVideo
                                     }} />
                                     <Show when={!videoLoaded$.loading && !(videoLoaded$()?.isLive === true)}>
-                                        <PillButton icon={iconDownload} text="Download" onClick={() => { download() }} focusableOpts={{
-                                            onPress: download
+                                        <PillButton icon={iconDownload} text="Download" onClick={downloadCurrentVideo} focusableOpts={{
+                                            onPress: downloadCurrentVideo
                                         }} />
                                     </Show>
-                                    <PillButton icon={add} text="Add to" onClick={() => { UIOverlay.overlayAddToPlaylist(videoLoaded$()!, ()=>{}) }} focusableOpts={{
-                                        onPress: () => UIOverlay.overlayAddToPlaylist(videoLoaded$()!, ()=>{})
+                                    <Show when={(videoHighlights$()?.segments?.length ?? 0) > 0}>
+                                        <PillButton icon={iconHighlights} text="Smart Chapters" onClick={playSmartChapters} focusableOpts={{
+                                            onPress: playSmartChapters
+                                        }} />
+                                    </Show>
+                                    <PillButton icon={add} text="Add to" onClick={addCurrentVideoToPlaylist} focusableOpts={{
+                                        onPress: addCurrentVideoToPlaylist
                                     }} />
                                 </div>
                             </div>
@@ -2174,6 +2274,37 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     Show {fullDescriptionVisible$() ? "less" : "more"}
                                 </div>
                             </div>
+
+                            <Show when={videoHighlights$()?.globalSummary || (videoHighlights$()?.theses?.length ?? 0) > 0}>
+                                <div class={styles.smartAnalysis}>
+                                    <div class={styles.smartAnalysisHeader}>
+                                        <img src={iconHighlights} class={styles.smartAnalysisIcon} alt="" />
+                                        <span>Smart Analysis</span>
+                                    </div>
+                                    <Show when={videoHighlights$()?.globalSummary}>
+                                        <p class={styles.smartAnalysisSummary}>{videoHighlights$()!.globalSummary}</p>
+                                    </Show>
+                                    <Show when={(videoHighlights$()?.theses?.length ?? 0) > 0}>
+                                        <div class={styles.smartAnalysisTheses}>
+                                            <For each={videoHighlights$()!.theses!}>{(thesis) => (
+                                                <div class={styles.smartAnalysisThesis}>
+                                                    <div class={styles.smartAnalysisThesisHeader}>
+                                                        <span class={styles.smartAnalysisThesisId}>Thesis {thesis.id}</span>
+                                                        <button
+                                                            class={styles.smartAnalysisThesisPlay}
+                                                            onClick={() => playThesisChapters(thesis.id)}
+                                                            title={`Play segments for thesis ${thesis.id}`}
+                                                        >
+                                                            ▶ Play
+                                                        </button>
+                                                    </div>
+                                                    <p class={styles.smartAnalysisThesisStatement}>{thesis.statement}</p>
+                                                </div>
+                                            )}</For>
+                                        </div>
+                                    </Show>
+                                </div>
+                            </Show>
 
                             <Show when={shouldHideSideBar() && shouldShowQueue()}>
                                 <PlaybackQueue index={video?.index() ?? 0}

@@ -19,6 +19,7 @@ import { createResourceDefault } from '../../utility';
 import { ISettingsFieldGroup } from '../../backend/models/settings/fields/SettingsFieldGroup';
 import Toggle from '../../components/basics/inputs/Toggle';
 import { applyHomeStyleFromSettings } from '../../state/HomeStyleState';
+import { applyXRayFromSettings } from '../../state/StateXRay';
 
 
 export interface SettingsPageProps {
@@ -54,6 +55,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       const obj = settings$()?.object;
       SettingsBackend.settingsSave(obj);
       applyHomeStyleFromSettings(obj);
+      applyXRayFromSettings(obj);
     }
   }
 
