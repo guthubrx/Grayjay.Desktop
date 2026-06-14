@@ -891,7 +891,7 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     - score reflects importance: >= 0.93 directly proves/illustrates a thesis ; 0.88-0.92 strong supporting point ; 0.55-0.87 useful context ; 0.0-0.54 filler / intro / transition / digression (still included, just low).
     - thesis_id: which thesis ({thesis_ids}) this section primarily serves. Use null for intro/outro/transition/filler sections.
     - Titles and summaries must be in the video's main language.
-    - If the transcript is sparse, infer cautiously from available timestamps.
+    - NEVER invent content. Base every title and summary strictly on what the transcript ACTUALLY says for that time span. Do NOT claim "music", "silence", "no dialogue", "intro sequence" or similar unless the transcript truly has no words there. If the transcript has text in a span, describe THAT text; if a span has no transcript text, merge it into an adjacent section rather than fabricating a description.
 
     Video title: {task.title or "(unknown)"}
     Video URL: {task.url}
