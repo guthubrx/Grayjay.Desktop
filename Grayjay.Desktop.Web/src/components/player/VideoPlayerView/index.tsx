@@ -279,7 +279,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         if (isHighlightPlaybackActive$())
             setActiveHighlightIndex(index);
 
-        await seek(Duration.fromMillis(segments[index].start * 1000));
+        await fadeSeek(Duration.fromMillis(segments[index].start * 1000));
         if (isHighlightPlaybackActive$())
             play();
 
@@ -1504,11 +1504,17 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             if (i >= steps) { clearInterval(id); resolve(); }
         }, ms / steps);
     });
-    // Saut "en fondu" : baisse le son, saute, remonte le son. Pour les sauts de
-    // section depuis le volet (transition douce plutôt qu'une coupure brutale).
+    // Saut "en fondu" : baisse le son, saute, remonte le son. Appliqué seulement
+    // aux sauts vers une section NON adjacente (vraie discontinuité) ; une
+    // transition naturelle vers la section voisine reste sans fondu.
     const fadeSeek = async (time: Duration) => {
         const el = videoElement;
-        if (!el || isCasting()) { await seek(time); return; }
+        const segs = smartChapterSegments$();
+        const idxAt = (t: number) => segs.findIndex(s => s.start <= t && s.end > t);
+        const curIdx = idxAt(position().milliseconds / 1000);
+        const tgtIdx = idxAt(time.toMillis() / 1000);
+        const adjacent = curIdx >= 0 && tgtIdx >= 0 && Math.abs(tgtIdx - curIdx) <= 1;
+        if (!el || isCasting() || adjacent) { await seek(time); return; }
         const target = el.volume;
         await fadeVolume(el, target, 0, 200);
         await seek(time);
