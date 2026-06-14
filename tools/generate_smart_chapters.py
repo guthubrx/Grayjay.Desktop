@@ -885,13 +885,11 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
 
     Rules:
     - Use seconds for start/end.
-    - Select passages that best serve the theses: key arguments, definitions, turning points, conclusions, supporting evidence, counterarguments addressed.
-    - Deprioritize: introductions, anecdotes, digressions, transitions, repeated points.
-    - Keep {args.max_segments} segments or fewer.
-    - Prefer segments between {args.min_segment_seconds} and {args.max_segment_seconds} seconds when possible.
-    - Do not overlap segments.
-    - score >= 0.93: directly proves or illustrates a thesis. 0.88-0.92: strong supporting point. 0.55-0.87: useful context.
-    - thesis_id: which thesis ({thesis_ids}) this segment primarily serves. Use null for intro/outro/transition segments.
+    - COVER THE ENTIRE VIDEO: the sections must be CONTIGUOUS and span the full duration, from 0 to the end. Each section's start must equal the previous section's end. No gaps, no overlaps. Do not skip "boring" parts: include them as their own low-score sections.
+    - Keep around {args.max_segments} sections (merge flat stretches into longer sections rather than dropping them).
+    - Prefer sections between {args.min_segment_seconds} and {args.max_segment_seconds} seconds, but extend low-interest stretches into longer sections so the whole video stays covered.
+    - score reflects importance: >= 0.93 directly proves/illustrates a thesis ; 0.88-0.92 strong supporting point ; 0.55-0.87 useful context ; 0.0-0.54 filler / intro / transition / digression (still included, just low).
+    - thesis_id: which thesis ({thesis_ids}) this section primarily serves. Use null for intro/outro/transition/filler sections.
     - Titles and summaries must be in the video's main language.
     - If the transcript is sparse, infer cautiously from available timestamps.
 
