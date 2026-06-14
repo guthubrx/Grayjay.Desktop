@@ -406,7 +406,9 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
             return styles.smartChapterTop;
         if (score >= 0.88)
             return styles.smartChapterStrong;
-        return styles.smartChapterContext;
+        if (score >= 0.55)
+            return styles.smartChapterContext;
+        return styles.smartChapterFiller;
     };
     const smartChapterTooltipSegment$ = createMemo(() => {
         const index = progressBarSmartChapterHovering$();

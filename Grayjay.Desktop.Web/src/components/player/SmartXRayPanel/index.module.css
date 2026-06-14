@@ -221,6 +221,10 @@
     background: #7fb08f;
 }
 
+.scoreFiller {
+    background: #019BE8;
+}
+
 .chapterTime {
     flex-shrink: 0;
     font-size: 0.9em;
