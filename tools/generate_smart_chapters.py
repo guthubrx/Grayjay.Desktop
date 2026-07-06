@@ -1309,6 +1309,93 @@ def auto_max_segments(duration: float | None) -> int:
     return max(6, min(40, round(duration / 60 / 3)))
 
 
+def rechapter_span(task: VideoTask, span_cues: list[TranscriptCue], start: float, end: float,
+                   args: argparse.Namespace, analysis: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """Re-chapitre UNE tranche trop longue en plusieurs sous-sections via un appel
+    LLM ciblé. Levier robuste contre le biais du modèle qui regroupe la fin d'une
+    longue vidéo en un seul bloc fourre-tout."""
+    if not span_cues:
+        return None
+    n = max(2, min(10, round((end - start) / max(1, args.max_segment_seconds))))
+    transcript = cues_to_prompt_transcript(span_cues, args.max_transcript_chars)
+    lang = args.output_language or "the video's main language"
+    prompt = textwrap.dedent(f"""
+    You split ONE part of a video into chapters. This part runs from {format_time(start)} ({start:.0f}s) to {format_time(end)} ({end:.0f}s).
+
+    Return only valid JSON: {{"segments":[{{"title":"max 7 words","start":{start:.0f},"end":123.0,"summary":"2-3 dense sentences","score":0.5,"thesis_id":null}}]}}
+
+    Rules:
+    - Produce {n} CONTIGUOUS sections covering EXACTLY this span. First start = {start:.0f}, last end = {end:.0f}. No gaps, no overlaps.
+    - This span is NOT filler: it contains real spoken content. Give each section a SPECIFIC title based on what is actually said (never "conclusion", "thanks", "outro" unless the transcript truly is that), and a fair score spread across the range (viewer value, not thesis-adherence).
+    - Titles and summaries in {lang}. Base everything strictly on the transcript. Never invent.
+
+    Transcript (this span only):
+    {transcript}
+    """).strip()
+    try:
+        data = call_model(prompt, args)
+    except Exception as exc:
+        log(f"    re-split failed for {format_time(start)}-{format_time(end)}: {exc}")
+        return None
+    raw = data.get("segments")
+    if not isinstance(raw, list) or len(raw) < 2:
+        return None
+    subs: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        s = to_float(item.get("start"))
+        e = to_float(item.get("end"))
+        if not title or s is None or e is None:
+            continue
+        s = max(start, min(end, s))
+        e = max(start, min(end, e))
+        if e <= s:
+            continue
+        score = to_float(item.get("score"))
+        tid = item.get("thesis_id")
+        subs.append({
+            "title": title[:90],
+            "start": round(s, 3),
+            "end": round(e, 3),
+            "summary": (str(item.get("summary") or "").strip()[:600]) or None,
+            "score": round(max(0.0, min(1.0, score if score is not None else 0.75)), 3),
+            "thesis_id": int(tid) if tid is not None else None,
+        })
+    if len(subs) < 2:
+        return None
+    subs.sort(key=lambda x: x["start"])
+    subs[0]["start"] = round(start, 3)
+    for i in range(1, len(subs)):
+        subs[i]["start"] = subs[i - 1]["end"]
+    subs[-1]["end"] = round(end, 3)
+    subs = [x for x in subs if x["end"] > x["start"]]
+    if len(subs) < 2:
+        return None
+    return [{k: v for k, v in x.items() if v is not None} for x in subs]
+
+
+def resplit_long_segments(task: VideoTask, cues: list[TranscriptCue], segments: list[dict[str, Any]],
+                          args: argparse.Namespace, analysis: dict[str, Any]) -> list[dict[str, Any]]:
+    """Re-découpe les sections anormalement longues qui contiennent du transcript
+    (typiquement le bloc fourre-tout de fin), sans toucher aux sections normales."""
+    threshold = max(args.max_segment_seconds * 2, 600)
+    result: list[dict[str, Any]] = []
+    for seg in segments:
+        span = seg["end"] - seg["start"]
+        span_cues = [c for c in cues if c.start < seg["end"] and c.end > seg["start"]]
+        text_len = sum(len(c.text) for c in span_cues)
+        if span > threshold and text_len > 800:
+            log(f"    re-splitting long section {format_time(seg['start'])}-{format_time(seg['end'])} ({span / 60:.0f} min)")
+            subs = rechapter_span(task, span_cues, seg["start"], seg["end"], args, analysis)
+            if subs:
+                result.extend(subs)
+                continue
+        result.append(seg)
+    return result
+
+
 def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
     task = fetch_video_metadata(task, args)
     title = task.title or task.url
@@ -1338,6 +1425,7 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
         generated = call_model(prompt, args)
         duration = task.duration or (cues[-1].end if cues else None)
         segments = validate_segments(generated, duration, args)
+        segments = resplit_long_segments(task, cues, segments, args, analysis)
         log(f"  segments: {len(segments)}")
         path = write_highlights(task, segments, analysis, args)
         if args.dry_run:
