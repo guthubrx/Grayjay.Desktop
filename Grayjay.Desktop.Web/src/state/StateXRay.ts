@@ -59,20 +59,19 @@ export async function saveXRayPanelWidthPercent(percent: number) {
     await SettingsBackend.persistSet('xray.panelWidthPercent', percent);
 }
 
-// Dégradé continu vert -> rouge, ALIGNÉ sur les seuils des filtres. On NE part
-// PAS du bleu (c'est la couleur d'accent de Grayjay : barre de lecture, curseur ;
-// ça créait une confusion). Le froid/filler est un vert-gris terne et discret,
-// puis vert vif au seuil "Smart", et ça chauffe vers le rouge :
-//   < 0.55  = filler (vert-gris terne, exclu par "Smart")
+// Échelle alignée sur les seuils des filtres. En dessous de "Smart" (< 0.55) =
+// le filler "nul" : GRIS neutre (aucune couleur), nettement distinct du contenu
+// retenu. À partir du seuil Smart, on colore vert -> jaune -> orange -> rouge.
+// Pas de bleu (c'est l'accent de Grayjay). Le saut gris -> vert à 0.55 marque
+// franchement la frontière entre "pas intéressant" et "intéressant".
+//   < 0.55  = filler (gris, exclu par "Smart")
 //   0.55    = vert vif (seuil "Smart")
 //   ~0.86   = orange (seuil "Strong")
 //   >= 0.93 = rouge  (seuil "Top")
-// Stops en score ABSOLU (pas normalisé). Le saut de saturation à 0.55 (terne ->
-// vif) marque nettement la frontière entre filler et contenu retenu.
 const HEAT_STOPS: [number, [number, number, number]][] = [
-    [0.15, [0x3d, 0x6b, 0x54]], // vert-gris sombre terne (filler bas)
-    [0.50, [0x4f, 0x9a, 0x63]], // vert moyen (filler haut)
-    [0.55, [0x67, 0xc1, 0x6a]], // vert vif (seuil Smart)
+    [0.15, [0x47, 0x4b, 0x4f]], // gris foncé neutre (filler bas)
+    [0.53, [0x71, 0x76, 0x7a]], // gris moyen (filler juste sous le seuil)
+    [0.55, [0x67, 0xc1, 0x6a]], // vert vif (seuil Smart) — saut gris -> vert
     [0.72, [0xd7, 0xcf, 0x3f]], // jaune
     [0.86, [0xf0, 0x8a, 0x24]], // orange
     [0.93, [0xe5, 0x3e, 0x3e]], // rouge (seuil Top)
