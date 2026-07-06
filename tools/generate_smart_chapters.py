@@ -1104,9 +1104,19 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
 
 
 def call_model(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
-    if args.provider == "openai":
-        return call_openai(prompt, args)
-    return call_ollama(prompt, args)
+    # Les LLM renvoient parfois un JSON légèrement malformé (virgule manquante).
+    # On régénère jusqu'à 3 fois avant d'abandonner — c'est le remède le plus
+    # fiable pour ce type d'aléa, plus sûr qu'une réparation à l'aveugle.
+    for attempt in range(3):
+        try:
+            if args.provider == "openai":
+                return call_openai(prompt, args)
+            return call_ollama(prompt, args)
+        except json.JSONDecodeError as exc:
+            if attempt == 2:
+                raise RuntimeError(f"Model kept returning invalid JSON after 3 attempts: {exc}")
+            log(f"  model returned invalid JSON (attempt {attempt + 1}/3), retrying…")
+    raise RuntimeError("unreachable")
 
 
 def call_openai(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
@@ -1186,10 +1196,16 @@ def parse_model_json(raw: str) -> dict[str, Any]:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
-        if not match:
-            raise
-        return json.loads(match.group(0))
+        pass
+    match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+    candidate = match.group(0) if match else raw
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        # Réparation basique des virgules traînantes avant } ou ] ; si ça ne
+        # suffit pas, l'exception remonte et call_model régénère.
+        repaired = re.sub(r",(\s*[}\]])", r"\1", candidate)
+        return json.loads(repaired)
 
 
 def validate_segments(data: dict[str, Any], duration: float | None, args: argparse.Namespace) -> list[dict[str, Any]]:
