@@ -207,11 +207,11 @@ namespace Grayjay.ClientServer.Settings
             public bool KeepProgressBarVisible { get; set; } = false;
 
             [SettingsField("Seekbar drop (when alone)", SettingsField.DROPDOWN, "How much lower the seekbar sits when shown on its own", 11)]
-            [SettingsDropdownOptions("0px", "8px", "16px", "24px", "32px", "40px")]
+            [SettingsDropdownOptions("0px", "10px", "20px", "30px", "40px", "50px", "60px")]
             public int SeekbarOffset { get; set; } = 0;
 
             [SettingsField("Seekbar opacity (when alone)", SettingsField.DROPDOWN, "Transparency of the seekbar heatmap and handle when shown on its own", 12)]
-            [SettingsDropdownOptions("100%", "85%", "70%", "55%", "40%")]
+            [SettingsDropdownOptions("100%", "85%", "70%", "55%", "40%", "25%", "15%")]
             public int SeekbarOpacity { get; set; } = 0;
 
             [SettingsField("Persist Queue", SettingsField.TOGGLE, "Restore your playback queue between sessions", 8)]

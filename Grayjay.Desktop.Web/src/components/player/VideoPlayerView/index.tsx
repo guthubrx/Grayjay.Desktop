@@ -1509,8 +1509,8 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         && !isCasting()
     );
     // Réglages du mode "barre seule" : de combien elle descend, et sa transparence.
-    const SEEKBAR_OFFSET_MAP = [0, 8, 16, 24, 32, 40];
-    const SEEKBAR_OPACITY_MAP = [1, 0.85, 0.7, 0.55, 0.4];
+    const SEEKBAR_OFFSET_MAP = [0, 10, 20, 30, 40, 50, 60];
+    const SEEKBAR_OPACITY_MAP = [1, 0.85, 0.7, 0.55, 0.4, 0.25, 0.15];
     const barOnlyOffset$ = createMemo(() => SEEKBAR_OFFSET_MAP[StateGlobal.settings$()?.object?.playback?.seekbarOffset ?? 0] ?? 0);
     const barOnlyOpacity$ = createMemo(() => SEEKBAR_OPACITY_MAP[StateGlobal.settings$()?.object?.playback?.seekbarOpacity ?? 0] ?? 1);
 
