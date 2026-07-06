@@ -451,14 +451,9 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
         return 0.18; // video / all : froid (filler)
     };
 
-    // Couleur pleine du filtre (pour le losange du bouton principal). Le losange
-    // est tourné de 45deg ; l'angle -45deg local rend donc un dégradé VERTICAL à
-    // l'écran : froid (vert) en bas, chaud (rouge) en haut, comme le thermomètre.
-    const filterSwatchBackground = (filter: SmartChapterFilter) => {
-        if (filter === "smart")
-            return `linear-gradient(-45deg, ${scoreToColor(0.5)}, ${scoreToColor(0.75)}, ${scoreToColor(0.95)})`;
-        return scoreToColor(filterLevelScore(filter));
-    };
+    // Losange du bouton principal : UNE couleur pleine = la teinte du niveau actif
+    // (celle de sa barre dans le menu), pas un dégradé.
+    const filterSwatchBackground = (filter: SmartChapterFilter) => scoreToColor(filterLevelScore(filter));
 
     // Barre verticale d'une ligne du menu : elle échantillonne le VRAI gradient de
     // l'échelle entre les seuils voisins (pas un simple mix RGB), pour que les
