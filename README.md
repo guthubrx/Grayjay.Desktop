@@ -130,6 +130,16 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 
 ---
 
+## How this fork is organized
+
+Each feature below lives in its **own dedicated `pr/*` branch**, kept isolated and **not merged into `master`** — `master` simply tracks upstream Grayjay. Isolating every change lets me propose it to FUTO calmly, **one focused PR at a time, only when it's ready** and clearly useful to others — never as a take-it-or-leave-it batch.
+
+In the meantime, my local build (**BlueJay**) just aggregates all these branches. So this page lists everything the fork adds, even though the code for each feature lives on its branch rather than on `master` (which is why you won't find it in the `master` tree).
+
+👉 Browse the feature branches here: **[all branches](https://github.com/guthubrx/Grayjay.Desktop/branches)** (their names start with `pr/`).
+
+---
+
 ## BlueJay fork — additional features
 
 > This fork tracks Grayjay Desktop upstream and adds the features listed below. Everything else behaves like upstream Grayjay. Each feature is also kept as a standalone branch for potential upstream contribution.
@@ -138,6 +148,7 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 
 - **Highlights home page** — a hero banner mixing your subscription videos with platform recommendations, plus content carousels. Switch between *Highlights* and the classic layout in *Settings → Home*.
 - **Smarter Continue Watching** — finished videos (watched ≥ 90 %) and dismissed items are excluded from the carousel.
+- **Mark Continue Watching items as watched** — mark as watched or remove from history straight from the Continue Watching carousel.
 
 ### Player
 
@@ -146,9 +157,23 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 - **Recommendations as a horizontal carousel** in theater mode (toggle).
 - **Per-channel playback speed** — a speed override remembered per channel.
 - **Hold to fast-forward** at a configurable speed (long press), with a speed chip overlay.
+- **Multiple minimized players** — minimize several videos at once and switch between them.
+- **Collapsible carousels** — collapse or expand the carousel sections under the player in theater mode, via a unified toggle bar.
+- **Side-by-side carousels** — Continue Watching and Queue shown as side-by-side carousels under the player.
+- **Remove from queue** — a toggle in the recommendations context menu to remove an item from the queue.
 - **Video context menu** — right-click the video surface to access the same actions as the buttons under the player, including Share, Download and Add to.
 
 ![Video context menu](imgs/video-context-menu.PNG)
+
+### Smart Chapters (X-Ray)
+
+- **AI-generated smart chapters** — an external command you configure (an LLM running on your own machine) analyses a video's transcript and produces titled, summarized chapters, each scored by how interesting it is. Trigger it from the video context menu.
+- **Interest heatmap on the seekbar** — every chapter is colored on a continuous cold→hot scale (green = lighter, red = highly interesting), so the video's high points stand out at a glance.
+- **X-Ray side panel** — the video's theses/topics, a global summary and per-chapter summaries, with adjustable font size, opacity and width.
+- **Filter levels** — a vertical "thermometer" menu to jump through only the *Top*, *Strong*, *Good*, *Smart* or *All* moments.
+- **Output language** — choose the language of the generated titles/summaries in *Settings → Smart Analysis*.
+
+![Smart Chapters](imgs/smart-chapters-xray.png)
 
 ### Video & navigation
 
@@ -175,6 +200,16 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 
 ---
 
+## Organisation du fork
+
+Chaque fonctionnalité ci-dessous vit dans sa **propre branche `pr/*` dédiée**, isolée et **non mergée dans `master`** — `master` suit simplement Grayjay upstream. Isoler chaque changement me permet de le proposer à FUTO sereinement, **une PR ciblée à la fois, seulement quand elle est prête** et clairement utile — jamais en bloc à prendre ou à laisser.
+
+En attendant, mon build local (**BlueJay**) agrège simplement toutes ces branches. Cette page liste donc tout ce que le fork ajoute, même si le code de chaque fonctionnalité vit sur sa branche plutôt que sur `master` (c'est pourquoi vous ne le trouverez pas dans l'arbre `master`).
+
+👉 Parcourir les branches ici : **[toutes les branches](https://github.com/guthubrx/Grayjay.Desktop/branches)** (leurs noms commencent par `pr/`).
+
+---
+
 ## Fork BlueJay — fonctionnalités additionnelles
 
 > Ce fork suit Grayjay Desktop en amont et ajoute les fonctionnalités ci-dessous. Tout le reste se comporte comme Grayjay original. Chaque fonctionnalité est aussi conservée sur une branche dédiée en vue d'une éventuelle contribution upstream.
@@ -183,6 +218,7 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 
 - **Page d'accueil Highlights** — une bannière héro mêlant les vidéos de vos abonnements et les recommandations des plateformes, plus des carrousels de contenu. Bascule entre *Highlights* et la disposition classique dans *Paramètres → Accueil*.
 - **Continue Watching amélioré** — les vidéos terminées (vues ≥ 90 %) et les éléments masqués sont exclus du carrousel.
+- **Marquer les éléments Continue Watching comme vus** — marquer comme vu ou retirer de l'historique directement depuis le carrousel Continue Watching.
 
 ### Lecteur
 
@@ -191,7 +227,21 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 - **Recommandations en carrousel horizontal** en mode théâtre (activable).
 - **Vitesse de lecture par chaîne** — une vitesse mémorisée pour chaque chaîne.
 - **Avance rapide maintenue** à une vitesse configurable (appui long), avec une pastille de vitesse.
+- **Plusieurs lecteurs minimisés** — minimisez plusieurs vidéos à la fois et basculez de l'une à l'autre.
+- **Carrousels repliables** — repliez ou dépliez les sections de carrousels sous le lecteur en mode théâtre, via une barre de bascule unifiée.
+- **Carrousels côte à côte** — Continue Watching et la file affichés en carrousels côte à côte sous le lecteur.
+- **Retirer de la file** — une bascule dans le menu contextuel des recommandations pour retirer un élément de la file.
 - **Menu contextuel vidéo** — clic droit sur la vidéo pour accéder aux mêmes actions que les boutons sous le lecteur, dont Partager, Télécharger et Ajouter à.
+
+### Smart Chapters (X-Ray)
+
+- **Chapitres intelligents générés par IA** — une commande externe que vous configurez (un LLM tournant sur votre propre machine) analyse la transcription d'une vidéo et produit des chapitres titrés et résumés, chacun noté selon son intérêt. Déclenchez-la depuis le menu contextuel de la vidéo.
+- **Carte de chaleur d'intérêt sur la barre** — chaque chapitre est coloré sur une échelle continue froid→chaud (vert = léger, rouge = très intéressant), pour repérer les temps forts d'un coup d'œil.
+- **Panneau latéral X-Ray** — les thèses/sujets de la vidéo, un résumé global et des résumés par chapitre, avec taille de police, opacité et largeur ajustables.
+- **Niveaux de filtre** — un menu « thermomètre » vertical pour ne parcourir que les moments *Top*, *Strong*, *Good*, *Smart* ou *All*.
+- **Langue de sortie** — choisissez la langue des titres/résumés générés dans *Paramètres → Smart Analysis*.
+
+![Smart Chapters](imgs/smart-chapters-xray.png)
 
 ### Vidéo & navigation
 
