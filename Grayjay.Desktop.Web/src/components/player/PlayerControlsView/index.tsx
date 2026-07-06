@@ -1,6 +1,6 @@
 import { Component, For, Index, JSX, Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import styles from './index.module.css';
-import { scoreToColor } from "../../../state/StateXRay";
+import { scoreToColor, scoreToRgb, rgbString, mixRgb } from "../../../state/StateXRay";
 import { DateTime, Duration } from "luxon";
 import play from '../../../assets/icons/icon_32_play.svg';
 import pause from '../../../assets/icons/icon32_pause.svg';
@@ -389,17 +389,24 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
             }))
             .filter(segment => segment.end > segment.start);
     });
-    const smartChapterStyle = (segment: IVideoHighlightSegment) => {
+    const smartChapterStyle = (segment: IVideoHighlightSegment, index: number) => {
         const durationSeconds = durationSeconds$();
         if (durationSeconds <= 0)
             return {};
 
         const left = (segment.start / durationSeconds) * 100;
         const width = ((segment.end - segment.start) / durationSeconds) * 100;
+        // Blending : la couleur au bord d'un segment est la moyenne avec son voisin,
+        // donc deux segments adjacents se rejoignent sur la même teinte (transition
+        // douce plutôt qu'une démarcation nette).
+        const segs = smartChapterSegments$();
+        const cThis = scoreToRgb(segment.score);
+        const cLeft = index > 0 ? mixRgb(scoreToRgb(segs[index - 1].score), cThis) : cThis;
+        const cRight = index < segs.length - 1 ? mixRgb(cThis, scoreToRgb(segs[index + 1].score)) : cThis;
         return {
             left: `${left}%`,
             width: `${Math.max(width, 0.18)}%`,
-            background: scoreToColor(segment.score)
+            background: `linear-gradient(to right, ${rgbString(cLeft)} 0%, ${rgbString(cThis)} 50%, ${rgbString(cRight)} 100%)`
         };
     };
     const smartChapterTooltipSegment$ = createMemo(() => {
@@ -432,16 +439,18 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     const smartChapterFilterLabel$ = createMemo(() => {
         return smartChapterFilterOptions.find(option => option.id === smartChapterFilter$())?.label ?? "Smart";
     });
-    const smartChapterFilterClass = (filter: SmartChapterFilter) => {
+    // Losange du menu, aligné sur le dégradé thermique. "Smart" (toute la gamme)
+    // affiche un mini-dégradé froid->chaud ; les autres, la couleur de leur seuil.
+    const filterSwatchBackground = (filter: SmartChapterFilter) => {
         if (filter === "video")
-            return styles.smartChapterVideo;
+            return "#5f9fe8";
         if (filter === "top")
-            return styles.smartChapterTop;
+            return scoreToColor(0.95);
         if (filter === "strong")
-            return styles.smartChapterStrong;
+            return scoreToColor(0.89);
         if (filter.startsWith("thesis:"))
-            return styles.smartChapterTop;
-        return styles.smartChapterContext;
+            return scoreToColor(0.95);
+        return `linear-gradient(135deg, ${scoreToColor(0.5)}, ${scoreToColor(0.75)}, ${scoreToColor(0.95)})`;
     };
 
     const volumeWidth = createMemo(() => (props.volume ?? 0) * 72);
@@ -691,7 +700,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                                     [styles.progressBarSmartChapter]: true,
                                     [styles.active]: props.activeSmartChapterIndex === i
                                 }}
-                                style={smartChapterStyle(segment$())}
+                                style={smartChapterStyle(segment$(), i)}
                             />
                         }</Index>
                     </div>
@@ -775,10 +784,10 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                             title="Smart Chapter filter"
                             onClick={onSmartChapterFilterMenu}
                         >
-                            <span classList={{
-                                [styles.smartChapterFilterMark]: true,
-                                [smartChapterFilterClass(smartChapterFilter$())]: true
-                            }} />
+                            <span
+                                class={styles.smartChapterFilterMark}
+                                style={{ background: filterSwatchBackground(smartChapterFilter$()) }}
+                            />
                             <span class={styles.smartChapterFilterLabel}>{smartChapterFilterLabel$()}</span>
                         </button>
                         <button
@@ -799,10 +808,10 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                                         }}
                                         onClick={(e) => onSetSmartChapterFilter(option.id, e)}
                                     >
-                                        <span classList={{
-                                            [styles.smartChapterFilterSwatch]: true,
-                                            [smartChapterFilterClass(option.id)]: true
-                                        }} />
+                                        <span
+                                            class={styles.smartChapterFilterSwatch}
+                                            style={{ background: filterSwatchBackground(option.id) }}
+                                        />
                                         <span>
                                             <strong>{option.label}</strong>
                                             <small>{option.description}</small>

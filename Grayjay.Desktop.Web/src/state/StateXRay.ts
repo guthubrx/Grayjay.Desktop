@@ -72,8 +72,8 @@ const HEAT_STOPS: [number, [number, number, number]][] = [
     [1.00, [0xe5, 0x3e, 0x3e]], // rouge chaud
 ];
 
-export function scoreToColor(score?: number | null): string {
-    if (score == null) return "#019BE8";
+export function scoreToRgb(score?: number | null): [number, number, number] {
+    if (score == null) return [0x01, 0x9B, 0xE8];
     let t = (score - 0.45) / (0.95 - 0.45);
     t = Math.max(0, Math.min(1, t));
     for (let i = 1; i < HEAT_STOPS.length; i++) {
@@ -81,11 +81,25 @@ export function scoreToColor(score?: number | null): string {
         const [p2, c2] = HEAT_STOPS[i];
         if (t <= p2) {
             const f = (t - p1) / (p2 - p1);
-            const r = Math.round(c1[0] + (c2[0] - c1[0]) * f);
-            const g = Math.round(c1[1] + (c2[1] - c1[1]) * f);
-            const b = Math.round(c1[2] + (c2[2] - c1[2]) * f);
-            return `rgb(${r}, ${g}, ${b})`;
+            return [
+                Math.round(c1[0] + (c2[0] - c1[0]) * f),
+                Math.round(c1[1] + (c2[1] - c1[1]) * f),
+                Math.round(c1[2] + (c2[2] - c1[2]) * f),
+            ];
         }
     }
-    return "#e53e3e";
+    return [0xe5, 0x3e, 0x3e];
+}
+
+export function scoreToColor(score?: number | null): string {
+    const [r, g, b] = scoreToRgb(score);
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+export function rgbString(c: [number, number, number]): string {
+    return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+export function mixRgb(a: [number, number, number], b: [number, number, number]): [number, number, number] {
+    return [Math.round((a[0] + b[0]) / 2), Math.round((a[1] + b[1]) / 2), Math.round((a[2] + b[2]) / 2)];
 }
