@@ -152,8 +152,8 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY"),
         help="API key for the OpenAI-compatible endpoint. Defaults to $DEEPSEEK_API_KEY or $OPENAI_API_KEY.",
     )
-    generation.add_argument("--max-segments", type=int, default=16, help="Maximum Smart Chapter segments.")
-    generation.add_argument("--max-theses", type=int, default=2, help="Maximum number of main theses extracted in the analysis pass (1-3).")
+    generation.add_argument("--max-segments", type=int, default=None, help="Maximum Smart Chapter segments. Auto-derived from duration when omitted (~1 per 3 min, 6-40).")
+    generation.add_argument("--max-theses", type=int, default=None, help="Maximum theses/topics extracted in the analysis pass. Auto-derived from duration when omitted (~1 per 15 min, 1-8).")
     generation.add_argument("--min-segment-seconds", type=int, default=45, help="Preferred minimum segment duration.")
     generation.add_argument("--max-segment-seconds", type=int, default=360, help="Preferred maximum segment duration.")
     generation.add_argument("--max-transcript-chars", type=int, default=120000, help="Transcript character budget sent to LLM. Above this, cues are uniformly down-sampled across the whole duration (never dropping the middle).")
@@ -995,17 +995,18 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
       "theses": [
         {{
           "id": 1,
-          "statement": "The main argument or claim the video is making, in one sentence."
+          "statement": "A main argument, claim, OR distinct topic the video covers, in one sentence."
         }}
       ]
     }}
 
     Rules:
-    - Extract {args.max_theses} thesis at most (fewer if the video only defends one central idea).
-    - Each thesis is a complete sentence stating an argument, not just a topic label.
+    - Extract up to {args.max_theses} main theses OR topics (fewer only if the video is genuinely narrow).
+    - For interviews, podcasts and multi-topic videos, cover the DIFFERENT topics discussed across the WHOLE video (technical points AND business, strategy, personal, advice, etc.) — not only the topic of the opening minutes.
+    - Each item is a complete sentence stating an argument, or clearly naming a distinct topic covered.
     - globalSummary is in the video's main language.
     - theses are in the video's main language.
-    - Be precise: prefer a thesis like "X causes Y because Z" over "the video talks about X".
+    - Be precise: prefer "X causes Y because Z" or "the guest explains how they run board meetings" over vague labels.
 
     Video title: {task.title or "(unknown)"}
     Video URL: {task.url}
@@ -1060,7 +1061,7 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     return textwrap.dedent(f"""
     You generate Smart Chapters for a video player used to skip to key moments and display an information overlay.
 
-    The video defends the following main thesis/theses:
+    The video's main theses/topics (for reference only — see scoring rules):
     {theses_block}
 
     Return only valid JSON with this exact shape:
@@ -1070,7 +1071,7 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
           "title": "short title, max 7 words",
           "start": 123.0,
           "end": 245.0,
-          "summary": "2 to 3 dense sentences: what is said, which argument is made, why it matters for the thesis.",
+          "summary": "2 to 3 dense sentences: what is actually said and why a viewer would care.",
           "score": 0.91,
           "thesis_id": 1
         }}
@@ -1083,8 +1084,13 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     - Keep around {args.max_segments} sections (merge flat stretches into longer sections rather than dropping them).
     - Prefer sections between {args.min_segment_seconds} and {args.max_segment_seconds} seconds, but extend low-interest stretches into longer sections so the whole video stays covered.
     - DISTRIBUTE sections EVENLY across the ENTIRE timeline: the density of sections must stay similar from the first minute to the last. The FINAL section MUST NOT be a catch-all. If the last part of the transcript (e.g. the final 10-20 minutes) still contains speech, split it into several sections exactly like the earlier parts. A single section longer than {args.max_segment_seconds}s is allowed ONLY when the transcript for that whole span is genuinely empty of speech.
-    - score reflects importance: >= 0.93 directly proves/illustrates a thesis ; 0.88-0.92 strong supporting point ; 0.55-0.87 useful context ; 0.0-0.54 filler / intro / transition / digression (still included, just low).
-    - thesis_id: which thesis ({thesis_ids}) this section primarily serves. Use null for intro/outro/transition/filler sections.
+    - score = how VALUABLE this section is TO A VIEWER, based on information density, insight, specificity and memorability. It is NOT about whether it proves a thesis. A gripping personal story, a concrete example, a piece of advice, a governance detail or a strong opinion can score HIGH even if it matches no thesis.
+      * >= 0.90: high insight — a key idea, striking fact, concrete example, strong argument or memorable takeaway
+      * 0.70-0.89: solid, informative content clearly worth watching
+      * 0.55-0.69: useful but lighter (setup, context, minor points)
+      * 0.0-0.54: TRUE filler ONLY — intro/outro pleasantries, sponsor/ads, pure transitions, repetition, off-topic small talk, dead air. NEVER put substantive content here just because it is off-thesis.
+    - Judge each section on its OWN merit. A long stretch of the video being off the main thesis (e.g. an interview moving from tech to strategy, leadership or personal advice) is usually still valuable — score it on its content, not its distance from the thesis.
+    - thesis_id: OPTIONAL link to which thesis/topic ({thesis_ids}) the section relates to, or null. A null thesis_id MUST NOT lower the score.
     - Titles and summaries must be in the video's main language.
     - NEVER invent content. Base every title and summary strictly on what the transcript ACTUALLY says for that time span. Do NOT claim "music", "silence", "no dialogue", "intro sequence" or similar unless the transcript truly has no words there. If the transcript has text in a span, describe THAT text; if a span has no transcript text, merge it into an adjacent section rather than fabricating a description.
 
@@ -1271,6 +1277,20 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], analysis: 
     return path
 
 
+def auto_max_theses(duration: float | None) -> int:
+    # ~1 sujet/thèse par 15 min de vidéo, borné [1, 8].
+    if not duration or duration <= 0:
+        return 3
+    return max(1, min(8, round(duration / 60 / 15)))
+
+
+def auto_max_segments(duration: float | None) -> int:
+    # ~1 section par 3 min de vidéo, borné [6, 40].
+    if not duration or duration <= 0:
+        return 12
+    return max(6, min(40, round(duration / 60 / 3)))
+
+
 def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
     task = fetch_video_metadata(task, args)
     title = task.title or task.url
@@ -1284,6 +1304,14 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
             workdir = keep_dir
             log(f"  workdir: {workdir}")
         cues = get_transcript(task, args, workdir)
+
+        # Nombre de thèses/sections adapté à la durée (sauf override explicite).
+        duration = task.duration or (cues[-1].end if cues else None)
+        if args.max_theses is None:
+            args.max_theses = auto_max_theses(duration)
+        if args.max_segments is None:
+            args.max_segments = auto_max_segments(duration)
+        log(f"  targets: {args.max_theses} theses/topics, ~{args.max_segments} sections")
 
         analysis = run_analysis(task, cues, args)
 
