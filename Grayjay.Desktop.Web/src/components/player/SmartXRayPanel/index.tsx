@@ -5,7 +5,7 @@ import { IChapter } from "../../../backend/models/contentDetails/IChapter";
 import { Duration } from "luxon";
 import styles from "./index.module.css";
 import iconSidebarClose from "../../../assets/icons/sidebar-close.svg";
-import { xRayState$, saveXRayPanelWidthPercent, MIN_WIDTH_PCT, MAX_WIDTH_PCT } from "../../../state/StateXRay";
+import { xRayState$, saveXRayPanelWidthPercent, MIN_WIDTH_PCT, MAX_WIDTH_PCT, scoreToColor } from "../../../state/StateXRay";
 
 export interface SmartXRayPanelProps {
     open: boolean;
@@ -81,23 +81,8 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
         container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
     });
 
-    // 4 niveaux + bleu par défaut quand pas de score (vidéo non analysée).
-    const scoreClass = (score?: number) => {
-        if (score == null) return `${styles.scoreDot} ${styles.scoreFiller}`;
-        if (score >= 0.93) return `${styles.scoreDot} ${styles.scoreTop}`;
-        if (score >= 0.88) return `${styles.scoreDot} ${styles.scoreStrong}`;
-        if (score >= 0.55) return `${styles.scoreDot} ${styles.scoreContext}`;
-        return `${styles.scoreDot} ${styles.scoreFiller}`;
-    };
-
-    // Couleur d'importance de la section (alignée sur les dots et la seekbar).
-    const scoreColor = (score?: number) => {
-        if (score == null) return "#019BE8";
-        if (score >= 0.93) return "#f4b83f";
-        if (score >= 0.88) return "#e96b55";
-        if (score >= 0.55) return "#7fb08f";
-        return "#019BE8";
-    };
+    // Couleur d'importance : dégradé thermique continu (froid -> chaud).
+    const scoreColor = (score?: number) => scoreToColor(score);
     const activeColor = createMemo(() =>
         useSmartChapters() ? scoreColor(props.smartChapters?.[activeChapterIndex()]?.score) : "#019BE8"
     );
@@ -232,7 +217,7 @@ const SmartXRayPanel: Component<SmartXRayPanelProps> = (props) => {
                                         <Show when={i() === activeChapterIndex()}>
                                             <span class={styles.activeBar} style={{ background: `linear-gradient(to bottom, ${activeColor()} ${activeProgress() * 100}%, rgba(255,255,255,0.16) ${activeProgress() * 100}%)` }} />
                                         </Show>
-                                        <span class={scoreClass(seg.score)} />
+                                        <span class={styles.scoreDot} style={{ background: scoreToColor(seg.score) }} />
                                         <span class={styles.chapterTime}>{formatSeconds(seg.start)}</span>
                                         <div class={styles.chapterInfo}>
                                             <span class={styles.chapterTitle}>{seg.title}</span>

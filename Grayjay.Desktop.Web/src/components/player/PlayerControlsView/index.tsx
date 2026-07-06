@@ -1,5 +1,6 @@
 import { Component, For, Index, JSX, Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import styles from './index.module.css';
+import { scoreToColor } from "../../../state/StateXRay";
 import { DateTime, Duration } from "luxon";
 import play from '../../../assets/icons/icon_32_play.svg';
 import pause from '../../../assets/icons/icon32_pause.svg';
@@ -397,18 +398,9 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
         const width = ((segment.end - segment.start) / durationSeconds) * 100;
         return {
             left: `${left}%`,
-            width: `${Math.max(width, 0.18)}%`
+            width: `${Math.max(width, 0.18)}%`,
+            background: scoreToColor(segment.score)
         };
-    };
-    const smartChapterInterestClass = (segment: IVideoHighlightSegment) => {
-        const score = segment.score ?? 0;
-        if (score >= 0.93)
-            return styles.smartChapterTop;
-        if (score >= 0.88)
-            return styles.smartChapterStrong;
-        if (score >= 0.55)
-            return styles.smartChapterContext;
-        return styles.smartChapterFiller;
     };
     const smartChapterTooltipSegment$ = createMemo(() => {
         const index = progressBarSmartChapterHovering$();
@@ -697,7 +689,6 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                             <div
                                 classList={{
                                     [styles.progressBarSmartChapter]: true,
-                                    [smartChapterInterestClass(segment$())]: true,
                                     [styles.active]: props.activeSmartChapterIndex === i
                                 }}
                                 style={smartChapterStyle(segment$())}
