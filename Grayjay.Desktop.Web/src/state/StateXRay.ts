@@ -59,28 +59,32 @@ export async function saveXRayPanelWidthPercent(percent: number) {
     await SettingsBackend.persistSet('xray.panelWidthPercent', percent);
 }
 
-// Dégradé thermique continu : froid (bleu = peu intéressant) -> chaud (rouge =
-// passionnant). Remplace les 4 paliers pour donner du relief continu. La plage
-// réellement utilisée par le modèle (~0.45-0.95) est étirée sur tout le spectre
-// pour maximiser le contraste.
+// Dégradé thermique continu, ALIGNÉ sur les seuils des filtres pour que la
+// couleur dise la même chose que le filtre :
+//   < 0.55  = filler (bleu/cyan, exclu par "Smart")
+//   0.55    = vert  (seuil "Smart")
+//   0.88    = orange (seuil "Strong")
+//   >= 0.93 = rouge  (seuil "Top")
+// Les stops sont en score ABSOLU (pas normalisé) : un segment à 0.55 est vert,
+// pas bleu, donc "Smart" ne laisse plus voir de bleu là où il garde la section.
 const HEAT_STOPS: [number, [number, number, number]][] = [
-    [0.00, [0x01, 0x9B, 0xE8]], // bleu froid
-    [0.28, [0x1f, 0xb6, 0xa6]], // cyan / teal
-    [0.50, [0x7f, 0xb0, 0x8f]], // vert
-    [0.68, [0xf4, 0xd0, 0x3f]], // jaune
-    [0.84, [0xf0, 0x8a, 0x24]], // orange
-    [1.00, [0xe5, 0x3e, 0x3e]], // rouge chaud
+    [0.30, [0x01, 0x9B, 0xE8]], // bleu (filler bas)
+    [0.50, [0x1f, 0xb6, 0xa6]], // cyan (filler haut)
+    [0.55, [0x5a, 0xc0, 0x7a]], // vert  (seuil Smart)
+    [0.72, [0xf4, 0xd0, 0x3f]], // jaune
+    [0.86, [0xf0, 0x8a, 0x24]], // orange
+    [0.93, [0xe5, 0x3e, 0x3e]], // rouge (seuil Top)
 ];
 
 export function scoreToRgb(score?: number | null): [number, number, number] {
-    if (score == null) return [0x01, 0x9B, 0xE8];
-    let t = (score - 0.45) / (0.95 - 0.45);
-    t = Math.max(0, Math.min(1, t));
+    if (score == null) return HEAT_STOPS[0][1];
+    const s = Math.max(0, Math.min(1, score));
+    if (s <= HEAT_STOPS[0][0]) return HEAT_STOPS[0][1];
     for (let i = 1; i < HEAT_STOPS.length; i++) {
         const [p1, c1] = HEAT_STOPS[i - 1];
         const [p2, c2] = HEAT_STOPS[i];
-        if (t <= p2) {
-            const f = (t - p1) / (p2 - p1);
+        if (s <= p2) {
+            const f = (s - p1) / (p2 - p1);
             return [
                 Math.round(c1[0] + (c2[0] - c1[0]) * f),
                 Math.round(c1[1] + (c2[1] - c1[1]) * f),
@@ -88,7 +92,7 @@ export function scoreToRgb(score?: number | null): [number, number, number] {
             ];
         }
     }
-    return [0xe5, 0x3e, 0x3e];
+    return HEAT_STOPS[HEAT_STOPS.length - 1][1];
 }
 
 export function scoreToColor(score?: number | null): string {
