@@ -138,6 +138,7 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 
 - **Highlights home page** — a hero banner mixing your subscription videos with platform recommendations, plus content carousels. Switch between *Highlights* and the classic layout in *Settings → Home*.
 - **Smarter Continue Watching** — finished videos (watched ≥ 90 %) and dismissed items are excluded from the carousel.
+- **Mark Continue Watching items as watched** — mark as watched or remove from history straight from the Continue Watching carousel.
 
 ### Player
 
@@ -146,6 +147,10 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 - **Recommendations as a horizontal carousel** in theater mode (toggle).
 - **Per-channel playback speed** — a speed override remembered per channel.
 - **Hold to fast-forward** at a configurable speed (long press), with a speed chip overlay.
+- **Multiple minimized players** — minimize several videos at once and switch between them.
+- **Collapsible carousels** — collapse or expand the carousel sections under the player in theater mode, via a unified toggle bar.
+- **Side-by-side carousels** — Continue Watching and Queue shown as side-by-side carousels under the player.
+- **Remove from queue** — a toggle in the recommendations context menu to remove an item from the queue.
 - **Video context menu** — right-click the video surface to access the same actions as the buttons under the player, including Share, Download and Add to.
 
 ![Video context menu](imgs/video-context-menu.PNG)
@@ -193,6 +198,7 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 
 - **Page d'accueil Highlights** — une bannière héro mêlant les vidéos de vos abonnements et les recommandations des plateformes, plus des carrousels de contenu. Bascule entre *Highlights* et la disposition classique dans *Paramètres → Accueil*.
 - **Continue Watching amélioré** — les vidéos terminées (vues ≥ 90 %) et les éléments masqués sont exclus du carrousel.
+- **Marquer les éléments Continue Watching comme vus** — marquer comme vu ou retirer de l'historique directement depuis le carrousel Continue Watching.
 
 ### Lecteur
 
@@ -201,6 +207,10 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 - **Recommandations en carrousel horizontal** en mode théâtre (activable).
 - **Vitesse de lecture par chaîne** — une vitesse mémorisée pour chaque chaîne.
 - **Avance rapide maintenue** à une vitesse configurable (appui long), avec une pastille de vitesse.
+- **Plusieurs lecteurs minimisés** — minimisez plusieurs vidéos à la fois et basculez de l'une à l'autre.
+- **Carrousels repliables** — repliez ou dépliez les sections de carrousels sous le lecteur en mode théâtre, via une barre de bascule unifiée.
+- **Carrousels côte à côte** — Continue Watching et la file affichés en carrousels côte à côte sous le lecteur.
+- **Retirer de la file** — une bascule dans le menu contextuel des recommandations pour retirer un élément de la file.
 - **Menu contextuel vidéo** — clic droit sur la vidéo pour accéder aux mêmes actions que les boutons sous le lecteur, dont Partager, Télécharger et Ajouter à.
 
 ### Smart Chapters (X-Ray)
