@@ -206,10 +206,13 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         if (filter === "video")
             return false;
         const score = segment.score ?? 0;
+        // Filtres cumulatifs : chaque niveau = "ce seuil et au-dessus".
         if (filter === "top")
             return score >= 0.93;
         if (filter === "strong")
-            return score >= 0.88 && score < 0.93;
+            return score >= 0.88;
+        if (filter === "good")
+            return score >= 0.72;
         // "Smart" : sections notables (vert et au-dessus), sans les "filler" bleus.
         return score >= 0.55;
     };

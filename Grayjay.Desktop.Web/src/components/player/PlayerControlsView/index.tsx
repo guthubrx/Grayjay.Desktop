@@ -23,7 +23,7 @@ import { ChapterType, IChapter } from "../../../backend/models/contentDetails/IC
 import { IPlatformVideoDetails } from "../../../backend/models/contentDetails/IPlatformVideoDetails";
 import { IVideoHighlightSegment } from "../../../backend/models/highlights/IVideoHighlightSegment";
 const SMART_CHAPTER_TOOLTIP_WIDTH = 340;
-export type SmartChapterFilter = "video" | "smart" | "top" | "strong";
+export type SmartChapterFilter = "video" | "smart" | "good" | "top" | "strong";
 
 export interface PlayerControlsProps {
     duration: Duration;
@@ -90,6 +90,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     const smartChapterFilterOptions: { id: SmartChapterFilter; label: string; description: string; }[] = [
         { id: "top", label: "Top", description: "Top picks" },
         { id: "strong", label: "Strong", description: "Strong moments" },
+        { id: "good", label: "Good", description: "Good moments" },
         { id: "smart", label: "Smart", description: "All Smart Chapters" },
         { id: "video", label: "All", description: "Full video" },
     ];
@@ -445,6 +446,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     const filterLevelScore = (filter: SmartChapterFilter) => {
         if (filter === "top" || filter.startsWith("thesis:")) return 0.95; // >= 0.93
         if (filter === "strong") return 0.88;                              // seuil Strong
+        if (filter === "good") return 0.72;                                // seuil Good (jaune)
         if (filter === "smart") return 0.55;                               // seuil Smart
         return 0.18; // video / all : froid (filler)
     };
