@@ -1508,6 +1508,11 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         && loaderGameVisible$() === undefined
         && !isCasting()
     );
+    // Réglages du mode "barre seule" : de combien elle descend, et sa transparence.
+    const SEEKBAR_OFFSET_MAP = [0, 8, 16, 24, 32, 40];
+    const SEEKBAR_OPACITY_MAP = [1, 0.85, 0.7, 0.55, 0.4];
+    const barOnlyOffset$ = createMemo(() => SEEKBAR_OFFSET_MAP[StateGlobal.settings$()?.object?.playback?.seekbarOffset ?? 0] ?? 0);
+    const barOnlyOpacity$ = createMemo(() => SEEKBAR_OPACITY_MAP[StateGlobal.settings$()?.object?.playback?.seekbarOpacity ?? 0] ?? 1);
 
     const fadeVolume = (el: HTMLVideoElement, from: number, to: number, ms: number) => new Promise<void>((resolve) => {
         const steps = 12;
@@ -1744,6 +1749,8 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     rightButtonContainerStyle={props.rightButtonContainerStyle}
                     xRayOpen={xRayOpen$()}
                     barOnly={barOnly$()}
+                    barOnlyOffset={barOnlyOffset$()}
+                    barOnlyOpacity={barOnlyOpacity$()}
                     onToggleXRay={hasXRayContent() ? (() => setXRayOpen(v => !v)) : undefined}>
                     {props.children}
                 </PlayerControlsView>

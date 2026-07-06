@@ -76,6 +76,8 @@ export interface PlayerControlsProps {
     rightButtonContainerStyle?: JSX.CSSProperties;
     // Ne montre que la barre de progression (heatmap), boutons/dégradé masqués.
     barOnly?: boolean;
+    barOnlyOffset?: number;   // px : de combien la barre descend en mode "seule"
+    barOnlyOpacity?: number;  // 0..1 : transparence de la barre en mode "seule"
 };
 
 const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
@@ -700,7 +702,9 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     }
 
     return (
-        <div ref={containerRef} classList={{ [styles.container]: true, [styles.barOnly]: props.barOnly }}>
+        <div ref={containerRef}
+            classList={{ [styles.container]: true, [styles.barOnly]: props.barOnly }}
+            style={props.barOnly ? { "--seekbar-offset": `${props.barOnlyOffset ?? 0}px`, "--seekbar-opacity": String(props.barOnlyOpacity ?? 1) } : undefined}>
             <Show when={isSkippable$()}>
                 <div class={styles.skipButton} onClick={props.onSkip}>
                     Skip

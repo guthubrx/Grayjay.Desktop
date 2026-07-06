@@ -206,6 +206,14 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Always show the seekbar", SettingsField.TOGGLE, "Keep the progress bar (with the Smart Chapters heatmap) visible even after the controls fade out", 10)]
             public bool KeepProgressBarVisible { get; set; } = false;
 
+            [SettingsField("Seekbar drop (when alone)", SettingsField.DROPDOWN, "How much lower the seekbar sits when shown on its own", 11)]
+            [SettingsDropdownOptions("0px", "8px", "16px", "24px", "32px", "40px")]
+            public int SeekbarOffset { get; set; } = 0;
+
+            [SettingsField("Seekbar opacity (when alone)", SettingsField.DROPDOWN, "Transparency of the seekbar heatmap and handle when shown on its own", 12)]
+            [SettingsDropdownOptions("100%", "85%", "70%", "55%", "40%")]
+            public int SeekbarOpacity { get; set; } = 0;
+
             [SettingsField("Persist Queue", SettingsField.TOGGLE, "Restore your playback queue between sessions", 8)]
             public bool PersistQueue { get; set; } = true;
 
