@@ -33,7 +33,6 @@ from typing import Any
 
 
 DEFAULT_GRAYJAY_DIR = Path.home() / "Library/Application Support/Grayjay"
-DEFAULT_WHISPER_SCRIPT = Path("/Users/moi/11.Repositories/whisper.cpp/transcribe.sh")
 
 
 @dataclass
@@ -56,6 +55,70 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
+# --- Résolution robuste des binaires externes -------------------------------
+# But : ne JAMAIS dépendre du PATH hérité. Quand BlueJay (via launchd) lance ce
+# générateur, il fournit un PATH minimal (/usr/bin:/bin) où deno, ffmpeg et yt-dlp
+# sont invisibles. On cherche donc dans le PATH courant PUIS dans les emplacements
+# d'install standards, et on passe les chemins absolus explicitement à yt-dlp
+# (--js-runtimes deno:<path>, --ffmpeg-location <dir>).
+
+_EXTRA_BIN_DIRS = [
+    "/opt/homebrew/bin",             # Homebrew (Apple Silicon)
+    "/usr/local/bin",                # Homebrew (Intel) / installs manuelles
+    "/opt/homebrew/anaconda3/bin",   # Anaconda (yt-dlp avec curl_cffi)
+    str(Path.home() / ".deno" / "bin"),
+    str(Path.home() / ".local" / "bin"),
+    str(Path.home() / "bin"),
+    "/opt/local/bin",                # MacPorts
+    "/snap/bin",                     # Linux snap
+]
+
+_binary_cache: dict[str, str | None] = {}
+
+
+def ensure_tool_path() -> None:
+    """Ajoute les emplacements d'install connus (existants) à la FIN du PATH du
+    process, pour que tous les sous-processus (yt-dlp, ffmpeg, whisper) les
+    trouvent quel que soit le PATH hérité. On appending pour ne pas déclasser un
+    yt-dlp déjà prioritaire dans le PATH (ex: celui d'Anaconda avec curl_cffi)."""
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    existing = set(p for p in parts if p)
+    extra = [d for d in _EXTRA_BIN_DIRS if d not in existing and Path(d).is_dir()]
+    if extra:
+        os.environ["PATH"] = os.pathsep.join([p for p in parts if p] + extra)
+
+
+def resolve_binary(name: str) -> str | None:
+    """Chemin absolu d'un exécutable : PATH courant d'abord (shutil.which), puis
+    les emplacements d'install connus. Mémoïsé. None si introuvable."""
+    if name in _binary_cache:
+        return _binary_cache[name]
+    found = shutil.which(name)
+    if not found:
+        for directory in _EXTRA_BIN_DIRS:
+            candidate = Path(directory) / name
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                found = str(candidate)
+                break
+    _binary_cache[name] = found
+    return found
+
+
+def ytdlp_runtime_args() -> list[str]:
+    """Chemins absolus de deno et ffmpeg passés explicitement à yt-dlp. YouTube
+    exige désormais un runtime JS (deno) pour l'extraction ; ffmpeg/ffprobe
+    servent au post-traitement et au fallback Whisper. Ainsi yt-dlp fonctionne
+    même si ces binaires ne sont pas dans le PATH."""
+    extra: list[str] = []
+    deno = resolve_binary("deno")
+    if deno:
+        extra += ["--js-runtimes", f"deno:{deno}"]
+    ffmpeg = resolve_binary("ffmpeg")
+    if ffmpeg:
+        extra += ["--ffmpeg-location", str(Path(ffmpeg).parent)]
+    return extra
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate Smart Chapters JSON files in Grayjay's highlights store."
@@ -67,6 +130,7 @@ def parse_args() -> argparse.Namespace:
     targets.add_argument("--playlist", action="append", default=[], help="Grayjay playlist name, Id, or file id. Can be repeated.")
     targets.add_argument("--grayjay-video", action="append", default=[], help="Search local Grayjay videos by URL, YouTube id, or title substring.")
     targets.add_argument("--list-playlists", action="store_true", help="List local Grayjay playlists and exit.")
+    targets.add_argument("--check", action="store_true", help="Check that all external dependencies (yt-dlp, deno, ffmpeg, model backend) are available, then exit.")
     targets.add_argument("--interactive", action="store_true", help="Interactive wizard that prints a non-interactive command.")
 
     generation = parser.add_argument_group("generation")
@@ -92,19 +156,24 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--max-theses", type=int, default=2, help="Maximum number of main theses extracted in the analysis pass (1-3).")
     generation.add_argument("--min-segment-seconds", type=int, default=45, help="Preferred minimum segment duration.")
     generation.add_argument("--max-segment-seconds", type=int, default=360, help="Preferred maximum segment duration.")
-    generation.add_argument("--max-transcript-chars", type=int, default=52000, help="Transcript character budget sent to LLM.")
+    generation.add_argument("--max-transcript-chars", type=int, default=120000, help="Transcript character budget sent to LLM. Above this, cues are uniformly down-sampled across the whole duration (never dropping the middle).")
     generation.add_argument("--language", default="fr", help="Preferred transcript/Whisper language.")
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
 
     fallback = parser.add_argument_group("transcription")
+    fallback.add_argument("--subtitle-file", help="Use this VTT/subtitle file directly (skips yt-dlp/Whisper). Used by BlueJay to pass Grayjay's own subtitles.")
+    fallback.add_argument("--min-coverage", type=float, default=0.85, help="Minimum transcript coverage (last cue / video duration) below which the transcript is treated as incomplete and not cached.")
+    fallback.add_argument("--cache-partial", action="store_true", help="Cache transcripts even when coverage is below --min-coverage.")
     fallback.add_argument("--transcript-cache-dir", help="Directory to cache transcripts. Defaults to <grayjay-dir>/transcripts_cache.")
     fallback.add_argument("--no-transcript-cache", action="store_true", help="Do not read or write the transcript cache.")
     fallback.add_argument("--refresh-transcript", action="store_true", help="Ignore any cached transcript and fetch it again.")
     fallback.add_argument("--skip-youtube-transcript", action="store_true", help="Skip yt-dlp subtitles and use Whisper fallback.")
     fallback.add_argument("--no-whisper", action="store_true", help="Do not use Whisper fallback.")
-    fallback.add_argument("--whisper-script", default=str(DEFAULT_WHISPER_SCRIPT), help="Path to whisper.cpp transcribe.sh.")
-    fallback.add_argument("--whisper-model", default="base", help="Whisper model passed to transcribe.sh.")
+    fallback.add_argument("--whisper-script", default=None, help="Optional custom transcription script (overrides the built-in whisper.cpp path when present).")
+    fallback.add_argument("--whisper-cli", default=None, help="Path to the whisper.cpp 'whisper-cli' binary. Auto-detected if omitted.")
+    fallback.add_argument("--whisper-models-dir", default=None, help="Directory containing ggml-<model>.bin files. Auto-detected if omitted.")
+    fallback.add_argument("--whisper-model", default="base", help="Whisper model name (e.g. base, small, large-v3).")
     fallback.add_argument("--cookies-from-browser", help="Pass browser cookies to yt-dlp (e.g. firefox) to avoid HTTP 429 on subtitles.")
 
     output = parser.add_argument_group("output")
@@ -115,8 +184,8 @@ def parse_args() -> argparse.Namespace:
     output.add_argument("--keep-workdir", action="store_true", help="Keep temporary transcript files.")
 
     args = parser.parse_args()
-    if not args.list_playlists and not args.interactive and not any([args.url, args.media_file, args.urls_file, args.playlist, args.grayjay_video]):
-        parser.error("Provide --url, --media-file, --urls-file, --playlist, --grayjay-video, or --list-playlists.")
+    if not args.list_playlists and not args.interactive and not args.check and not any([args.url, args.media_file, args.urls_file, args.playlist, args.grayjay_video]):
+        parser.error("Provide --url, --media-file, --urls-file, --playlist, --grayjay-video, --list-playlists, or --check.")
     return args
 
 
@@ -495,8 +564,12 @@ def fetch_video_metadata(task: VideoTask, args: argparse.Namespace) -> VideoTask
         return task
     if not extract_youtube_id(task.url):
         return task
+    ytdlp = resolve_binary("yt-dlp")
+    if not ytdlp:
+        log("  metadata warning: yt-dlp introuvable (voir --check)")
+        return task
     try:
-        proc = run_command(["yt-dlp", "--dump-json", "--skip-download", *ytdlp_cookie_args(args), task.url], check=True)
+        proc = run_command([ytdlp, "--dump-json", "--skip-download", *ytdlp_runtime_args(), *ytdlp_cookie_args(args), task.url], check=True)
         data = json.loads(proc.stdout)
         task.title = task.title or data.get("title")
         task.duration = task.duration or to_float(data.get("duration"))
@@ -564,7 +637,9 @@ def analysis_cache_path(url: str, args: argparse.Namespace) -> Path:
 
 
 def load_cached_analysis(task: VideoTask, args: argparse.Namespace) -> dict[str, Any] | None:
-    if args.no_transcript_cache or args.refresh_analysis:
+    # Un transcript rafraîchi rend l'analyse (thèses + résumé) obsolète : on la
+    # recalcule pour rester cohérent avec le nouveau transcript.
+    if args.no_transcript_cache or args.refresh_analysis or args.refresh_transcript:
         return None
     data = load_json(analysis_cache_path(task.url, args))
     if not isinstance(data, dict):
@@ -589,7 +664,37 @@ def save_cached_analysis(task: VideoTask, analysis: dict[str, Any], args: argpar
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _accept_transcript(task: VideoTask, cues: list[TranscriptCue], source: str, args: argparse.Namespace) -> list[TranscriptCue]:
+    """Valide la couverture (dernière cue vs durée vidéo) avant mise en cache.
+    Un transcript qui couvre nettement moins que la durée (Whisper tronqué, sous-
+    titres partiels) N'EST PAS mis en cache : sinon il empoisonne durablement les
+    régénérations suivantes et produit un dernier chapitre géant et vide."""
+    duration = task.duration
+    end = cues[-1].end if cues else 0.0
+    if duration and duration > 0:
+        coverage = end / duration
+        if coverage < args.min_coverage:
+            log(f"  ⚠ transcript incomplet : couvre {coverage * 100:.0f}% "
+                f"({format_time(end)} / {format_time(duration)}) via {source}")
+            if not args.cache_partial:
+                log("    → non mis en cache (relance possible ; --cache-partial pour forcer)")
+                return cues
+    save_cached_transcript(task, cues, source, args)
+    return cues
+
+
 def get_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> list[TranscriptCue]:
+    # Transcript fourni de l'extérieur (ex: BlueJay passe le VTT du moteur Grayjay).
+    # Prioritaire : évite yt-dlp/deno/ffmpeg quand l'app a déjà les sous-titres.
+    if args.subtitle_file:
+        sub = Path(args.subtitle_file).expanduser()
+        if sub.exists():
+            cues = parse_vtt(sub.read_text(encoding="utf-8", errors="ignore"))
+            if cues:
+                log(f"  transcript: provided subtitle file ({len(cues)} cues)")
+                return _accept_transcript(task, cues, "provided-subtitle", args)
+        log(f"  provided subtitle file unusable, falling back: {sub}")
+
     cached = load_cached_transcript(task, args)
     if cached:
         log(f"  transcript: cached ({len(cached)} cues)")
@@ -599,8 +704,7 @@ def get_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> 
         cues = get_youtube_subtitle_transcript(task.url, args, workdir)
         if cues:
             log(f"  transcript: YouTube subtitles ({len(cues)} cues)")
-            save_cached_transcript(task, cues, "youtube-subtitles", args)
-            return cues
+            return _accept_transcript(task, cues, "youtube-subtitles", args)
 
     if args.no_whisper:
         raise RuntimeError("No YouTube transcript found and --no-whisper is set.")
@@ -608,17 +712,17 @@ def get_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> 
     cues = get_whisper_transcript(task, args, workdir)
     if cues:
         log(f"  transcript: Whisper fallback ({len(cues)} cues)")
-        save_cached_transcript(task, cues, f"whisper-{args.whisper_model}", args)
-        return cues
+        return _accept_transcript(task, cues, f"whisper-{args.whisper_model}", args)
     raise RuntimeError("No transcript could be produced.")
 
 
 def get_youtube_subtitle_transcript(url: str, args: argparse.Namespace, workdir: Path) -> list[TranscriptCue]:
-    if not shutil.which("yt-dlp"):
+    ytdlp = resolve_binary("yt-dlp")
+    if not ytdlp:
         return []
     before = set(workdir.glob("*"))
     cmd = [
-        "yt-dlp",
+        ytdlp,
         "--skip-download",
         "--write-subs",
         "--write-auto-subs",
@@ -631,6 +735,7 @@ def get_youtube_subtitle_transcript(url: str, args: argparse.Namespace, workdir:
         # Attenuer le rate-limit YouTube (HTTP 429) sur les sous-titres.
         "--retries", "3",
         "--sleep-subtitles", "1",
+        *ytdlp_runtime_args(),
         *ytdlp_cookie_args(args),
         url,
     ]
@@ -723,25 +828,104 @@ def merge_short_cues(cues: list[TranscriptCue], target_seconds: float = 18.0) ->
     return merged
 
 
-def get_whisper_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> list[TranscriptCue]:
-    script = Path(args.whisper_script).expanduser()
-    if not script.exists():
-        raise RuntimeError(f"Whisper script not found: {script}")
-    output = workdir / "whisper.txt"
-    input_value = task.local_file or task.url
-    cmd = [
-        str(script),
-        "--input",
-        input_value,
-        "--output",
-        str(output),
-        "--model",
-        args.whisper_model,
+# --- Whisper autonome (whisper.cpp) -----------------------------------------
+# Le fallback ne dépend plus d'un script externe : la glue (download audio →
+# WAV 16 kHz → whisper-cli) est internalisée ici. Seul le moteur whisper.cpp
+# (binaire whisper-cli + modèle ggml) reste une dépendance système DÉTECTÉE,
+# jamais supposée. --whisper-script permet de repointer sur un script maison.
+
+_WHISPER_CLI_CANDIDATES = [
+    Path.home() / "11.Repositories" / "whisper.cpp" / "build" / "bin" / "whisper-cli",
+    Path.home() / "whisper.cpp" / "build" / "bin" / "whisper-cli",
+]
+
+
+def resolve_whisper_cli(args: argparse.Namespace) -> str | None:
+    if args.whisper_cli:
+        path = Path(args.whisper_cli).expanduser()
+        return str(path) if path.exists() else None
+    # whisper.cpp installe 'whisper-cli' ; le paquet Homebrew 'whisper-cpp' aussi.
+    found = resolve_binary("whisper-cli") or resolve_binary("whisper-cpp")
+    if found:
+        return found
+    for candidate in _WHISPER_CLI_CANDIDATES:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def resolve_whisper_model(args: argparse.Namespace, cli_path: str | None) -> str | None:
+    name = f"ggml-{args.whisper_model}.bin"
+    dirs: list[Path] = []
+    if args.whisper_models_dir:
+        dirs.append(Path(args.whisper_models_dir).expanduser())
+    if cli_path:
+        # build/bin/whisper-cli -> <repo>/models
+        dirs.append(Path(cli_path).resolve().parent.parent.parent / "models")
+    dirs += [
+        Path.home() / "11.Repositories" / "whisper.cpp" / "models",
+        Path.home() / "whisper.cpp" / "models",
     ]
-    proc = run_command(cmd, check=False)
+    for directory in dirs:
+        candidate = directory / name
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path) -> Path:
+    """Produit un WAV mono 16 kHz (format attendu par whisper.cpp)."""
+    ffmpeg = resolve_binary("ffmpeg")
+    if task.local_file:
+        if not ffmpeg:
+            raise RuntimeError("ffmpeg introuvable pour convertir l'audio (voir --check).")
+        wav = workdir / "audio.wav"
+        run_command([ffmpeg, "-i", str(Path(task.local_file).expanduser()),
+                     "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                     str(wav), "-y", "-loglevel", "warning"], check=True)
+        return wav
+    ytdlp = resolve_binary("yt-dlp")
+    if not ytdlp:
+        raise RuntimeError("yt-dlp introuvable pour télécharger l'audio (voir --check).")
+    run_command([ytdlp, "-x", "--audio-format", "wav", "--audio-quality", "0",
+                 "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000",
+                 "-o", str(workdir / "audio.%(ext)s"),
+                 *ytdlp_runtime_args(), *ytdlp_cookie_args(args), task.url], check=True)
+    produced = list(workdir.glob("audio.wav")) or list(workdir.glob("audio.*"))
+    if not produced:
+        raise RuntimeError("Le téléchargement audio n'a produit aucun fichier.")
+    return produced[0]
+
+
+def get_whisper_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> list[TranscriptCue]:
+    # Override optionnel : script maison si explicitement fourni ET présent.
+    if args.whisper_script:
+        script = Path(args.whisper_script).expanduser()
+        if script.exists():
+            output = workdir / "whisper.txt"
+            proc = run_command([str(script), "--input", task.local_file or task.url,
+                                "--output", str(output), "--model", args.whisper_model], check=False)
+            if proc.returncode != 0:
+                raise RuntimeError(f"Whisper script failed: {proc.stderr.strip() or proc.stdout.strip()}")
+            return parse_whisper_text(output.read_text(encoding="utf-8", errors="ignore"), task.duration)
+        log(f"  whisper script introuvable, bascule sur whisper.cpp interne: {script}")
+
+    # Chemin autonome : whisper.cpp détecté + glue interne.
+    cli = resolve_whisper_cli(args)
+    if not cli:
+        raise RuntimeError(
+            "Whisper indisponible : whisper-cli introuvable. Installe whisper.cpp "
+            "(ou 'brew install whisper-cpp'), ou passe --whisper-cli / --whisper-script. Voir --check.")
+    model = resolve_whisper_model(args, cli)
+    if not model:
+        raise RuntimeError(
+            f"Modèle Whisper 'ggml-{args.whisper_model}.bin' introuvable. "
+            "Passe --whisper-models-dir ou télécharge le modèle. Voir --check.")
+    wav = _download_audio_wav(task, args, workdir)
+    proc = run_command([cli, "-m", model, "-f", str(wav), "-l", args.language], check=False)
     if proc.returncode != 0:
-        raise RuntimeError(f"Whisper failed: {proc.stderr.strip() or proc.stdout.strip()}")
-    return parse_whisper_text(output.read_text(encoding="utf-8", errors="ignore"), task.duration)
+        raise RuntimeError(f"whisper-cli failed: {proc.stderr.strip() or proc.stdout.strip()}")
+    return parse_whisper_text(proc.stdout, task.duration)
 
 
 def parse_whisper_text(text: str, duration: float | None) -> list[TranscriptCue]:
@@ -776,9 +960,19 @@ def cues_to_prompt_transcript(cues: list[TranscriptCue], max_chars: int) -> str:
     text = "\n".join(lines)
     if len(text) <= max_chars:
         return text
-    head = text[: int(max_chars * 0.7)]
-    tail = text[-int(max_chars * 0.3):]
-    return head + "\n\n[... transcript truncated ...]\n\n" + tail
+    # Sur une vidéo longue, on NE jette PAS le milieu (sinon le LLM ne chapitre
+    # que le début et la fin, et le cœur de la vidéo disparaît). On sous-échantillonne
+    # uniformément : on garde des cues réparties sur TOUTE la durée, dans le budget.
+    avg = max(1, len(text) // max(1, len(lines)))
+    keep = max(1, max_chars // avg)
+    if keep >= len(lines):
+        return text[:max_chars]
+    step = len(lines) / keep
+    indices = sorted({min(len(lines) - 1, int(i * step)) for i in range(keep)})
+    sampled = "\n".join(lines[i] for i in indices)
+    note = (f"[... transcript sous-échantillonné : {len(indices)}/{len(lines)} "
+            f"segments répartis sur toute la durée pour tenir dans le budget ...]")
+    return note + "\n" + sampled
 
 
 def format_time(seconds: float) -> str:
@@ -888,6 +1082,7 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     - COVER THE ENTIRE VIDEO: the sections must be CONTIGUOUS and span the full duration, from 0 to the end. Each section's start must equal the previous section's end. No gaps, no overlaps. Do not skip "boring" parts: include them as their own low-score sections.
     - Keep around {args.max_segments} sections (merge flat stretches into longer sections rather than dropping them).
     - Prefer sections between {args.min_segment_seconds} and {args.max_segment_seconds} seconds, but extend low-interest stretches into longer sections so the whole video stays covered.
+    - DISTRIBUTE sections EVENLY across the ENTIRE timeline: the density of sections must stay similar from the first minute to the last. The FINAL section MUST NOT be a catch-all. If the last part of the transcript (e.g. the final 10-20 minutes) still contains speech, split it into several sections exactly like the earlier parts. A single section longer than {args.max_segment_seconds}s is allowed ONLY when the transcript for that whole span is genuinely empty of speech.
     - score reflects importance: >= 0.93 directly proves/illustrates a thesis ; 0.88-0.92 strong supporting point ; 0.55-0.87 useful context ; 0.0-0.54 filler / intro / transition / digression (still included, just low).
     - thesis_id: which thesis ({thesis_ids}) this section primarily serves. Use null for intro/outro/transition/filler sections.
     - Titles and summaries must be in the video's main language.
@@ -1112,9 +1307,70 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
         return path
 
 
+def run_doctor(args: argparse.Namespace) -> int:
+    """Vérifie que toutes les dépendances externes sont trouvables, et où.
+    Transforme un « rien ne se passe » en diagnostic actionnable."""
+    ensure_tool_path()
+    log("Smart Chapters — vérification de l'environnement\n")
+    ok = True
+    binaries = [
+        ("yt-dlp", "extraction vidéo / sous-titres", "conda install -c conda-forge yt-dlp  (ou brew install yt-dlp)"),
+        ("deno", "runtime JS requis par YouTube", "brew install deno"),
+        ("ffmpeg", "post-traitement / audio Whisper", "brew install ffmpeg"),
+        ("ffprobe", "sonde média (paquet ffmpeg)", "brew install ffmpeg"),
+    ]
+    for name, why, hint in binaries:
+        path = resolve_binary(name)
+        if path:
+            log(f"  ✓ {name:8s} {path}   ({why})")
+        else:
+            ok = False
+            log(f"  ✗ {name:8s} INTROUVABLE   ({why})\n      → {hint}")
+
+    if args.whisper_script and Path(args.whisper_script).expanduser().exists():
+        log(f"  ✓ {'whisper':8s} script maison : {Path(args.whisper_script).expanduser()}")
+    else:
+        cli = resolve_whisper_cli(args)
+        if cli:
+            model = resolve_whisper_model(args, cli)
+            log(f"  ✓ {'whisper':8s} {cli}")
+            if model:
+                log(f"    {'':8s} modèle : {model}")
+            else:
+                log(f"    {'':8s} · modèle 'ggml-{args.whisper_model}.bin' introuvable (--whisper-models-dir)")
+        else:
+            log(f"  · {'whisper':8s} whisper.cpp non détecté (fallback indisponible ; sous-titres YouTube requis)")
+
+    if args.provider == "openai":
+        if args.api_key:
+            log(f"  ✓ {'api-key':8s} présente   (provider openai / {args.model})")
+        else:
+            ok = False
+            log(f"  ✗ {'api-key':8s} ABSENTE   → --api-key ou $DEEPSEEK_API_KEY / $OPENAI_API_KEY")
+    else:
+        try:
+            urllib.request.urlopen(args.ollama_url.rstrip("/") + "/api/tags", timeout=3)
+            log(f"  ✓ {'ollama':8s} {args.ollama_url}   ({args.model})")
+        except Exception:
+            ok = False
+            log(f"  ✗ {'ollama':8s} {args.ollama_url} injoignable   → démarre 'ollama serve'")
+
+    log("")
+    log("Environnement OK — la génération peut tourner." if ok
+        else "Des dépendances manquent (voir ci-dessus). La génération échouera tant qu'elles ne sont pas résolues.")
+    return 0 if ok else 1
+
+
 def main() -> int:
     args = parse_args()
     grayjay_dir = Path(args.grayjay_dir).expanduser()
+
+    # Rend le PATH auto-suffisant : les sous-processus (yt-dlp, ffmpeg, whisper)
+    # trouvent leurs binaires même lancés depuis BlueJay avec un PATH minimal.
+    ensure_tool_path()
+
+    if args.check:
+        return run_doctor(args)
 
     if args.list_playlists:
         print_playlists(grayjay_dir)
