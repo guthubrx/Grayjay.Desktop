@@ -45,7 +45,7 @@ import iconPinnedFill from '../../../assets/icons/pinned-fill.svg';
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
 import StateWebsocket from "../../../state/StateWebsocket";
-import { indexVideo, hasGeneratorCommand, setGeneratorCommand } from "../../../state/StateHighlightsIndexer";
+import { indexVideo, hasGeneratorCommand, setGeneratorCommand, jobFor } from "../../../state/StateHighlightsIndexer";
 import Loader from "../../basics/loaders/Loader";
 import Anchor, { AnchorStyle } from "../../../utility/Anchor";
 import DragArea from "../../basics/DragArea";
@@ -1515,6 +1515,24 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         UIOverlay.overlayAddToPlaylist(loadedVideo, ()=>{});
     }
 
+    // L'enqueue réussit tout de suite (job "queued") ; la génération réelle
+    // tourne dans un worker et peut échouer plus tard. On surveille le job de la
+    // vidéo courante et on remonte l'issue asynchrone à l'utilisateur.
+    let lastJobKey: string | undefined;
+    createEffect(() => {
+        const url = currentVideo$()?.url;
+        if (!url) return;
+        const job = jobFor(url);
+        if (!job) return;
+        const key = url + ":" + job.status;
+        if (key === lastJobKey) return;
+        lastJobKey = key;
+        if (job.status === "error")
+            UIOverlay.toast("Smart chapters failed: " + (job.error ?? "unknown error"));
+        else if (job.status === "done")
+            UIOverlay.toast("Smart chapters ready");
+    });
+
     function indexCurrentVideo() {
         const url = currentVideo$()?.url;
         if (!url) return;
@@ -1526,8 +1544,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         if (!hasGeneratorCommand()) {
             UIOverlay.overlayTextPrompt(
                 "Configure smart chapters generator",
-                "External command that generates the smart highlights for a video. Use {url} where the video URL should go (otherwise the URL is appended at the end). Runs on your machine with its own dependencies.",
-                "e.g. python3 /path/to/generate_smart_chapters.py --url {url} --overwrite",
+                "External command that generates the smart highlights for a video. Use {url} for the video URL. Use {subtitles} to receive Grayjay's own subtitles as '--subtitle-file <vtt>' (avoids re-scraping). Runs on your machine with its own dependencies.",
+                "e.g. python3 /path/to/generate_smart_chapters.py --url {url} {subtitles} --overwrite",
                 "Save and run",
                 async (cmd) => {
                     await setGeneratorCommand(cmd);

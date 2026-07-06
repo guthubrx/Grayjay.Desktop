@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Grayjay.Desktop.POC;
+using Grayjay.Desktop.POC.Port.States;
+using Grayjay.Engine.Models.Detail;
 
 namespace Grayjay.ClientServer.States;
 
@@ -104,10 +106,60 @@ public static class StateHighlightsIndexer
         }
     }
 
+    // Récupère les sous-titres de la vidéo via le moteur Grayjay (plugin) et les
+    // écrit dans un VTT temporaire. Évite de re-scraper YouTube côté générateur
+    // quand Grayjay a déjà les sous-titres. Retourne null si indisponible : le
+    // générateur retombe alors sur son propre chemin (yt-dlp / Whisper).
+    private static string? MaterializeSubtitle(string url)
+    {
+        try
+        {
+            if (StatePlatform.GetContentDetails(url) is not PlatformVideoDetails details)
+                return null;
+            var subs = details.Subtitles;
+            if (subs == null || subs.Length == 0)
+                return null;
+
+            // Préférence : VTT, langue fr puis en, sinon n'importe quel VTT.
+            bool IsVtt(string? f) => f != null && f.Contains("vtt", StringComparison.OrdinalIgnoreCase);
+            bool NameHas(string? n, string lang) => n != null && n.Contains(lang, StringComparison.OrdinalIgnoreCase);
+            var chosen = subs.FirstOrDefault(s => IsVtt(s.Format) && NameHas(s.Name, "fr"))
+                ?? subs.FirstOrDefault(s => IsVtt(s.Format) && NameHas(s.Name, "en"))
+                ?? subs.FirstOrDefault(s => IsVtt(s.Format))
+                ?? subs.FirstOrDefault(s => IsVtt(s.Url));
+            if (chosen == null)
+                return null;
+
+            var content = chosen.ToRaw().GetSubtitles();
+            if (string.IsNullOrWhiteSpace(content))
+                return null;
+
+            var path = Path.Combine(Path.GetTempPath(), $"grayjay_smartchapters_{Guid.NewGuid():N}.vtt");
+            File.WriteAllText(path, content);
+            Logger.i(nameof(StateHighlightsIndexer), $"Provided subtitles for {url}: {chosen.Name} ({content.Length} chars)");
+            return path;
+        }
+        catch (Exception ex)
+        {
+            Logger.w(nameof(StateHighlightsIndexer), $"Could not fetch Grayjay subtitles for {url}: {ex.Message}");
+            return null;
+        }
+    }
+
     private static async Task RunCommand(string command, string url)
     {
         // {url} est substitué si présent, sinon l'URL est ajoutée en dernier argument.
         var commandLine = command.Contains("{url}") ? command.Replace("{url}", url) : $"{command} {url}";
+
+        // {subtitles} : remplacé par "--subtitle-file <vtt>" quand Grayjay a les
+        // sous-titres, par une chaîne vide sinon (le générateur se débrouille).
+        string? subtitleFile = null;
+        if (command.Contains("{subtitles}"))
+        {
+            subtitleFile = MaterializeSubtitle(url);
+            commandLine = commandLine.Replace("{subtitles}",
+                subtitleFile != null ? $"--subtitle-file \"{subtitleFile}\"" : "");
+        }
 
         var psi = new ProcessStartInfo
         {
@@ -129,18 +181,28 @@ public static class StateHighlightsIndexer
             psi.ArgumentList.Add(commandLine);
         }
 
-        using var process = new Process { StartInfo = psi };
-        process.Start();
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
-
-        if (process.ExitCode != 0)
+        try
         {
-            var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-            throw new Exception($"Generator exited with code {process.ExitCode}: {detail.Trim()}");
+            using var process = new Process { StartInfo = psi };
+            process.Start();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+
+            if (process.ExitCode != 0)
+            {
+                var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                throw new Exception($"Generator exited with code {process.ExitCode}: {detail.Trim()}");
+            }
+        }
+        finally
+        {
+            if (subtitleFile != null)
+            {
+                try { File.Delete(subtitleFile); } catch { /* best-effort cleanup */ }
+            }
         }
     }
 }
