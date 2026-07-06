@@ -158,6 +158,7 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--max-segment-seconds", type=int, default=360, help="Preferred maximum segment duration.")
     generation.add_argument("--max-transcript-chars", type=int, default=120000, help="Transcript character budget sent to LLM. Above this, cues are uniformly down-sampled across the whole duration (never dropping the middle).")
     generation.add_argument("--language", default="fr", help="Preferred transcript/Whisper language.")
+    generation.add_argument("--output-language", default=None, help="Force the language of generated titles/summaries (e.g. French, English). Defaults to the video's own language.")
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
 
@@ -1004,8 +1005,8 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
     - Extract up to {args.max_theses} main theses OR topics (fewer only if the video is genuinely narrow).
     - For interviews, podcasts and multi-topic videos, cover the DIFFERENT topics discussed across the WHOLE video (technical points AND business, strategy, personal, advice, etc.) — not only the topic of the opening minutes.
     - Each item is a complete sentence stating an argument, or clearly naming a distinct topic covered.
-    - globalSummary is in the video's main language.
-    - theses are in the video's main language.
+    - globalSummary is in {args.output_language or "the video's main language"}.
+    - theses are in {args.output_language or "the video's main language"}.
     - Be precise: prefer "X causes Y because Z" or "the guest explains how they run board meetings" over vague labels.
 
     Video title: {task.title or "(unknown)"}
@@ -1091,7 +1092,7 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
       * 0.0-0.54: TRUE filler ONLY — intro/outro pleasantries, sponsor/ads, pure transitions, repetition, off-topic small talk, dead air. NEVER put substantive content here just because it is off-thesis.
     - Judge each section on its OWN merit. A long stretch of the video being off the main thesis (e.g. an interview moving from tech to strategy, leadership or personal advice) is usually still valuable — score it on its content, not its distance from the thesis.
     - thesis_id: OPTIONAL link to which thesis/topic ({thesis_ids}) the section relates to, or null. A null thesis_id MUST NOT lower the score.
-    - Titles and summaries must be in the video's main language.
+    - Titles and summaries must be in {args.output_language or "the video's main language"}.
     - NEVER invent content. Base every title and summary strictly on what the transcript ACTUALLY says for that time span. Do NOT claim "music", "silence", "no dialogue", "intro sequence" or similar unless the transcript truly has no words there. If the transcript has text in a span, describe THAT text; if a span has no transcript text, merge it into an adjacent section rather than fabricating a description.
 
     Video title: {task.title or "(unknown)"}

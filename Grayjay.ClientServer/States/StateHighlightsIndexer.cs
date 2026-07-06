@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using Grayjay.ClientServer.Settings;
 using Grayjay.Desktop.POC;
 using Grayjay.Desktop.POC.Port.States;
 using Grayjay.Engine.Models.Detail;
@@ -159,6 +160,15 @@ public static class StateHighlightsIndexer
             subtitleFile = MaterializeSubtitle(url);
             commandLine = commandLine.Replace("{subtitles}",
                 subtitleFile != null ? $"--subtitle-file \"{subtitleFile}\"" : "");
+        }
+
+        // {language} : langue de sortie choisie dans les réglages (Smart Analysis).
+        // Vide en mode "Auto" -> le générateur garde la langue de la vidéo.
+        if (command.Contains("{language}"))
+        {
+            var lang = GrayjaySettings.Instance.XrayPanel.GenerationLanguageName();
+            commandLine = commandLine.Replace("{language}",
+                lang != null ? $"--output-language \"{lang}\"" : "");
         }
 
         var psi = new ProcessStartInfo

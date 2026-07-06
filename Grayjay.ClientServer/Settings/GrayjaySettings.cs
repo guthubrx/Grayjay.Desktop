@@ -461,6 +461,24 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Chapter summary length", SettingsField.DROPDOWN, "Max characters shown per chapter summary", 4)]
             [SettingsDropdownOptions("All", "80", "150", "250", "400")]
             public int ChapterSummaryChars { get; set; } = 2;
+
+            [SettingsField("Generation language", SettingsField.DROPDOWN, "Language of generated chapter titles and summaries. Auto uses the video's language.", 5)]
+            [SettingsDropdownOptions("Auto (video language)", "Français", "English", "Español", "Deutsch", "Italiano", "Português", "Nederlands")]
+            public int GenerationLanguage { get; set; } = 0;
+
+            // Nom (en anglais, compris du LLM) de la langue de sortie choisie, ou
+            // null pour "Auto" (le générateur garde alors la langue de la vidéo).
+            public string? GenerationLanguageName() => GenerationLanguage switch
+            {
+                1 => "French",
+                2 => "English",
+                3 => "Spanish",
+                4 => "German",
+                5 => "Italian",
+                6 => "Portuguese",
+                7 => "Dutch",
+                _ => null,
+            };
         }
 
     }
