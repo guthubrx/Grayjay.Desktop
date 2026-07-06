@@ -150,6 +150,16 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 
 ![Video context menu](imgs/video-context-menu.PNG)
 
+### Smart Chapters (X-Ray)
+
+- **AI-generated smart chapters** — an external command you configure (an LLM running on your own machine) analyses a video's transcript and produces titled, summarized chapters, each scored by how interesting it is. Trigger it from the video context menu.
+- **Interest heatmap on the seekbar** — every chapter is colored on a continuous cold→hot scale (green = lighter, red = highly interesting), so the video's high points stand out at a glance.
+- **X-Ray side panel** — the video's theses/topics, a global summary and per-chapter summaries, with adjustable font size, opacity and width.
+- **Filter levels** — a vertical "thermometer" menu to jump through only the *Top*, *Strong*, *Good*, *Smart* or *All* moments.
+- **Output language** — choose the language of the generated titles/summaries in *Settings → Smart Analysis*.
+
+![Smart Chapters](imgs/smart-chapters-xray.png)
+
 ### Video & navigation
 
 - **In-app description links** — links in a video description (YouTube and other plugin-supported platforms) open the matching content *inside* the app, at the right timestamp when the URL carries one, instead of opening an external browser. Unsupported links still open in the browser.
@@ -192,6 +202,16 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 - **Vitesse de lecture par chaîne** — une vitesse mémorisée pour chaque chaîne.
 - **Avance rapide maintenue** à une vitesse configurable (appui long), avec une pastille de vitesse.
 - **Menu contextuel vidéo** — clic droit sur la vidéo pour accéder aux mêmes actions que les boutons sous le lecteur, dont Partager, Télécharger et Ajouter à.
+
+### Smart Chapters (X-Ray)
+
+- **Chapitres intelligents générés par IA** — une commande externe que vous configurez (un LLM tournant sur votre propre machine) analyse la transcription d'une vidéo et produit des chapitres titrés et résumés, chacun noté selon son intérêt. Déclenchez-la depuis le menu contextuel de la vidéo.
+- **Carte de chaleur d'intérêt sur la barre** — chaque chapitre est coloré sur une échelle continue froid→chaud (vert = léger, rouge = très intéressant), pour repérer les temps forts d'un coup d'œil.
+- **Panneau latéral X-Ray** — les thèses/sujets de la vidéo, un résumé global et des résumés par chapitre, avec taille de police, opacité et largeur ajustables.
+- **Niveaux de filtre** — un menu « thermomètre » vertical pour ne parcourir que les moments *Top*, *Strong*, *Good*, *Smart* ou *All*.
+- **Langue de sortie** — choisissez la langue des titres/résumés générés dans *Paramètres → Smart Analysis*.
+
+![Smart Chapters](imgs/smart-chapters-xray.png)
 
 ### Vidéo & navigation
 
