@@ -7,6 +7,17 @@
     background-position: bottom;
 }
 
+/* Mode "barre seule" : garde la seekbar (+ heatmap) visible, masque le dégradé
+   de fond et les boutons pour laisser voir la vidéo (comme YouTube). */
+.container.barOnly {
+    background: none;
+}
+.container.barOnly .leftButtonContainer,
+.container.barOnly .buttonContainer {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .skipButton {
     position: absolute;
     top: 20px;

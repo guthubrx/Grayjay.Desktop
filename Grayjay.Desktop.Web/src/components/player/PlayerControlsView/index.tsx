@@ -74,6 +74,8 @@ export interface PlayerControlsProps {
     onToggleXRay?: () => void;
     leftButtonContainerStyle?: JSX.CSSProperties;
     rightButtonContainerStyle?: JSX.CSSProperties;
+    // Ne montre que la barre de progression (heatmap), boutons/dégradé masqués.
+    barOnly?: boolean;
 };
 
 const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
@@ -698,7 +700,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     }
 
     return (
-        <div ref={containerRef} class={styles.container}>
+        <div ref={containerRef} classList={{ [styles.container]: true, [styles.barOnly]: props.barOnly }}>
             <Show when={isSkippable$()}>
                 <div class={styles.skipButton} onClick={props.onSkip}>
                     Skip

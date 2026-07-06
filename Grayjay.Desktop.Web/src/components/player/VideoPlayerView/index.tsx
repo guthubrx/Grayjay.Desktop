@@ -1,6 +1,7 @@
 import { Accessor, Component, ErrorBoundary, JSX, Show, batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from 'solid-js';
 import styles from './index.module.css';
 import PlayerControlsView, { SmartChapterFilter } from '../PlayerControlsView';
+import StateGlobal from "../../../state/StateGlobal";
 import { Duration } from 'luxon';
 import { SourceSelected } from '../../contentDetails/VideoDetailView';
 import { DetailsBackend } from '../../../backend/DetailsBackend';
@@ -1495,8 +1496,18 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             return true;
         } else {
             return !isLoading() && (areControlsVisible() || props.lockOverlay || endControlsVisible$());
-        }        
+        }
     });
+
+    // "Barre seule" : quand le réglage est activé et que les contrôles sont cachés,
+    // on garde uniquement la seekbar (heatmap) visible, boutons/dégradé masqués.
+    const barOnly$ = createMemo(() =>
+        !!StateGlobal.settings$()?.object?.playback?.keepProgressBarVisible
+        && !controlsVisible$()
+        && !isLoading()
+        && loaderGameVisible$() === undefined
+        && !isCasting()
+    );
 
     const fadeVolume = (el: HTMLVideoElement, from: number, to: number, ms: number) => new Promise<void>((resolve) => {
         const steps = 12;
@@ -1647,7 +1658,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                 classList={{
                     [styles.controls]: !isFullscreen(),
                     [styles.controlsFullscreen]: isFullscreen(),
-                    [styles.controlsVisible]: controlsVisible$()
+                    [styles.controlsVisible]: controlsVisible$() || barOnly$()
                 }}>
 
                 <PlayerControlsView
@@ -1732,6 +1743,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     leftButtonContainerStyle={props.leftButtonContainerStyle}
                     rightButtonContainerStyle={props.rightButtonContainerStyle}
                     xRayOpen={xRayOpen$()}
+                    barOnly={barOnly$()}
                     onToggleXRay={hasXRayContent() ? (() => setXRayOpen(v => !v)) : undefined}>
                     {props.children}
                 </PlayerControlsView>
