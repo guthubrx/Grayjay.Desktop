@@ -47,6 +47,18 @@ const Dropdown: Component<DropdownProps> = (props) => {
     let optionsElement!: HTMLDivElement;
     let selectElement!: HTMLDivElement;
 
+    const [autoUpwards$, setAutoUpwards] = createSignal(false);
+    // Ouvre le menu vers le haut quand il manque de place en dessous (ex: dernier
+    // réglage d'une page), pour éviter qu'il déborde hors de l'écran.
+    function computeDirection() {
+        if (!selectElement) return;
+        const rect = selectElement.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        const needed = Math.min(230, (props.options?.length ?? 0) * 56);
+        setAutoUpwards(spaceBelow < needed && spaceAbove > spaceBelow);
+    }
+
     function registerGlobalClose() {
         StateGlobal.onGlobalClick.registerOne(clickKey as any, (ev) => {
             const t = ev.target as Node | null;
@@ -60,6 +72,7 @@ const Dropdown: Component<DropdownProps> = (props) => {
     }
 
     function open(inputSource: InputSource) {
+        computeDirection();
         setShowOptions({ show: true, inputSource });
         registerGlobalClose();
     }
@@ -73,6 +86,7 @@ const Dropdown: Component<DropdownProps> = (props) => {
         setShowOptions((prev) => {
             const nextShow = !prev.show;
             if (nextShow) {
+                computeDirection();
                 registerGlobalClose();
             } else {
                 StateGlobal.onGlobalClick.unregister(clickKey as any);
@@ -131,7 +145,7 @@ const Dropdown: Component<DropdownProps> = (props) => {
                 <div
                     classList={{
                         [styles.optionsContainer]: true,
-                        [styles.upwards]: props.direction === "up"
+                        [styles.upwards]: props.direction === "up" || (props.direction === undefined && autoUpwards$())
                     }}
                     ref={optionsElement}
                     use:focusScope={{
