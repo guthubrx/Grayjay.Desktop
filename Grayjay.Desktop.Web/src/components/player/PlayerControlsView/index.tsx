@@ -86,11 +86,12 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     let scrubbing = false;
     let changingVolume = false;
 
+    // Ordre thermomètre : chaud/sélectif en haut, froid/large en bas.
     const smartChapterFilterOptions: { id: SmartChapterFilter; label: string; description: string; }[] = [
-        { id: "video", label: "All", description: "Full video" },
-        { id: "smart", label: "Smart", description: "All Smart Chapters" },
         { id: "top", label: "Top", description: "Top picks" },
         { id: "strong", label: "Strong", description: "Strong moments" },
+        { id: "smart", label: "Smart", description: "All Smart Chapters" },
+        { id: "video", label: "All", description: "Full video" },
     ];
 
     const [progressBarChapterHovering$, setProgressBarChapterHovering] = createSignal<number>();
@@ -439,18 +440,29 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     const smartChapterFilterLabel$ = createMemo(() => {
         return smartChapterFilterOptions.find(option => option.id === smartChapterFilter$())?.label ?? "Smart";
     });
-    // Losange du menu, aligné sur le dégradé thermique. "Smart" (toute la gamme)
-    // affiche un mini-dégradé froid->chaud ; les autres, la couleur de leur seuil.
+    // Score représentatif de chaque filtre sur l'échelle thermique.
+    const filterLevelScore = (filter: SmartChapterFilter) => {
+        if (filter === "top" || filter.startsWith("thesis:")) return 0.95;
+        if (filter === "strong") return 0.88;
+        if (filter === "smart") return 0.68;
+        return 0.32; // video / all : froid
+    };
+
+    // Couleur pleine du filtre (pour le losange du bouton principal).
     const filterSwatchBackground = (filter: SmartChapterFilter) => {
-        if (filter === "video")
-            return "#5f9fe8";
-        if (filter === "top")
-            return scoreToColor(0.95);
-        if (filter === "strong")
-            return scoreToColor(0.89);
-        if (filter.startsWith("thesis:"))
-            return scoreToColor(0.95);
-        return `linear-gradient(135deg, ${scoreToColor(0.5)}, ${scoreToColor(0.75)}, ${scoreToColor(0.95)})`;
+        if (filter === "smart")
+            return `linear-gradient(135deg, ${scoreToColor(0.5)}, ${scoreToColor(0.75)}, ${scoreToColor(0.95)})`;
+        return scoreToColor(filterLevelScore(filter));
+    };
+
+    // Barre verticale d'une ligne du menu : dégradé vertical blendé avec les lignes
+    // voisines, pour que les barres empilées forment une colonne thermomètre continue.
+    const filterBarBackground = (index: number) => {
+        const opts = smartChapterFilterOptions;
+        const cThis = scoreToRgb(filterLevelScore(opts[index].id));
+        const cTop = index > 0 ? mixRgb(scoreToRgb(filterLevelScore(opts[index - 1].id)), cThis) : cThis;
+        const cBot = index < opts.length - 1 ? mixRgb(cThis, scoreToRgb(filterLevelScore(opts[index + 1].id))) : cThis;
+        return `linear-gradient(to bottom, ${rgbString(cTop)} 0%, ${rgbString(cThis)} 50%, ${rgbString(cBot)} 100%)`;
     };
 
     const volumeWidth = createMemo(() => (props.volume ?? 0) * 72);
@@ -800,7 +812,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                         </button>
                         <Show when={smartChapterFilterMenuOpen$()}>
                             <div class={styles.smartChapterFilterMenu}>
-                                <For each={smartChapterFilterOptions}>{(option) =>
+                                <For each={smartChapterFilterOptions}>{(option, i) =>
                                     <button
                                         classList={{
                                             [styles.smartChapterFilterMenuItem]: true,
@@ -810,7 +822,7 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                                     >
                                         <span
                                             class={styles.smartChapterFilterSwatch}
-                                            style={{ background: filterSwatchBackground(option.id) }}
+                                            style={{ background: filterBarBackground(i()) }}
                                         />
                                         <span>
                                             <strong>{option.label}</strong>

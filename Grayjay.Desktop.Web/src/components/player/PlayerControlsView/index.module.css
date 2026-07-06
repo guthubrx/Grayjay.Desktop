@@ -474,14 +474,23 @@
     opacity: 0.34;
 }
 
-.smartChapterFilterMark,
-.smartChapterFilterSwatch {
+.smartChapterFilterMark {
     flex-shrink: 0;
     width: 9px;
     height: 9px;
     border-radius: 2px;
     transform: rotate(45deg);
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+/* Barre verticale d'une ligne : pleine hauteur, collée au bord gauche, pour que
+   les lignes empilées forment une colonne thermomètre continue. */
+.smartChapterFilterSwatch {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
 }
 
 .smartChapterFilterLabel {
@@ -507,13 +516,13 @@
 }
 
 .smartChapterFilterMenuItem {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 9px;
     width: 100%;
-    padding: 8px;
+    padding: 8px 8px 8px 18px;
     border: 0;
-    border-radius: 5px;
     background: transparent;
     color: #fff;
     cursor: pointer;
