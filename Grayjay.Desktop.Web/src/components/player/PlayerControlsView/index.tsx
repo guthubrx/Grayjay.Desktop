@@ -440,12 +440,13 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
     const smartChapterFilterLabel$ = createMemo(() => {
         return smartChapterFilterOptions.find(option => option.id === smartChapterFilter$())?.label ?? "Smart";
     });
-    // Score représentatif de chaque filtre sur l'échelle thermique.
+    // Score de chaque filtre = son SEUIL réel sur l'échelle, pour que la couleur
+    // du losange/barre soit exactement celle où le filtre commence sur la seekbar.
     const filterLevelScore = (filter: SmartChapterFilter) => {
-        if (filter === "top" || filter.startsWith("thesis:")) return 0.95;
-        if (filter === "strong") return 0.88;
-        if (filter === "smart") return 0.68;
-        return 0.32; // video / all : froid
+        if (filter === "top" || filter.startsWith("thesis:")) return 0.95; // >= 0.93
+        if (filter === "strong") return 0.88;                              // seuil Strong
+        if (filter === "smart") return 0.55;                               // seuil Smart
+        return 0.18; // video / all : froid (filler)
     };
 
     // Couleur pleine du filtre (pour le losange du bouton principal). Le losange
@@ -457,14 +458,21 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
         return scoreToColor(filterLevelScore(filter));
     };
 
-    // Barre verticale d'une ligne du menu : dégradé vertical blendé avec les lignes
-    // voisines, pour que les barres empilées forment une colonne thermomètre continue.
+    // Barre verticale d'une ligne du menu : elle échantillonne le VRAI gradient de
+    // l'échelle entre les seuils voisins (pas un simple mix RGB), pour que les
+    // barres empilées forment une colonne thermomètre fidèle et continue.
     const filterBarBackground = (index: number) => {
         const opts = smartChapterFilterOptions;
-        const cThis = scoreToRgb(filterLevelScore(opts[index].id));
-        const cTop = index > 0 ? mixRgb(scoreToRgb(filterLevelScore(opts[index - 1].id)), cThis) : cThis;
-        const cBot = index < opts.length - 1 ? mixRgb(cThis, scoreToRgb(filterLevelScore(opts[index + 1].id))) : cThis;
-        return `linear-gradient(to bottom, ${rgbString(cTop)} 0%, ${rgbString(cThis)} 50%, ${rgbString(cBot)} 100%)`;
+        const lv = (i: number) => filterLevelScore(opts[i].id);
+        const scoreTop = index > 0 ? (lv(index - 1) + lv(index)) / 2 : lv(index);
+        const scoreBot = index < opts.length - 1 ? (lv(index) + lv(index + 1)) / 2 : lv(index);
+        const N = 6;
+        const stops: string[] = [];
+        for (let k = 0; k <= N; k++) {
+            const sc = scoreTop + (scoreBot - scoreTop) * (k / N);
+            stops.push(`${scoreToColor(sc)} ${Math.round((k / N) * 100)}%`);
+        }
+        return `linear-gradient(to bottom, ${stops.join(", ")})`;
     };
 
     const volumeWidth = createMemo(() => (props.volume ?? 0) * 72);
