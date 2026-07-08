@@ -42,6 +42,12 @@ export abstract class SubscriptionsBackend {
     static async subscriptionsCacheNextPage(): Promise<PagerResult<IPlatformVideo>> {
         return await Backend.GET("/subscriptions/SubscriptionsCacheNextPage") as PagerResult<IPlatformVideo>;
     }
+    static async subscriptionGroupCacheLoad(id: string): Promise<PagerResult<IPlatformVideo>> {
+        return await Backend.GET("/subscriptions/SubscriptionGroupCacheLoad?id=" + id) as PagerResult<IPlatformVideo>;
+    }
+    static async subscriptionGroupCacheNextPage(id: string): Promise<PagerResult<IPlatformVideo>> {
+        return await Backend.GET("/subscriptions/SubscriptionGroupCacheNextPage?id=" + id) as PagerResult<IPlatformVideo>;
+    }
     
     static async subscriptionsFilterChannelLoad(id: string): Promise<PagerResult<IPlatformVideo>> {
         return await Backend.GET("/subscriptions/SubscriptionsFilterChannelLoad?url=" + encodeURIComponent(id)) as PagerResult<IPlatformVideo>;

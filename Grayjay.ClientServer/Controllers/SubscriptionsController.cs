@@ -18,6 +18,7 @@ namespace Grayjay.ClientServer.Controllers
             public IPager<PlatformContent> SubscriptionPager { get; set; }
             public IPager<PlatformContent> FilterPager { get; set; }
             public Dictionary<string, IPager<PlatformContent>> SubscriptionGroupPagers { get; set; } = new Dictionary<string, IPager<PlatformContent>>();
+            public Dictionary<string, IPager<PlatformContent>> SubscriptionGroupCachePagers { get; set; } = new Dictionary<string, IPager<PlatformContent>>();
 
         }
 
@@ -130,6 +131,62 @@ namespace Grayjay.ClientServer.Controllers
                 lock (this.State().SubscriptionsState.SubscriptionPagerCache)
                 {
                     var subs = EnsureSubscriptionPagerCache();
+                    subs.NextPage();
+                    return subs.AsPagerResult(x => x is PlatformVideo, y => StateHistory.AddVideoMetadata((PlatformVideo)y));
+                }
+            }
+            catch (Exception ex)
+            {
+                return new PagerResult<PlatformVideo>()
+                {
+                    Results = new PlatformVideo[0],
+                    HasMore = false,
+                    Exception = ex.Message
+                };
+            }
+        }
+
+        [HttpGet]
+        public PagerResult<PlatformVideo> SubscriptionGroupCacheLoad(string id)
+        {
+            try
+            {
+                var group = StateSubscriptions.GetGroup(id);
+                if (group == null)
+                    throw new BadHttpRequestException("No subscriptions group [" + id + "] found");
+
+                var subs = StateCache.GetChannelCachePager(group.Urls ?? new List<string>());
+                var state = this.State().SubscriptionsState;
+                lock (state.SubscriptionGroupCachePagers)
+                {
+                    state.SubscriptionGroupCachePagers[id] = subs;
+                }
+
+                return subs.AsPagerResult(x => x is PlatformVideo, y => StateHistory.AddVideoMetadata((PlatformVideo)y));
+            }
+            catch (Exception ex)
+            {
+                return new PagerResult<PlatformVideo>()
+                {
+                    Results = new PlatformVideo[0],
+                    HasMore = false,
+                    Exception = ex.Message
+                };
+            }
+        }
+
+        [HttpGet]
+        public PagerResult<PlatformVideo> SubscriptionGroupCacheNextPage(string id)
+        {
+            var state = this.State().SubscriptionsState;
+            try
+            {
+                lock (state.SubscriptionGroupCachePagers)
+                {
+                    if (!state.SubscriptionGroupCachePagers.ContainsKey(id))
+                        throw new BadHttpRequestException("No subscriptions group cache [" + id + "] loaded");
+
+                    var subs = state.SubscriptionGroupCachePagers[id];
                     subs.NextPage();
                     return subs.AsPagerResult(x => x is PlatformVideo, y => StateHistory.AddVideoMetadata((PlatformVideo)y));
                 }

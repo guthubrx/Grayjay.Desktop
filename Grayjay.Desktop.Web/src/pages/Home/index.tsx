@@ -887,6 +887,13 @@ const HomePage: Component = () => {
         // The regular page refresh action can still request a complete network update.
         if (subGroups.length > 0) {
             for (const group of subGroups) {
+                SubscriptionsBackend.subscriptionGroupCacheLoad(group.id)
+                    .then(cached => {
+                        if (groupsAborted) return;
+                        upsertGroupCarousel(group.name, cached.results as IPlatformVideo[]);
+                    })
+                    .catch(() => {});
+
                 SubscriptionsBackend.subscriptionGroupLoad(group.id, false)
                     .then(fresh => {
                         if (groupsAborted) return;
