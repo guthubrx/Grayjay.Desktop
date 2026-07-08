@@ -46,9 +46,13 @@ const HERO_COUNT = 10;
 const MAX_CHANNEL_CAROUSELS = 10;
 
 const STORAGE_HOME_CACHE = 'grayjay_home_cache';
+const STORAGE_HOME_GROUP_CAROUSELS = 'grayjay_home_group_carousels_v1';
+const STORAGE_SMART_CHAPTER_SUMMARIES = 'grayjay_home_smart_chapter_summaries_v1';
 const STORAGE_SMART_TV_SESSIONS = 'grayjay_smart_tv_sessions_v1';
 const STORAGE_SMART_TV_PLAYED_CHAPTERS = 'grayjay_smart_tv_played_chapters_v1';
 const HOME_CACHE_SIZE = 20;
+const GROUP_CAROUSEL_CACHE_SIZE = 20;
+const SMART_CHAPTER_CACHE_SIZE = 1000;
 const SMART_TV_START_PADDING_SECONDS = 2;
 
 const SMART_TV_TARGET_SECONDS = [15, 30, 45, 60, 90, 120, 180, 240, 360].map(minutes => minutes * 60);
@@ -126,9 +130,24 @@ interface SmartTvSession {
     playedChapterKeys: string[];
 }
 
-function loadHomeCache(): IPlatformVideo[] {
-    try { return JSON.parse(localStorage.getItem(STORAGE_HOME_CACHE) ?? '[]'); }
+function loadArrayCache<T>(key: string): T[] {
+    try {
+        const value = JSON.parse(localStorage.getItem(key) ?? '[]');
+        return Array.isArray(value) ? value : [];
+    }
     catch { return []; }
+}
+
+function saveArrayCache<T>(key: string, items: T[], limit?: number) {
+    try { localStorage.setItem(key, JSON.stringify(typeof limit === 'number' ? items.slice(0, limit) : items)); } catch {}
+}
+
+function loadHomeCache(): IPlatformVideo[] {
+    return loadArrayCache<IPlatformVideo>(STORAGE_HOME_CACHE);
+}
+
+function loadSmartChapterSummaryCache(): IVideoHighlightSummary[] {
+    return loadArrayCache<IVideoHighlightSummary>(STORAGE_SMART_CHAPTER_SUMMARIES);
 }
 
 function loadSmartTvSessions(): Record<string, SmartTvSession> {
@@ -494,6 +513,20 @@ function buildGroupCarousels(subGroups: ISubscriptionGroup[], allVideos: IPlatfo
         .map(vs => ({ name: vs[0]?.author?.name ?? 'Unknown', videos: vs.slice(0, MAX_CAROUSEL_ITEMS) }));
 }
 
+function loadGroupCarouselsCache(): GroupCarousel[] {
+    return loadArrayCache<GroupCarousel>(STORAGE_HOME_GROUP_CAROUSELS)
+        .filter(g => g.name && Array.isArray(g.videos) && g.videos.length > 0)
+        .slice(0, GROUP_CAROUSEL_CACHE_SIZE);
+}
+
+function saveGroupCarouselsCache(groups: GroupCarousel[]) {
+    const normalized = groups
+        .filter(g => g.name && g.videos.length > 0)
+        .slice(0, GROUP_CAROUSEL_CACHE_SIZE)
+        .map(g => ({ ...g, videos: g.videos.slice(0, MAX_CAROUSEL_ITEMS) }));
+    saveArrayCache(STORAGE_HOME_GROUP_CAROUSELS, normalized);
+}
+
 const HomePage: Component = () => {
     const homePager = StateGlobal.home$;
     const video = useVideo();
@@ -578,12 +611,15 @@ const HomePage: Component = () => {
 
     const [smartChapterItems] = createResource(async () => {
         try {
-            return (await HighlightsBackend.getAll())
+            const items = (await HighlightsBackend.getAll())
                 .filter((h: IVideoHighlightSummary) => h.segmentCount > 0);
+            if (items.length > 0)
+                saveArrayCache(STORAGE_SMART_CHAPTER_SUMMARIES, items, SMART_CHAPTER_CACHE_SIZE);
+            return items;
         } catch {
-            return [] as IVideoHighlightSummary[];
+            return loadSmartChapterSummaryCache();
         }
-    });
+    }, { initialValue: loadSmartChapterSummaryCache() });
 
     const [smartTvLoadingKey$, setSmartTvLoadingKey] = createSignal<string | undefined>();
     const [smartTvSessions$, setSmartTvSessions] = createSignal<Record<string, SmartTvSession>>(loadSmartTvSessions());
@@ -794,9 +830,15 @@ const HomePage: Component = () => {
     // Subscription group carousels — cache first, group feeds as fallback:
     // Phase 1 (fast): show cached data immediately when available
     // Phase 2 (background): load each group feed and update rows as results arrive
-    const [groupCarousels, setGroupCarousels] = createSignal<GroupCarousel[]>([]);
+    const [groupCarousels, setGroupCarousels] = createSignal<GroupCarousel[]>(loadGroupCarouselsCache());
     let groupsAborted = false;
     onCleanup(() => { groupsAborted = true; });
+
+    const replaceGroupCarousels = (groups: GroupCarousel[]) => {
+        if (groups.length === 0) return;
+        saveGroupCarouselsCache(groups);
+        setGroupCarousels(groups);
+    };
 
     const upsertGroupCarousel = (name: string, videos: IPlatformVideo[]) => {
         const freshVideos = videos
@@ -808,9 +850,12 @@ const HomePage: Component = () => {
             if (idx >= 0) {
                 const next = [...prev];
                 next[idx] = { ...next[idx], videos: freshVideos };
+                saveGroupCarouselsCache(next);
                 return next;
             }
-            return [...prev, { name, videos: freshVideos }];
+            const next = [...prev, { name, videos: freshVideos }];
+            saveGroupCarouselsCache(next);
+            return next;
         });
     };
 
@@ -822,7 +867,7 @@ const HomePage: Component = () => {
             if (groupsAborted) return;
             cachedVideos = cached.results as IPlatformVideo[];
             if (cachedVideos.length > 0)
-                setGroupCarousels(buildGroupCarousels([], cachedVideos));
+                replaceGroupCarousels(buildGroupCarousels([], cachedVideos));
         } catch (e) {
             console.warn('Subscription cache failed, continuing with group feeds', e);
         }
@@ -833,7 +878,7 @@ const HomePage: Component = () => {
             subGroups = await SubscriptionsBackend.subscriptionGroups();
             if (groupsAborted) return;
             if (cachedVideos.length > 0)
-                setGroupCarousels(buildGroupCarousels(subGroups, cachedVideos));
+                replaceGroupCarousels(buildGroupCarousels(subGroups, cachedVideos));
         } catch (e) {
             console.warn('Subscription groups failed, falling back to global subscriptions', e);
         }
@@ -855,7 +900,7 @@ const HomePage: Component = () => {
         SubscriptionsBackend.subscriptionsLoad(false)
             .then(fresh => {
                 if (groupsAborted) return;
-                setGroupCarousels(buildGroupCarousels(subGroups, fresh.results as IPlatformVideo[]));
+                replaceGroupCarousels(buildGroupCarousels(subGroups, fresh.results as IPlatformVideo[]));
             })
             .catch(() => {});
     });
@@ -965,7 +1010,10 @@ const HomePage: Component = () => {
 
     // Recommended = home pager items after the hero, with valid metadata only, excluding watched
     const recommendedItems = () => {
-        return (homePager()?.data?.slice(HERO_COUNT) ?? [])
+        const live = (homePager()?.data ?? []) as IPlatformVideo[];
+        const source = live.length > 0 ? live : homeCached();
+        return source
+            .slice(HERO_COUNT)
             .filter(v => v.name && v.name.trim() && (v as IPlatformVideo).duration > 0 && !hasWatchedUrl((v as IPlatformVideo).url)) as IPlatformVideo[];
     };
 

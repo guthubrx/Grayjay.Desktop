@@ -47,6 +47,37 @@ const video = useVideo();
 //console.log(subs);
 //console.log(subPager);
 
+const STORAGE_SUBSCRIPTIONS = 'grayjay_subscriptions_page_subscriptions_v1';
+const STORAGE_SUBSCRIPTION_GROUPS = 'grayjay_subscriptions_page_groups_v1';
+const STORAGE_SUBSCRIPTION_CACHE = 'grayjay_subscriptions_page_cache_v1';
+const SUBSCRIPTION_CACHE_SIZE = 120;
+
+function loadStoredArray<T>(key: string): T[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? '[]');
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredArray<T>(key: string, items: T[], limit?: number) {
+  try {
+    localStorage.setItem(key, JSON.stringify(typeof limit === 'number' ? items.slice(0, limit) : items));
+  } catch {}
+}
+
+function createStaticPager(items: IPlatformContent[]): Pager<IPlatformContent> {
+  const pager = new class extends Pager<IPlatformContent> {
+    fetchLoad = async () => ({ results: items, hasMore: false } as PagerResult<IPlatformContent>);
+    fetchNextPage = async () => ({ results: [], hasMore: false } as PagerResult<IPlatformContent>);
+  };
+  pager.data.push(...items);
+  pager.dataFiltered.push(...items);
+  pager.hasMore = false;
+  return pager;
+}
+
 const SubscriptionsPage: Component = () => {
   const navigate = useNavigate();
 
@@ -68,13 +99,25 @@ const SubscriptionsPage: Component = () => {
 
   let doUpdate = false;
   const [subs$, subsResource] = createResourceDefault(async () => [], async () => {
-    return await SubscriptionsBackend.subscriptions();
-  });
-  const [subGroups$, subGroupsResource] = createResourceDefault(async () => [], async () => await SubscriptionsBackend.subscriptionGroups());
+    const subscriptions = await SubscriptionsBackend.subscriptions();
+    if (subscriptions.length > 0)
+      saveStoredArray(STORAGE_SUBSCRIPTIONS, subscriptions);
+    return subscriptions;
+  }, { initialValue: loadStoredArray<ISubscription>(STORAGE_SUBSCRIPTIONS) }, []);
+  const [subGroups$, subGroupsResource] = createResourceDefault(async () => [], async () => {
+    const groups = await SubscriptionsBackend.subscriptionGroups();
+    if (groups.length > 0)
+      saveStoredArray(STORAGE_SUBSCRIPTION_GROUPS, groups);
+    return groups;
+  }, { initialValue: loadStoredArray<ISubscriptionGroup>(STORAGE_SUBSCRIPTION_GROUPS) }, []);
   
+  const storedSubscriptionCache = loadStoredArray<IPlatformContent>(STORAGE_SUBSCRIPTION_CACHE);
   const [subCachePager$, subPagerCacheResource] = createResourceDefault(async () => {
-    return await SubscriptionsBackend.subscriptionCachePager();
-  });
+    const pager = await SubscriptionsBackend.subscriptionCachePager();
+    if (pager.data.length > 0)
+      saveStoredArray(STORAGE_SUBSCRIPTION_CACHE, pager.data, SUBSCRIPTION_CACHE_SIZE);
+    return pager;
+  }, { initialValue: storedSubscriptionCache.length > 0 ? createStaticPager(storedSubscriptionCache) : undefined });
   const [subPager$, subPagerResource] = createResourceDefault(async () => {
     const shouldUpdate = doUpdate;
     doUpdate = false;
