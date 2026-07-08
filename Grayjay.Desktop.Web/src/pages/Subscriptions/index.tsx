@@ -107,10 +107,12 @@ const SubscriptionsPage: Component = () => {
         const filterPagerResult = filterPager$();
         return filterPagerResult;
       }
-      if(subPager$.state == "ready" && subPager$()?.hadInitialUpdate$())
-        return subPager$();
-      else
-        return subCachePager$();
+      const livePager = subPager$();
+      const cachePager = subCachePager$();
+      const cacheUsable = !!cachePager && !cachePager.error && cachePager.data.length > 0;
+      if(subPager$.state == "ready" && livePager && (!cacheUsable || livePager.hadInitialUpdate$() || livePager.data.length > 0))
+        return livePager;
+      return cachePager;
     }
     else
       return subGroupPager$();
