@@ -44,6 +44,16 @@ namespace Grayjay.ClientServer.States
             return GetHistoryIndex(url)?.Position ?? 0;
         }
 
+        public static List<string> GetWatchedUrls(long minPosition)
+        {
+            return _history
+                .QueryGreater(nameof(DBHistoryIndex.Position), minPosition)
+                .Select(x => x.Url)
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Distinct()
+                .ToList();
+        }
+
         public static bool IsHistoryWatched(string url, long duration)
         {
             return IsHistoryWatchedPercentage(GetHistoryPosition(url), (long)(duration * (decimal)0.7));

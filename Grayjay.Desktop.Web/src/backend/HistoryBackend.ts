@@ -7,6 +7,10 @@ export abstract class HistoryBackend {
         return await Backend.GET("/history/GetHistoricalPosition?url=" + encodeURIComponent(url)) as number;
     }
 
+    static async getWatchedUrls(minPosition: number): Promise<string[]> {
+        return await Backend.GET("/history/GetWatchedUrls?minPosition=" + encodeURIComponent(minPosition)) as string[];
+    }
+
     static async historyLoad(): Promise<PagerResult<IHistoryVideo>> {
         return await Backend.GET("/history/HistoryLoad") as PagerResult<IHistoryVideo>;
     }

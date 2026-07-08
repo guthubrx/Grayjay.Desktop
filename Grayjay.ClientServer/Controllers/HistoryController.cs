@@ -28,6 +28,12 @@ namespace Grayjay.ClientServer.Controllers
         }
 
         [HttpGet]
+        public List<string> GetWatchedUrls(long minPosition = 30)
+        {
+            return StateHistory.GetWatchedUrls(minPosition);
+        }
+
+        [HttpGet]
         public PagerResult<HistoryVideo> HistoryLoad()
         {
             var pager = StateHistory.GetHistoryPager();
