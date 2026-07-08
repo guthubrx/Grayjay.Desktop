@@ -10,8 +10,16 @@ import ic_fullscreen from '../../../assets/icons/icon_32_fullscreen.svg';
 import ic_cast from '../../../assets/icons/icon_32_cast.svg';
 import error from '../../../assets/icons/icon_error.svg';
 import iconDownload from '../../../assets/icons/icon24_download.svg';
+import iconQueue from '../../../assets/icons/icon_add_to_queue.svg';
+import iconCreator from '../../../assets/icons/icon_nav_creators.svg';
+import iconWatchLater from '../../../assets/icons/icon24_watch_later.svg';
+import iconAddToPlaylist from '../../../assets/icons/icon24_add_to_playlist.svg';
+import iconCheck from '../../../assets/icons/icon_checkmark.svg';
+import more_horiz from '../../../assets/icons/more_horiz_FILL0_wght400_GRAD0_opsz24.svg';
 import share from '../../../assets/icons/icon24_Share.svg';
 import ic_chevron_down from '../../../assets/icons/icon_chrevron_down.svg';
+import ic_chevron_left from '../../../assets/icons/chevron_backward_24dp_FFFFFF_FILL0_wght300_GRAD0_opsz24.svg';
+import ic_chevron_right from '../../../assets/icons/chevron_right_24dp_FFFFFF_FILL0_wght300_GRAD0_opsz24.svg';
 import ic_close from '../../../assets/icons/icon24_close.svg';
 import store from '../../../assets/icons/icon24_store.svg';
 import more from '../../../assets/icons/icon_button_more.svg';
@@ -23,15 +31,21 @@ import VirtualFlexibleArrayList from "../../containers/VirtualFlexibleArrayList"
 import StickyShrinkOnScrollContainer from "../../containers/StickyShrinkOnScrollContainer";
 import PillButton from "../../buttons/PillButton";
 import IconButton from "../../buttons/IconButton";
+import TransparentIconButton from "../../buttons/TransparentIconButton";
 import CustomButton from "../../buttons/CustomButton";
 import CommentView from "../../CommentView";
 import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, sanitzeHtml, toHumanNowDiffString, toHumanNowDiffStringMinDay, toHumanNumber, formatAudioSourceName, getDefaultPlaybackSpeed, formatDuration } from "../../../utility";
 import { DetailsBackend } from "../../../backend/DetailsBackend";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
-import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton, IMenuFilter } from "../../menus/Overlays/SettingsMenu";
+import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton, IMenuFilter, MenuSeperator } from "../../menus/Overlays/SettingsMenu";
+import iconTrash from '../../../assets/icons/icon_trash.svg';
+import iconPinned from '../../../assets/icons/pinned.svg';
+import iconPinnedFill from '../../../assets/icons/pinned-fill.svg';
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
+import StateWebsocket from "../../../state/StateWebsocket";
+import { indexVideo, hasGeneratorCommand, setGeneratorCommand, jobFor } from "../../../state/StateHighlightsIndexer";
 import Loader from "../../basics/loaders/Loader";
 import Anchor, { AnchorStyle } from "../../../utility/Anchor";
 import DragArea from "../../basics/DragArea";
@@ -42,6 +56,7 @@ import { decode } from "html-entities";
 import NavigationBar from "../../topbars/NavigationBar";
 import PlaybackQueue from "../../PlaybackQueue";
 import { WatchLaterBackend } from "../../../backend/WatchLaterBackend";
+import { SettingsBackend } from "../../../backend/SettingsBackend";
 import { Event0 } from "../../../utility/Event";
 import ToggleButtonGroup from "../../ToggleButtonGroup";
 import { Pager } from "../../../backend/models/pagers/Pager";
@@ -49,6 +64,7 @@ import { RefItem } from "../../../backend/models/RefItem";
 import { ISerializedComment } from "../../../backend/models/comments/ISerializedComment";
 import icon_back from '../../../assets/icons/icon24_back.svg';
 import icon_close from '../../../assets/icons/icon24_close.svg';
+import NextUpOverlay from '../../player/NextUpOverlay';
 import pinned_fill from '../../../assets/icons/pinned-fill.svg';
 import pinned from '../../../assets/icons/pinned.svg';
 import loop_inactive from '../../../assets/icons/icon_loop_inactive.svg';
@@ -59,19 +75,27 @@ import SearchBar from "../../topbars/SearchBar";
 import { ContentType } from "../../../backend/models/ContentType";
 import DOMPurify from 'dompurify';
 import { LocalBackend } from "../../../backend/LocalBackend";
+import Globals from "../../../globals";
+import { LocalRecommendationsBackend } from "../../../backend/LocalRecommendationsBackend";
 import { ILiveChatWindowDescriptor } from "../../../backend/models/comments/ILiveChatWindowDescriptor";
 import LiveChatRemoteWindow from "../../LiveChatRemoteWindow";
+import { SubscriptionsBackend } from '../../../backend/SubscriptionsBackend';
+import { Menus } from '../../../Menus';
 import { HistoryBackend } from "../../../backend/HistoryBackend";
+import { IHistoryVideo } from "../../../backend/models/content/IHistoryVideo";
 import StateGlobal from "../../../state/StateGlobal";
+import { getKeybinding } from "../../../state/StateKeybindings";
 import StateSync from "../../../state/StateSync";
 import { SyncDevice } from "../../../backend/models/sync/SyncDevice";
 import { SyncBackend } from "../../../backend/SyncBackend";
+import { HighlightsBackend } from "../../../backend/HighlightsBackend";
 import FlexibleArrayList from "../../containers/FlexibleArrayList";
 import { IPlatformContent } from "../../../backend/models/content/IPlatformContent";
 import VideoThumbnailView from "../../content/VideoThumbnailView";
 import { IPlatformVideo } from "../../../backend/models/content/IPlatformVideo";
 import HorizontalScrollContainer from "../../containers/HorizontalScrollContainer";
 import HorizontalFlexibleArrayList from "../../containers/HorizontalFlexibleArrayList";
+import iconChevronDown from '../../../assets/icons/icon16_chevron_down.svg';
 import SideBar from "../../menus/SideBar";
 import LiveChatWindow from "../../LiveChatWindow";
 import { focusScope } from '../../../focusScope'; void focusScope;
@@ -82,6 +106,8 @@ import ControllerOverlay from "../../ControllerOverlay";
 import { useCasting } from "../../../contexts/Casting";
 import { SearchBackend } from "../../../backend/SearchBackend";
 import history from '../../../assets/icons/icon_nav_history.svg';
+import iconHighlights from '../../../assets/icons/label_important_24dp_FFFFFF_FILL1_wght300_GRAD0_opsz24.svg';
+import { Portal } from "solid-js/web";
 
 const SCOPE_ID = "video-detail-view";
 
@@ -103,15 +129,105 @@ export interface SourceSelected {
 export interface VideoDetailsProps {
 };
 
+interface HorizontalCarouselProps {
+    title: string;
+    pager?: Pager<any>;
+    items?: any[];
+    onScrollEnd?: () => void;
+    builder: (index: Accessor<number | undefined>, item: Accessor<any>) => any;
+    flex?: string;
+    onTitleClick?: () => void;
+    currentIndex?: number;
+}
+
+const HorizontalCarousel: Component<HorizontalCarouselProps> = (props) => {
+    let scrollRef: HTMLDivElement | undefined;
+    const [hover$, setHover] = createSignal(false);
+    const [canLeft$, setCanLeft] = createSignal(false);
+    const [canRight$, setCanRight] = createSignal(false);
+    const update = () => {
+        if (!scrollRef) return;
+        setCanLeft(scrollRef.scrollLeft > 4);
+        setCanRight(scrollRef.scrollLeft + scrollRef.clientWidth < scrollRef.scrollWidth - 4);
+    };
+    const scroll = (dir: -1 | 1) => {
+        if (!scrollRef) return;
+        scrollRef.scrollBy({ left: dir * Math.max(scrollRef.clientWidth * 0.85, 236), behavior: 'smooth' });
+    };
+    onMount(() => {
+        scrollRef?.addEventListener('scroll', update, { passive: true });
+        update();
+    });
+    onCleanup(() => {
+        scrollRef?.removeEventListener('scroll', update);
+    });
+    createEffect(on(() => props.currentIndex, (idx) => {
+        if (idx === undefined || !scrollRef) return;
+        const items = scrollRef.querySelectorAll<HTMLElement>('[data-carousel-idx]');
+        const target = items[idx];
+        if (target) {
+            const offset = target.offsetLeft - (scrollRef.clientWidth - target.clientWidth) / 2;
+            scrollRef.scrollTo({ left: Math.max(0, offset), behavior: 'smooth' });
+        }
+    }, { defer: true }));
+    return (
+        <div
+            class={styles.recommendationsCarouselWrapper}
+            style={{ flex: props.flex, "min-width": "0" }}
+            onMouseEnter={() => { setHover(true); update(); }}
+            onMouseLeave={() => setHover(false)}
+        >
+            <div
+                class={styles.carouselSectionTitle}
+                style={{ cursor: props.onTitleClick ? "pointer" : undefined, "user-select": "none" }}
+                onClick={() => props.onTitleClick?.()}
+            >
+                {props.title}
+            </div>
+            <div style={{ width: "100%", padding: "8px 40px 0 40px", "box-sizing": "border-box" }}>
+                <HorizontalScrollContainer ref={scrollRef} subtle={true}>
+                    <HorizontalFlexibleArrayList
+                        outerContainerRef={scrollRef}
+                        onEnd={props.onScrollEnd}
+                        addedItems={props.pager?.addedItemsEvent}
+                        modifiedItems={props.pager?.modifiedItemsEvent}
+                        removedItems={props.pager?.removedItemsEvent}
+                        items={props.items ?? props.pager?.data}
+                        builder={props.builder}
+                    />
+                </HorizontalScrollContainer>
+            </div>
+            <Show when={hover$() && canLeft$()}>
+                <button
+                    class={`${styles.carouselNavButton} ${styles.carouselNavLeft}`}
+                    onClick={() => scroll(-1)}
+                >
+                    <img src={ic_chevron_left} alt="scroll left" />
+                </button>
+            </Show>
+            <Show when={hover$() && canRight$()}>
+                <button
+                    class={`${styles.carouselNavButton} ${styles.carouselNavRight}`}
+                    onClick={() => scroll(1)}
+                >
+                    <img src={ic_chevron_right} alt="scroll right" />
+                </button>
+            </Show>
+        </div>
+    );
+};
+
 const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     let scrollContainerRef: HTMLDivElement | undefined;
-    let horizontalScrollRecommendContainerRef: HTMLDivElement | undefined;
     let descriptionContainerRef: HTMLDivElement | undefined;
     let containerRef: HTMLDivElement | undefined;
     let videoContainer: HTMLDivElement | undefined;
+    let moreSubscriptionElement: HTMLDivElement | undefined;
     let isScrubbing = false;
     let position: Duration | undefined = undefined;
     let errorCounter: number = 0;
+    const [playerPosition$, setPlayerPosition] = createSignal<number>(0);
+    const [nextUpCancelled$, setNextUpCancelled] = createSignal<boolean>(false);
     const video = useVideo();
     const focus = useFocus()!;
     const casting = useCasting()!;
@@ -167,13 +283,83 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         console.log("Video chapters:", result);
         return result;
     });
+    const videoHighlightUrls$ = createMemo(() => {
+        return [
+            videoLoaded$()?.url,
+            currentVideo$()?.url,
+            currentVideo$()?.backendUrl
+        ].filter((url, index, urls): url is string => !!url && urls.indexOf(url) === index);
+    });
+    const [videoHighlights$, videoHighlightsResource] = createResourceDefault(() => videoHighlightUrls$(), async (urls) => {
+        for (const url of urls) {
+            const highlights = await HighlightsBackend.get(url);
+            if ((highlights?.segments?.length ?? 0) > 0) {
+                return highlights;
+            }
+        }
+        return undefined;
+    });
+    // Recharge les highlights quand l'indexeur en a généré de nouveaux.
+    StateWebsocket.registerHandlerNew("HighlightsChanged", () => {
+        videoHighlightsResource.refetch();
+    }, "videoDetailHighlights");
     //const [liveChatWindow$] = createResource<ILiveChatWindowDescriptor | undefined>(() => videoLoaded$(), async (videoLoaded: any) => (!videoLoaded || !videoLoaded.isLive) ? undefined : await DetailsBackend.liveChatWindow());
     const [recomPager$] = createResource<Pager<IPlatformContent>>(() => videoLoaded$(), async (videoLoaded: any) => {
         if(!videoLoaded)
             return undefined;
         const result =  await DetailsBackend.recommendationsPager(videoLoaded.url);
-        console.log("Recommendation Results:", result);
+        try {
+            const channelUrl = videoLoaded?.author?.url;
+            if (channelUrl && result?.data) {
+                const locals = await LocalRecommendationsBackend.forVideo(channelUrl, 20);
+                if (locals && locals.length > 0) {
+                    const platformSeen = new Set(result.data.map((c: any) => c?.url).filter(Boolean));
+                    const uniqueLocals = locals
+                        .filter(l => l?.url && !platformSeen.has(l.url))
+                        .map(l => ({ ...l, __fromSubscriptions: true } as any));
+                    const merged: any[] = [];
+                    const a = result.data as any[];
+                    const b = uniqueLocals;
+                    const max = Math.max(a.length, b.length);
+                    for (let i = 0; i < max; i++) {
+                        if (i < b.length) merged.push(b[i]);
+                        if (i < a.length) merged.push(a[i]);
+                    }
+                    result.data.length = 0;
+                    result.data.push(...merged);
+                    result.dataFiltered.length = 0;
+                    result.dataFiltered.push(...merged.filter(result.filter ?? (() => true)));
+                }
+            }
+        } catch (e) {
+            console.warn("Local recommendations merge failed", e);
+        }
         return result;
+    });
+    const [historyPager$] = createResource<Pager<IHistoryVideo>>(() => [videoLoaded$(), StateGlobal.settings$()?.object?.playback?.continueWatchingEnabled], async ([videoLoaded, enabled]: any) => {
+        if (!videoLoaded || !enabled)
+            return undefined;
+        return await HistoryBackend.historyPager();
+    });
+    const [carouselsCollapsed$, setCarouselsCollapsed] = createSignal(false);
+    onMount(() => {
+        SettingsBackend.persistGet("carouselsCollapsed", false)
+            .then((r: boolean) => setCarouselsCollapsed(r))
+            .catch(e => console.error("Failed to get persistent setting 'carouselsCollapsed'.", e));
+    });
+    const toggleCarouselsCollapsed = () => {
+        const n = !carouselsCollapsed$();
+        setCarouselsCollapsed(n);
+        SettingsBackend.persistSet("carouselsCollapsed", n).catch(e => console.error("Failed to set persistent setting 'carouselsCollapsed'.", e));
+    };
+    const [markedAsWatched$, setMarkedAsWatched] = createSignal<Set<string>>(new Set());
+    const continueWatchingItems$ = createMemo(() => {
+        const items = historyPager$()?.data ?? [];
+        const currentUrl = videoLoaded$()?.url;
+        const marked = markedAsWatched$();
+        return items
+            .filter(h => h.video && h.video.duration > 60 && h.position > h.video.duration * 0.02 && h.position < h.video.duration * 0.95 && h.video.url !== currentUrl && !marked.has(h.video.url))
+            .map(h => ({ ...h.video, metadata: { ...((h.video as any).metadata ?? {}), position: h.position } }));
     });
 
 
@@ -296,6 +482,14 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }
     };
 
+    const playFromQueue = (targetIndex: number) => {
+        if (video?.repeat()) {
+            video?.actions?.setIndex(targetIndex);
+        } else {
+            video?.actions?.consumeAndSetIndex(targetIndex);
+        }
+    };
+
     const handleEnded = async () => {
         const currentIndex = video?.index();
         if (currentIndex === undefined) {
@@ -310,7 +504,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             if (nextIndex === currentIndex) {
                 eventRestart.invoke();
             } else {
-                video?.actions?.setIndex(nextIndex);
+                playFromQueue(nextIndex);
             }
         }
 
@@ -366,7 +560,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
 
     createEffect(async () => {
         if (videoSource$()?.shouldResume !== true) {
-            const playbackSpeed = await getDefaultPlaybackSpeed();
+            const channelUrl = videoLoaded$()?.author?.url;
+            const channelOverride = channelUrl ? channelPlaybackSpeeds$()[channelUrl] : undefined;
+            const playbackSpeed = channelOverride ?? await getDefaultPlaybackSpeed();
             console.log("video changed, resetting playback speed", playbackSpeed);
             setPlaybackSpeed(playbackSpeed);
         }
@@ -447,6 +643,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
 
     const handlePositionChanged = (p: Duration) => {
         position = p;
+        setPlayerPosition(p.as("seconds"));
     };
     
     const [currentPlayerHeight$, setCurrentPlayerHeight] = createSignal<number>();
@@ -461,6 +658,24 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         return desiredMaximumHeight;
     });
     const [playbackSpeed$, setPlaybackSpeed] = createSignal(1);
+    const [windowMaximized$, setWindowMaximized] = createSignal(false);
+    const [channelPlaybackSpeeds$, setChannelPlaybackSpeeds] = createSignal<Record<string, number>>({});
+    onMount(() => {
+        SettingsBackend.persistGet("channelPlaybackSpeeds", {})
+            .then((r: Record<string, number>) => setChannelPlaybackSpeeds(r ?? {}))
+            .catch(e => console.error("Failed to get persistent setting 'channelPlaybackSpeeds'.", e));
+    });
+    const setChannelPlaybackSpeed = (channelUrl: string, speed: number) => {
+        const next = { ...channelPlaybackSpeeds$(), [channelUrl]: speed };
+        setChannelPlaybackSpeeds(next);
+        SettingsBackend.persistSet("channelPlaybackSpeeds", next).catch(e => console.error("Failed to set persistent setting 'channelPlaybackSpeeds'.", e));
+    };
+    const clearChannelPlaybackSpeed = (channelUrl: string) => {
+        const next = { ...channelPlaybackSpeeds$() };
+        delete next[channelUrl];
+        setChannelPlaybackSpeeds(next);
+        SettingsBackend.persistSet("channelPlaybackSpeeds", next).catch(e => console.error("Failed to set persistent setting 'channelPlaybackSpeeds'.", e));
+    };
 
     const repositionMinimize = () => {
         const vd = videoDimensions();
@@ -557,16 +772,66 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         return queueLength !== undefined && queueLength > 1 ? true : false;
     });
 
+    // Reset cancelled flag when the video changes
+    createEffect(on(() => video?.index(), () => {
+        setNextUpCancelled(false);
+        setPlayerPosition(0);
+    }));
+
+    const nextUpCountdownSeconds$ = createMemo(() => {
+        const idx: number = StateGlobal.settings$()?.object?.playback?.nextUpCountdown ?? 2;
+        return [0, 3, 5, 10, 15][idx] ?? 5;
+    });
+
+    const nextUpVideo$ = createMemo(() => {
+        const q = video?.queue();
+        const i = video?.index();
+        if (!q || i === undefined || i + 1 >= q.length) return undefined;
+        return q[i + 1];
+    });
+
+    const nextUpTimeLeft$ = createMemo(() => {
+        const dur = videoLoaded$()?.duration ?? currentVideo$()?.duration ?? 0;
+        const pos = playerPosition$();
+        if (dur <= 0) return Infinity;
+        return Math.max(0, dur - pos);
+    });
+
+    const showNextUp$ = createMemo(() => {
+        const countdown = nextUpCountdownSeconds$();
+        const state = video?.state();
+        return countdown > 0
+            && (state === VideoState.Maximized || state === VideoState.Fullscreen)
+            && !nextUpCancelled$()
+            && nextUpVideo$() !== undefined
+            && nextUpTimeLeft$() > 0
+            && nextUpTimeLeft$() <= countdown;
+    });
+
     const videoLoadedIsValid$ = createMemo(() => videoLoaded$()?.url === currentVideo$()?.url);
-    const recommendationsVisible$ = createMemo(() => videoLoadedIsValid$() && recomPager$.state == "ready" && recomPager$()?.data && recomPager$()?.data.length);   
+    const recommendationsVisible$ = createMemo(() => videoLoadedIsValid$() && recomPager$.state == "ready" && recomPager$()?.data && recomPager$()?.data.length);
+    const continueWatchingVisible$ = createMemo(() => StateGlobal.settings$()?.object?.playback?.continueWatchingEnabled && continueWatchingItems$().length > 0);
+    const recommendationsHorizontal$ = createMemo(() => !!StateGlobal.settings$()?.object?.playback?.recommendationsCarousel && mode() === VideoMode.Theatre);
+    const continueWatchingHorizontal$ = createMemo(() => !!StateGlobal.settings$()?.object?.playback?.continueWatchingCarousel && mode() === VideoMode.Theatre);
+    const queueHorizontal$ = createMemo(() => !!StateGlobal.settings$()?.object?.playback?.queueCarousel && mode() === VideoMode.Theatre);
+    const carouselsSideBySide$ = createMemo(() => !!StateGlobal.settings$()?.object?.playback?.carouselsSideBySide);
+    const verticalRecommendationsVisible$ = createMemo(() => !recommendationsHorizontal$() && recommendationsVisible$());
+    const verticalContinueWatchingVisible$ = createMemo(() => !continueWatchingHorizontal$() && continueWatchingVisible$());
+    const verticalQueueVisible$ = createMemo(() => !queueHorizontal$() && shouldShowQueue());
     const hasLiveChat$ = createMemo(() => {
         return videoLoaded$()?.isLive === true || videoLoaded$()?.isVOD === true;
     });
     const shouldHideSideBar = createMemo(() => {
-        //TODO: Expand these conditions
-        const sideBarVisible = shouldShowQueue() || hasLiveChat$() || recommendationsVisible$();
+        const sideBarVisible = verticalQueueVisible$() || hasLiveChat$() || verticalRecommendationsVisible$() || verticalContinueWatchingVisible$();
         return !sideBarVisible || dimensions().width < 1400;
     });
+    const showHorizontalRecommendations$ = createMemo(() => recommendationsVisible$() && (recommendationsHorizontal$() || shouldHideSideBar()));
+    const showHorizontalContinueWatching$ = createMemo(() => continueWatchingVisible$() && (continueWatchingHorizontal$() || shouldHideSideBar()));
+    const showHorizontalQueue$ = createMemo(() => shouldShowQueue() && queueHorizontal$());
+    const showVerticalRecommendations$ = createMemo(() => recommendationsVisible$() && !recommendationsHorizontal$() && !shouldHideSideBar());
+    const showVerticalContinueWatching$ = createMemo(() => continueWatchingVisible$() && !continueWatchingHorizontal$() && !shouldHideSideBar());
+    const showVerticalQueue$ = createMemo(() => shouldShowQueue() && !queueHorizontal$() && !shouldHideSideBar());
+    const anyHorizontalCarousel$ = createMemo(() => showHorizontalRecommendations$() || showHorizontalContinueWatching$() || showHorizontalQueue$());
 
     const mode = createMemo(() => isMinimized() ? VideoMode.Theatre : (video?.desiredMode() ?? VideoMode.Theatre));
     const eventMoved = new Event0();
@@ -633,10 +898,28 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         repositionMinimize();
     };
 
+    const handlePlayerKeyDown = (e: KeyboardEvent) => {
+        const target = e.target as HTMLElement | null;
+        const editable = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+        if (editable) return;
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        if (e.key === getKeybinding("theaterToggle")) {
+            video?.actions?.setDesiredMode(video?.desiredMode() === VideoMode.Theatre ? VideoMode.Standard : VideoMode.Theatre);
+            e.preventDefault();
+        } else if (e.key === getKeybinding("windowMaximize")) {
+            setWindowMaximized(v => !v);
+            e.preventDefault();
+        } else if (e.key === getKeybinding("closeVideo")) {
+            video?.actions?.closeVideo();
+            e.preventDefault();
+        }
+    };
+
     onMount(() => {
         LiveChatState.ensureLiveChatWebsocket();
         resizeObserver.observe(scrollContainerRef!);
         window.addEventListener('resize', handleWindowResize);
+        window.addEventListener('keydown', handlePlayerKeyDown);
         setDimensions({ width: scrollContainerRef!.clientWidth, height: scrollContainerRef!.clientHeight });
     });
 
@@ -644,6 +927,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         console.log("Cleaning up VideoDetailView")
         resizeObserver.unobserve(scrollContainerRef!);
         window.removeEventListener('resize', handleWindowResize);
+        window.removeEventListener('keydown', handlePlayerKeyDown);
         video?.actions.closeVideo();
         resizeObserver.disconnect();
     });
@@ -654,6 +938,32 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const url$ = createMemo(() => videoLoadedIsValid$() ? (videoLoaded$()?.url ?? currentVideo$()?.url) : currentVideo$()?.url);
     const shareUrl$ = createMemo(() => videoLoadedIsValid$() ? (videoLoaded$()?.shareUrl ?? videoLoaded$()?.url ?? currentVideo$()?.shareUrl ?? currentVideo$()?.url ?? "") : (currentVideo$()?.shareUrl ?? currentVideo$()?.url));
     const author$ = createMemo(() => videoLoadedIsValid$() ? (videoLoaded$()?.author ?? currentVideo$()?.author) : currentVideo$()?.author);
+
+    const [subscriptionMenu$, setSubscriptionMenu] = createSignal<{ menu: Menu, subscription?: ISubscription, subscriptionSettings?: ISubscriptionSettings }>({ menu: { title: "", items: [] } });
+    const [showSubscriptionMenu$, setShowSubscriptionMenu] = createSignal(false);
+    const subscriptionMenuAnchor = new Anchor(null, showSubscriptionMenu$, AnchorStyle.BottomRight);
+    const [subscription$, subscriptionResource] = createResourceDefault(() => author$()?.url, async (u) => await SubscriptionsBackend.subscription(u));
+
+    const openSubscriptionMenu = async (el: HTMLElement, subscription: ISubscription | undefined) => {
+        if (!subscription) return;
+        const sourceState = StateGlobal.getSourceState(subscription.channel.id.pluginID);
+        const [subscriptionSettings, groups] = await Promise.all([
+            SubscriptionsBackend.subscriptionSettings(subscription.channel.url),
+            SubscriptionsBackend.subscriptionGroups().catch(() => [] as ISubscriptionGroup[])
+        ]);
+        subscriptionMenuAnchor.setElement(el);
+        setSubscriptionMenu(Menus.getSubscriptionMenu(subscription, subscriptionSettings, sourceState, groups));
+        setShowSubscriptionMenu(true);
+    };
+
+    const closeSubscriptionMenu = () => {
+        const subscription = subscriptionMenu$().subscription;
+        if (!subscription) return;
+        const subscriptionSettings = subscriptionMenu$().subscriptionSettings;
+        if (!subscriptionSettings) return;
+        SubscriptionsBackend.updateSubscriptionSettings(subscription.channel.url, subscriptionSettings);
+        setShowSubscriptionMenu(false);
+    };
 
     const navigate = useNavigate();
     function onClickAuthor() {
@@ -698,6 +1008,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     }
 
     const [showSettings$, setShowSettings] = createSignal<boolean>(false);
+    const [showVideoContextMenu$, setShowVideoContextMenu] = createSignal<boolean>(false);
+    const [videoContextMenuPosition$, setVideoContextMenuPosition] = createSignal({ x: 0, y: 0 });
     const [anchor$, setAnchor] = createSignal<Anchor>();
     let lastHideSettingsTime = (new Date()).getTime();
     function onShowSettings() {
@@ -710,6 +1022,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             setShowSettings(false);
             lastHideSettingsTime = (new Date()).getTime();
         }
+    }
+    function onHideVideoContextMenu() {
+        setShowVideoContextMenu(false);
     }
     function setVideoPlayerContainerRef(el: HTMLDivElement) {
         setAnchor(new Anchor(el, showSettings$, AnchorStyle.BottomRight));
@@ -1125,25 +1440,30 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         ]
                     }
                 } as MenuItem : undefined,
-                {
-                    key: "Playback Speed",
-                    value: `${playbackSpeed$().toFixed(2)}x`,
-                    type: "group",
-                    subMenu: {
-                        title: "Playback Speed",
-                        items: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25].map(s => {
-                            return {
-                                name: `${s.toFixed(2)}x`,
-                                value: s,
-                                type: "option",
-                                onSelected: () => {
-                                    setPlaybackSpeed(s);
-                                },
-                                isSelected: playbackSpeed$() == s
-                            } as IMenuItemOption;
-                        })
-                    }
-                } as MenuItem
+                (() => {
+                    const channelUrl = videoLoaded$()?.author?.url;
+                    const channelOverride = channelUrl ? channelPlaybackSpeeds$()[channelUrl] : undefined;
+                    const items: MenuItem[] = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25].map(s => {
+                        return {
+                            name: `${s.toFixed(2)}x`,
+                            value: s,
+                            type: "option",
+                            onSelected: () => setPlaybackSpeed(s),
+                            isSelected: playbackSpeed$() == s,
+                            ...(channelUrl ? {
+                                trailingIcon: channelOverride === s ? iconPinnedFill : iconPinned,
+                                trailingActive: channelOverride === s,
+                                onTrailingClick: () => channelOverride === s ? clearChannelPlaybackSpeed(channelUrl) : setChannelPlaybackSpeed(channelUrl, s),
+                            } : {})
+                        } as IMenuItemOption;
+                    });
+                    return {
+                        key: "Playback Speed",
+                        value: `${playbackSpeed$().toFixed(2)}x`,
+                        type: "group",
+                        subMenu: { title: "Playback Speed", items }
+                    } as MenuItem;
+                })()
             ]
         } as Menu;
     });
@@ -1181,6 +1501,110 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         UIOverlay.overlayDownload(url$());
     }
 
+    function shareCurrentVideo() {
+        UIOverlay.overlayShare(shareUrl$());
+    }
+
+    function downloadCurrentVideo() {
+        download();
+    }
+
+    function addCurrentVideoToPlaylist() {
+        const loadedVideo = videoLoaded$();
+        if (!loadedVideo) return;
+        UIOverlay.overlayAddToPlaylist(loadedVideo, ()=>{});
+    }
+
+    // L'enqueue réussit tout de suite (job "queued") ; la génération réelle
+    // tourne dans un worker et peut échouer plus tard. On surveille le job de la
+    // vidéo courante et on remonte l'issue asynchrone à l'utilisateur.
+    let lastJobKey: string | undefined;
+    createEffect(() => {
+        const url = currentVideo$()?.url;
+        if (!url) return;
+        const job = jobFor(url);
+        if (!job) return;
+        const key = url + ":" + job.status;
+        if (key === lastJobKey) return;
+        lastJobKey = key;
+        if (job.status === "error")
+            UIOverlay.toast("Smart chapters failed: " + (job.error ?? "unknown error"));
+        else if (job.status === "done")
+            UIOverlay.toast("Smart chapters ready");
+    });
+
+    function indexCurrentVideo() {
+        const url = currentVideo$()?.url;
+        if (!url) return;
+        const launch = () => {
+            indexVideo(url)
+                .then(() => UIOverlay.toast("Smart chapters generation started…"))
+                .catch((e) => UIOverlay.toast("Generation failed: " + (e?.message ?? e)));
+        };
+        if (!hasGeneratorCommand()) {
+            UIOverlay.overlayTextPrompt(
+                "Configure smart chapters generator",
+                "External command that generates the smart highlights for a video. Use {url} for the video URL, {subtitles} to receive Grayjay's own subtitles (avoids re-scraping), and {language} for the chapter language chosen in Settings > Smart Analysis. Runs on your machine with its own dependencies.",
+                "e.g. python3 /path/to/generate_smart_chapters.py --url {url} {subtitles} {language} --overwrite",
+                "Save and run",
+                async (cmd) => {
+                    await setGeneratorCommand(cmd);
+                    launch();
+                }
+            );
+        } else {
+            launch();
+        }
+    }
+
+    function playSmartChapters() {
+        const highlights = videoHighlights$();
+        if (!highlights?.segments?.length) return;
+        void videoPlayerViewHandle$()?.playHighlights(highlights.segments);
+    }
+
+    function playThesisChapters(thesisId: number) {
+        const highlights = videoHighlights$();
+        if (!highlights?.segments?.length) return;
+        const filtered = highlights.segments.filter(s => s.thesisId === thesisId);
+        if (filtered.length === 0) return;
+        void videoPlayerViewHandle$()?.playHighlights(filtered);
+    }
+
+    function showVideoContextMenu(ev: MouseEvent) {
+        if (isMinimized()) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        setShowSettings(false);
+        const menuWidth = 344;
+        const itemCount = 2
+            + ((StateSync.devicesOnline$()?.length ?? 0) > 0 ? 1 : 0)
+            + (!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? 1 : 0);
+        const menuHeight = 56 + (itemCount * 50);
+        setVideoContextMenuPosition({
+            x: Math.max(0, Math.min(ev.clientX, window.innerWidth - menuWidth)),
+            y: Math.max(0, Math.min(ev.clientY, window.innerHeight - menuHeight))
+        });
+        setShowVideoContextMenu(true);
+    }
+
+    const videoContextMenu$ = createMemo<Menu>(() => ({
+        title: "Video",
+        items: [
+            ...((StateSync.devicesOnline$()?.length ?? 0) > 0 ? [
+                new MenuItemButton("Send To Device", ic_sync, undefined, showSendToDeviceOverlay)
+            ] : []),
+            new MenuItemButton("Share", share, undefined, shareCurrentVideo),
+            ...(!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? [
+                new MenuItemButton("Download", iconDownload, undefined, downloadCurrentVideo)
+            ] : []),
+            new MenuItemButton("Add to", add, undefined, addCurrentVideoToPlaylist),
+            ...(!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? [
+                new MenuItemButton("Generate smart chapters", ic_sync, undefined, indexCurrentVideo)
+            ] : [])
+        ]
+    }));
+
     const handleDescriptionClick = (ev: MouseEvent) => {
         setFullDescriptionVisible(!fullDescriptionVisible$());
         if (!fullDescriptionVisible$()) {
@@ -1197,9 +1621,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
           return;
         }
     
-        console.log(`Open URL: ${url}`);
-        // TODO: Check if should be opened within the app
-        await LocalBackend.open(url);
+        if (!await Globals.handleUrl(url, video!, navigate))
+          await LocalBackend.open(url);
       };
     
     const handleTimestampClick = (timestamp: string) => {
@@ -1324,6 +1747,52 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }));
     }
 
+    const [recMenuContent$, setRecMenuContent] = createSignal<IPlatformVideo>();
+    const [recMenuShow$, setRecMenuShow] = createSignal(false);
+    const recMenuAnchorRight = new Anchor(null, recMenuShow$, AnchorStyle.BottomRight);
+    const recMenuAnchorLeft = new Anchor(null, recMenuShow$, AnchorStyle.BottomLeft);
+    const [recMenuAnchor$, setRecMenuAnchor] = createSignal<Anchor>(recMenuAnchorRight);
+    const removeFromQueue = (c: IPlatformVideo) => {
+        const q = video?.queue();
+        const idx = q?.findIndex(x => x.url === c.url);
+        if (!video || !q || idx === undefined || idx < 0) return;
+        const cur = video.index() ?? 0;
+        video.actions.setQueue(cur > idx ? cur - 1 : cur, q.slice(0, idx).concat(q.slice(idx + 1)), video.repeat(), video.shuffle());
+    };
+    const recMenu$ = createMemo<Menu>(() => {
+        const c = recMenuContent$();
+        const inQueue = c ? (video?.queue()?.some(x => x.url === c.url) ?? false) : false;
+        const inContinueWatching = c ? continueWatchingItems$().some(x => x.url === c.url) : false;
+        return { title: "", items: c ? [
+            new MenuItemButton("Open channel", iconCreator, undefined, () => { if (c.author) { minimize(); navigate("/web/channel?url=" + encodeURIComponent(c.author.url), { state: { author: c.author } }); } }),
+            inQueue
+                ? new MenuItemButton("Remove from queue", iconQueue, undefined, () => removeFromQueue(c))
+                : new MenuItemButton("Add to queue", iconQueue, undefined, () => video?.actions.addToQueue(c)),
+            new MenuItemButton("Watch later", iconWatchLater, undefined, async () => { await WatchLaterBackend.add(c); await video?.actions?.refetchWatchLater(); }),
+            new MenuItemButton("Add to playlist", iconAddToPlaylist, undefined, () => UIOverlay.overlayAddToPlaylist(c)),
+            new MenuItemButton("Download video", iconDownload, undefined, () => UIOverlay.overlayDownload(c.url)),
+            ...(inContinueWatching && c.duration ? [
+                new MenuItemButton("Mark as watched", iconCheck, undefined, async () => {
+                    await DetailsBackend.watchProgress(c.url, c.duration);
+                    setMarkedAsWatched(prev => new Set([...prev, c.url]));
+                })
+            ] : []),
+            ...(inContinueWatching ? [
+                new MenuItemButton("Remove from history", iconTrash, undefined, async () => {
+                    await HistoryBackend.removeHistory(c.url);
+                    setMarkedAsWatched(prev => new Set([...prev, c.url]));
+                })
+            ] : []),
+        ] : [] };
+    });
+    const openRecMenu = (el: HTMLElement, c: IPlatformVideo) => {
+        const rect = el.getBoundingClientRect();
+        const menuWidth = 280;
+        const a = rect.right < menuWidth ? recMenuAnchorLeft : recMenuAnchorRight;
+        a.setElement(el);
+        batch(() => { setRecMenuAnchor(a); setRecMenuContent(c); setRecMenuShow(true); });
+    };
+
     const renderRecommendation = (item: Accessor<IPlatformVideo>) => {
         const bestThumbnail = createMemo(() => {
             const v = item();
@@ -1344,12 +1813,25 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             }} onClick={()=>{video?.actions.openVideo(item())}} use:focusable={{
                 onPress: () => video?.actions.openVideo(item())
             }}>
-                <img src={bestThumbnail()?.url} style="border-radius: 3px; height: 112px; width: 200px; cursor: pointer;" referrerPolicy='no-referrer' />
+                <div style="position: relative; flex-shrink: 0;">
+                    <img src={bestThumbnail()?.url} style="border-radius: 3px; height: 112px; width: 200px; cursor: pointer; display: block;" referrerPolicy='no-referrer' />
+                    <Show when={(item() as any)?.__fromSubscriptions === true}>
+                        <div class={styles.subscriptionBadge} title="De vos abonnements">◆ subs</div>
+                    </Show>
+                </div>
                 <div style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; cursor: pointer; margin-left: 10px;">
                     <div class={styles.recommendationItemTitle}>{item()?.name}</div>
                     <div class={styles.recommendationItemAuthor} style="margin-top: 6px">{item()?.author?.name}</div>
                     <div class={styles.recommendationItemAuthor} style="margin-top: 6px"><Show when={(item()?.viewCount ?? 0) > 0}>{toHumanNumber(item()?.viewCount)} views • </Show>{toHumanNowDiffString(item()?.dateTime)}</div>
                 </div>
+                <Show when={focus?.isControllerMode() !== true}>
+                    <div class={styles.recommendationItemActions} onClick={(e) => e.stopPropagation()}>
+                        <IconButton icon={iconQueue} iconPadding='3px' height={"22px"} width={"22px"}
+                            onClick={() => video?.actions.addToQueue(item())} />
+                        <IconButton icon={more_horiz}
+                            onClick={(e) => openRecMenu(e.currentTarget as HTMLElement, item())} />
+                    </div>
+                </Show>
             </div>
         );
     };
@@ -1462,7 +1944,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     <div style="height: 100%;" ref={videoContainer}>
                         <VideoPlayerView ref={setVideoPlayerContainerRef}
                             video={videoLoaded$()}
+                            minimized={isMinimized()}
                             chapters={((!isMinimized()) ? videoChapters$() : undefined) ?? undefined}
+                            smartChapterHighlights={videoHighlights$()}
                             eventMoved={eventMoved}
                             eventRestart={eventRestart}
                             resumePosition={resumePosition$()}
@@ -1501,7 +1985,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             sourceQuality={videoQuality$()}
                             onPlayerQualityChanged={(number)=>{setPlayerQuality(number)}}
                             onSettingsDialog={(ev) => onShowSettings()} 
-                            lockOverlay={showSettings$()} 
+                            lockOverlay={showSettings$() || showVideoContextMenu$()}
                             volume={video?.volume()}
                             playbackSpeed={playbackSpeed$()}
                             onVolumeChanged={(volume) => video?.actions?.setVolume?.(volume)}
@@ -1519,7 +2003,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     if (nextIndex === currentIndex) {
                                         eventRestart.invoke();
                                     } else {
-                                        video?.actions?.setIndex(nextIndex);
+                                        playFromQueue(nextIndex);
                                     }
                                 }
                             }}
@@ -1534,10 +2018,11 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     if (nextIndex === currentIndex) {
                                         eventRestart.invoke();
                                     } else {
-                                        video?.actions?.setIndex(nextIndex);
+                                        playFromQueue(nextIndex);
                                     }
                                 }
                             })}
+                            hasNextVideo={nextVideoIndex() !== undefined && nextVideoIndex() !== video?.index()}
                             onIncreasePlaybackSpeed={() => setPlaybackSpeed(Math.min(2.25, playbackSpeed$() + 0.25))}
                             onDecreasePlaybackSpeed={() => setPlaybackSpeed(Math.max(0.25, playbackSpeed$() - 0.25))}
                             onOpenSearch={() => {
@@ -1551,6 +2036,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 isScrubbing = scrubbing;
                             }}
                             onVerifyToggle={verifyToggle}
+                            onContextMenu={showVideoContextMenu}
                             buttons={
                                 <>
                                     <Show when={!isMinimized() && mode() === VideoMode.Theatre && focus.lastInputSource() === "pointer"}>
@@ -1569,11 +2055,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 }
                             }}
                             handleEscape={() => {
-                                /*if (video?.state() === VideoState.Maximized) {
-                                    minimize();
-                                } else if (video?.state() === VideoState.Minimized) {
-                                    close();
-                                }*/
+                                if (windowMaximized$()) setWindowMaximized(false);
                             }}
                             handleMinimize={() => {
                                 if (video?.state() === VideoState.Minimized) {
@@ -1606,6 +2088,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 </>
                             }
                             fullscreen={video?.state() === VideoState.Fullscreen}
+                            windowMaximized={windowMaximized$()}
                             focusable={true}
                             onOptions={() => {
                                 setShowSettings(true);
@@ -1623,10 +2106,112 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     menu={settingsDialogMenu$()}
                                     show={showSettings$() ?? false}
                                     onHide={onHideSettings} />
+                                <SettingsMenu
+                                    style={{
+                                        position: "fixed",
+                                        left: `${videoContextMenuPosition$().x}px`,
+                                        top: `${videoContextMenuPosition$().y}px`,
+                                        "z-index": 9999
+                                    }}
+                                    menu={videoContextMenu$()}
+                                    show={showVideoContextMenu$()}
+                                    onHide={onHideVideoContextMenu} />
                             </Show>
                         </VideoPlayerView>
                     </div>
                 </StickyShrinkOnScrollContainer>
+                <Show when={anyHorizontalCarousel$()}>
+                    <div
+                        class={styles.carouselsToggleBar}
+                        onClick={toggleCarouselsCollapsed}
+                        title={carouselsCollapsed$() ? "Show carousels" : "Hide carousels"}
+                        use:focusable={{ onPress: toggleCarouselsCollapsed }}
+                    >
+                        <img src={iconChevronDown} class={styles.carouselsToggleChevron} style={{ transform: carouselsCollapsed$() ? "rotate(-90deg)" : undefined }} />
+                    </div>
+                </Show>
+                <Show when={anyHorizontalCarousel$() && !carouselsCollapsed$()}>
+                    <div style={{
+                        display: "flex",
+                        "flex-direction": carouselsSideBySide$() ? "row" : "column",
+                        "flex-wrap": carouselsSideBySide$() ? "wrap" : undefined,
+                        gap: "16px",
+                        width: "100%"
+                    }}>
+                        <Show when={showHorizontalQueue$()}>
+                            <HorizontalCarousel
+                                title="Queue"
+                                onTitleClick={toggleCarouselsCollapsed}
+                                items={video?.queue() ?? []}
+                                currentIndex={video?.index()}
+                                flex={carouselsSideBySide$() ? `0 1 ${Math.min(video?.queue()?.length ?? 0, 6) * 166 + 80}px` : undefined}
+                                builder={(idx, item) => (
+                                    <div data-carousel-idx={idx()} style={{ position: "relative", "flex-shrink": 0, transition: "opacity 200ms ease, transform 200ms ease" }}>
+                                        <VideoThumbnailView
+                                            style={{"margin-bottom": "10px", "width": "166px", "box-sizing": "border-box", "padding-right": "12px", opacity: idx() === video?.index() ? 1 : 0.65 }}
+                                            imageStyle={{"height": "87px", "width": "154px"}}
+                                            video={item()}
+                                            onClick={() => {
+                                                const i = video?.queue()?.findIndex(x => x === item());
+                                                if (i !== undefined && i >= 0) playFromQueue(i);
+                                            }}
+                                            onAddtoQueue={(_, content) => video?.actions.addToQueue(content as IPlatformVideo)}
+                                            onSettings={(el, content) => openRecMenu(el, content as IPlatformVideo)}
+                                            hideAddToQueue={true}
+                                            settingsOnHover={true}
+                                        />
+                                        <Show when={idx() === video?.index()}>
+                                            <div style={{ position: "absolute", top: "30px", left: "65px", "pointer-events": "none", "font-size": "24px", color: "white", "text-shadow": "0 2px 6px rgba(0,0,0,0.6)" }}>▶</div>
+                                        </Show>
+                                    </div>
+                                )}
+                            />
+                        </Show>
+                        <Show when={showHorizontalContinueWatching$()}>
+                            <HorizontalCarousel
+                                title="Continue Watching"
+                                onTitleClick={toggleCarouselsCollapsed}
+                                items={continueWatchingItems$()}
+                                flex={carouselsSideBySide$() ? `0 1 ${Math.min(continueWatchingItems$()?.length ?? 0, 6) * 166 + 80}px` : undefined}
+                                builder={(_, item) => (
+                                    <VideoThumbnailView
+                                        style={{"margin-bottom": "10px", "width": "166px", "box-sizing": "border-box", "padding-right": "12px" }}
+                                        imageStyle={{"height": "87px", "width": "154px"}}
+                                        video={item()}
+                                        onClick={() => { video?.actions.openVideo(item()) }}
+                                        onAddtoQueue={(_, content) => video?.actions.addToQueue(content as IPlatformVideo)}
+                                        onSettings={(el, content) => openRecMenu(el, content as IPlatformVideo)}
+                                        focusableOpts={item() ? { onPress: () => video?.actions.openVideo(item()) } : undefined}
+                                        hideAddToQueue={true}
+                                        settingsOnHover={true}
+                                    />
+                                )}
+                            />
+                        </Show>
+                        <Show when={showHorizontalRecommendations$()}>
+                            <HorizontalCarousel
+                                title="Recommendations"
+                                onTitleClick={toggleCarouselsCollapsed}
+                                pager={recomPager$()}
+                                onScrollEnd={onScrollEndRecommendations}
+                                flex={carouselsSideBySide$() ? "1 0 412px" : undefined}
+                                builder={(_, item) => (
+                                    <VideoThumbnailView
+                                        style={{"margin-bottom": "10px", "width": "166px", "box-sizing": "border-box", "padding-right": "12px" }}
+                                        imageStyle={{"height": "87px", "width": "154px"}}
+                                        video={item()}
+                                        onClick={() => { video?.actions.openVideo(item()) }}
+                                        onAddtoQueue={(_, content) => video?.actions.addToQueue(content as IPlatformVideo)}
+                                        onSettings={(el, content) => openRecMenu(el, content as IPlatformVideo)}
+                                        focusableOpts={item() ? { onPress: () => video?.actions.openVideo(item()) } : undefined}
+                                        hideAddToQueue={true}
+                                        settingsOnHover={true}
+                                    />
+                                )}
+                            />
+                        </Show>
+                    </div>
+                </Show>
                 <div style={{
                     "padding-bottom": "10px",
                     display: "flex",
@@ -1650,16 +2235,21 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                             onPress: showSendToDeviceOverlay
                                         }} />
                                     </Show>
-                                    <PillButton icon={share} text="Share" onClick={() => { UIOverlay.overlayShare(shareUrl$()) }} focusableOpts={{
-                                        onPress: () => UIOverlay.overlayShare(shareUrl$())
+                                    <PillButton icon={share} text="Share" onClick={shareCurrentVideo} focusableOpts={{
+                                        onPress: shareCurrentVideo
                                     }} />
                                     <Show when={!videoLoaded$.loading && !(videoLoaded$()?.isLive === true)}>
-                                        <PillButton icon={iconDownload} text="Download" onClick={() => { download() }} focusableOpts={{
-                                            onPress: download
+                                        <PillButton icon={iconDownload} text="Download" onClick={downloadCurrentVideo} focusableOpts={{
+                                            onPress: downloadCurrentVideo
                                         }} />
                                     </Show>
-                                    <PillButton icon={add} text="Add to" onClick={() => { UIOverlay.overlayAddToPlaylist(videoLoaded$()!, ()=>{}) }} focusableOpts={{
-                                        onPress: () => UIOverlay.overlayAddToPlaylist(videoLoaded$()!, ()=>{})
+                                    <Show when={(videoHighlights$()?.segments?.length ?? 0) > 0}>
+                                        <PillButton icon={iconHighlights} text="Smart Chapters" onClick={playSmartChapters} focusableOpts={{
+                                            onPress: playSmartChapters
+                                        }} />
+                                    </Show>
+                                    <PillButton icon={add} text="Add to" onClick={addCurrentVideoToPlaylist} focusableOpts={{
+                                        onPress: addCurrentVideoToPlaylist
                                     }} />
                                 </div>
                             </div>
@@ -1680,7 +2270,17 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     </Show>
                                 </div>
 
-                                <SubscribeButton author={author$()?.url} style={{"margin-top": "29px"}} focusable={true} />
+                                <div style={{"display": "flex", "align-items": "center", "margin-top": "22px", "gap": "8px"}}>
+                                    <Show when={subscription$()}>
+                                        <TransparentIconButton
+                                            ref={moreSubscriptionElement}
+                                            icon={more}
+                                            style={{"width": "42px", "height": "42px"}}
+                                            onClick={(ev) => openSubscriptionMenu(ev.target as HTMLElement, subscription$()!)}
+                                        />
+                                    </Show>
+                                    <SubscribeButton author={author$()?.url} focusable={true} onIsSubscribedChanged={() => subscriptionResource.refetch()} />
+                                </div>
 
                                 <div style="flex-grow: 1;">
                                 </div>
@@ -1726,6 +2326,37 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 </div>
                             </div>
 
+                            <Show when={videoHighlights$()?.globalSummary || (videoHighlights$()?.theses?.length ?? 0) > 0}>
+                                <div class={styles.smartAnalysis}>
+                                    <div class={styles.smartAnalysisHeader}>
+                                        <img src={iconHighlights} class={styles.smartAnalysisIcon} alt="" />
+                                        <span>Smart Analysis</span>
+                                    </div>
+                                    <Show when={videoHighlights$()?.globalSummary}>
+                                        <p class={styles.smartAnalysisSummary}>{videoHighlights$()!.globalSummary}</p>
+                                    </Show>
+                                    <Show when={(videoHighlights$()?.theses?.length ?? 0) > 0}>
+                                        <div class={styles.smartAnalysisTheses}>
+                                            <For each={videoHighlights$()!.theses!}>{(thesis) => (
+                                                <div class={styles.smartAnalysisThesis}>
+                                                    <div class={styles.smartAnalysisThesisHeader}>
+                                                        <span class={styles.smartAnalysisThesisId}>Thesis {thesis.id}</span>
+                                                        <button
+                                                            class={styles.smartAnalysisThesisPlay}
+                                                            onClick={() => playThesisChapters(thesis.id)}
+                                                            title={`Play segments for thesis ${thesis.id}`}
+                                                        >
+                                                            ▶ Play
+                                                        </button>
+                                                    </div>
+                                                    <p class={styles.smartAnalysisThesisStatement}>{thesis.statement}</p>
+                                                </div>
+                                            )}</For>
+                                        </div>
+                                    </Show>
+                                </div>
+                            </Show>
+
                             <Show when={shouldHideSideBar() && shouldShowQueue()}>
                                 <PlaybackQueue index={video?.index() ?? 0}
                                     scrollContainerStyle={{
@@ -1741,7 +2372,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     }} onVideoClick={(v) => {
                                         const index = video?.queue()?.findIndex(x => x === v);
                                         if (index !== undefined) {
-                                            video?.actions?.setIndex(index);
+                                            playFromQueue(index);
                                         }
                                     }} onShuffleClick={() => {
                                         video?.actions?.setShuffle(!video?.shuffle());
@@ -1792,37 +2423,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 </Show>
                                 */
                             }
-
-                            <Show when={shouldHideSideBar() && recommendationsVisible$()}>
-                                <div style={{
-                                    "width": "calc(100% - 80px)",
-                                    "margin-right": "40px",
-                                    "margin-left": "40px",
-                                    "margin-top": "28px"
-                                }} class={styles.recommendations}>
-                                    <HorizontalScrollContainer ref={horizontalScrollRecommendContainerRef} subtle={true}>
-                                        <HorizontalFlexibleArrayList outerContainerRef={horizontalScrollRecommendContainerRef}
-                                            onEnd={onScrollEndRecommendations}
-                                            addedItems={recomPager$()?.addedItemsEvent}
-                                            modifiedItems={recomPager$()?.modifiedItemsEvent}
-                                            removedItems={recomPager$()?.removedItemsEvent}
-                                            items={recomPager$()?.data}
-                                            builder={(_, item) => {
-                                                return (
-                                                    <VideoThumbnailView 
-                                                        style={{"margin-bottom": "10px", "width": "236px", "box-sizing": "border-box", "padding-right": "16px" }}
-                                                        imageStyle={{"height": "124px", "width": "220px"}}
-                                                        video={item()}
-                                                        onClick={()=>{video?.actions.openVideo(item())}}
-                                                        focusableOpts={item() ? {
-                                                            onPress: () => video?.actions.openVideo(item())
-                                                        } : undefined}
-                                                    />
-                                                );
-                                            }} />
-                                    </HorizontalScrollContainer>
-                                </div>
-                            </Show>
 
                             <Switch>
                                 <Match when={!videoLoadedIsValid$() || commentsPager$.state !== "ready"}>
@@ -1911,7 +2511,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     "margin-top": "28px"
                                 } : {}
                             }}>
-                                <Show when={shouldShowQueue()}>
+                                <Show when={showVerticalQueue$()}>
                                     <PlaybackQueue index={video?.index() ?? 0}
                                         videos={video?.queue() ?? []}
                                         repeat={video?.repeat()}
@@ -1922,7 +2522,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                         }} onVideoClick={(v) => {
                                             const index = video?.queue()?.findIndex(x => x === v);
                                             if (index !== undefined) {
-                                                video?.actions?.setIndex(index);
+                                                playFromQueue(index);
                                             }
                                         }} onShuffleClick={() => {
                                             video?.actions?.setShuffle(!video?.shuffle());
@@ -1970,11 +2570,31 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 </Show>*/
                                 }
 
-                                <Show when={videoLoadedIsValid$() && recommendationsVisible$()}>
+                                <Show when={showVerticalContinueWatching$()}>
                                     <div style={{
                                         "margin-right": "20px",
                                         "width": "calc(100% - 20px)"
                                     }}>
+                                        <div class={styles.sideBarSectionTitle}>Continue Watching</div>
+                                        <div style={{
+                                            display: "flex",
+                                            gap: "8px",
+                                            "flex-direction": "column"
+                                        }}>
+                                            <For each={continueWatchingItems$()}>
+                                                {(item) => renderRecommendation(() => item as IPlatformVideo)}
+                                            </For>
+                                        </div>
+                                    </div>
+                                </Show>
+                                <Show when={showVerticalRecommendations$()}>
+                                    <div style={{
+                                        "margin-right": "20px",
+                                        "width": "calc(100% - 20px)"
+                                    }}>
+                                        <Show when={showVerticalContinueWatching$()}>
+                                            <div class={styles.sideBarSectionTitle}>Recommendations</div>
+                                        </Show>
                                         <FlexibleArrayList style={{
                                             display: "flex",
                                             gap: "8px",
@@ -2100,10 +2720,28 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     <SideBar alwaysMinimized={true} onNavigate={() => minimize()} style={{ "transition": "transform 0.3s ease-in-out" }} classList={{ [styles.sideBarHidden]: sideBarHidden$() }} onMoreOpened={() => setSideBarHidden(true)}></SideBar>
                 </div>
             </Show>
+            <Portal>
+                <SettingsMenu menu={subscriptionMenu$().menu} anchor={subscriptionMenuAnchor} show={showSubscriptionMenu$()} onHide={closeSubscriptionMenu} />
+            </Portal>
             <Show when={video?.state() === VideoState.Maximized}>
                 <div style={{"position": "absolute", "bottom": "8px", "right": repliesPager$() ? "12px" : "20px", "z-index": mode() === VideoMode.Theatre ? 2 : undefined}}>
                     <ControllerOverlay />
                 </div>
+            </Show>
+            <Portal>
+                <SettingsMenu menu={recMenu$()} show={recMenuShow$()} onHide={() => setRecMenuShow(false)} anchor={recMenuAnchor$()} />
+            </Portal>
+            <Show when={showNextUp$() && nextUpVideo$()}>
+                <NextUpOverlay
+                    visible={showNextUp$()}
+                    timeLeft={nextUpTimeLeft$()}
+                    nextVideo={nextUpVideo$()!}
+                    onCancel={() => setNextUpCancelled(true)}
+                    onPlayNow={() => {
+                        const i = video?.index();
+                        if (i !== undefined) video?.actions.consumeAndSetIndex(i + 1);
+                    }}
+                />
             </Show>
         </div>
     );

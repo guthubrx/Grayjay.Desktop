@@ -1,0 +1,255 @@
+.panel {
+    position: absolute;
+    /* S'arrête sous la croix de fermeture vidéo (haut) et au-dessus de la
+       seekbar + boutons du player (bas), pour ne pas les masquer. */
+    top: 54px;
+    right: 0;
+    bottom: 96px;
+    width: 300px;
+    /* background et font-size gérés via inline style depuis StateXRay */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-right: none;
+    border-radius: 10px 0 0 10px;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    z-index: 150;
+    pointer-events: none;
+}
+
+.panel.open {
+    transform: translateX(0);
+    pointer-events: all;
+}
+
+/* Drag handle — bord gauche du volet */
+.dragHandle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: ew-resize;
+    z-index: 10;
+}
+
+.dragHandle:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 10px 14px 6px 12px;
+    flex-shrink: 0;
+}
+
+.headerActions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pinButton {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.35);
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s;
+}
+
+.pinButton:hover {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.pinButton.pinned {
+    color: var(--primary, #019BE8);
+}
+
+.closeButton {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: color 0.15s;
+    line-height: 1;
+}
+
+.closeButton:hover {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 0 80px 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+}
+
+.section {
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.section:last-child {
+    border-bottom: none;
+}
+
+.summaryText {
+    font-size: 1em;
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.65);
+    margin: 0;
+}
+
+.theses {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.thesis {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.thesisId {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary, #019BE8);
+    color: #fff;
+    font-size: 0.85em;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+}
+
+.thesisStatement {
+    font-size: 1em;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, 0.70);
+}
+
+.chapters {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.chapterItem {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.chapterItem:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Le surlignage couvre toute la largeur jusqu'aux bords du volet (le -14px
+   compense le padding de .section). */
+.chapterActive {
+    background: rgba(255, 255, 255, 0.06) !important;
+    margin: 0 -14px;
+    padding: 7px 22px;
+}
+
+/* Bordure-jauge de la section en cours : sur le bord gauche du volet, coloree
+   selon l'importance, remplie de haut en bas au rythme de la lecture. */
+.activeBar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    pointer-events: none;
+}
+
+/* Couleurs des dots identiques à la barre de progression */
+.scoreDot {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-top: 5px;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.scoreTop {
+    background: #f4b83f;
+}
+
+.scoreStrong {
+    background: #e96b55;
+}
+
+.scoreContext {
+    background: #7fb08f;
+}
+
+.scoreFiller {
+    background: #019BE8;
+}
+
+.chapterTime {
+    flex-shrink: 0;
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 1px;
+    min-width: 34px;
+}
+
+.chapterInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.chapterTitle {
+    font-size: 1em;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.82);
+    line-height: 1.3;
+}
+
+.chapterSummary {
+    font-size: 0.92em;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.40);
+}

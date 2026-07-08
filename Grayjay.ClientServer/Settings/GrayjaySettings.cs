@@ -20,11 +20,12 @@ namespace Grayjay.ClientServer.Settings
         }
 
         //Home
+        [SettingsField("Home", "group", "Configure home page appearance", 1)]
         public HomeSettings Home { get; set; } = new HomeSettings();
         public class HomeSettings
         {
-            //[SettingsField("Preview Feed Items", SettingsField.TOGGLE, "When the preview feedstyle is used, if items should auto-preview when scrolling over them", 6)]
-            //public bool PreviewFeedItems { get; set; } = true;
+            [SettingsField("Highlights", SettingsField.TOGGLE, "Show hero banner and content carousels on the home page", 0)]
+            public bool NetflixStyleHome { get; set; } = true;
 
             public bool ProgressBar { get; set; } = true;
 
@@ -174,6 +175,10 @@ namespace Grayjay.ClientServer.Settings
                 };
             }
 
+            [SettingsField("Long Press Playback Speed", SettingsField.DROPDOWN, "Speed applied while holding the player", 2)]
+            [SettingsDropdownOptions("1.5", "2.0", "2.5", "3.0")]
+            public int LongPressPlaybackSpeed { get; set; } = 1;
+
             [SettingsField("Preferred Quality", SettingsField.DROPDOWN, "Default quality for watching a video", 2)]
             [SettingsDropdownOptions("Automatic (1080p)", "2160p", "1440p", "1080p", "720p", "480p", "360p", "240p", "144p")]
             public int PreferredQuality { get; set; } = 0;
@@ -181,6 +186,59 @@ namespace Grayjay.ClientServer.Settings
             {
                 int height = QualityIndexToHeight(PreferredQuality);
                 return (int)(height * (16 / (double)9)) * height;
+            }
+
+            [SettingsField("Horizontal Recommendations", SettingsField.TOGGLE, "Show recommendations below the player as a horizontal scrolling list instead of a vertical sidebar", 3)]
+            public bool RecommendationsCarousel { get; set; } = false;
+
+            [SettingsField("Show Continue Watching", SettingsField.TOGGLE, "Show a row of unfinished videos near the player", 4)]
+            public bool ContinueWatchingEnabled { get; set; } = false;
+
+            [SettingsField("Horizontal Continue Watching", SettingsField.TOGGLE, "Show continue watching as a horizontal carousel instead of a vertical sidebar list", 5)]
+            public bool ContinueWatchingCarousel { get; set; } = true;
+
+            [SettingsField("Horizontal Queue", SettingsField.TOGGLE, "Show the playback queue as a horizontal carousel below the player in theater mode", 6)]
+            public bool QueueCarousel { get; set; } = false;
+
+            [SettingsField("Side-by-side Carousels", SettingsField.TOGGLE, "When multiple carousels are horizontal, display them side by side instead of stacked", 7)]
+            public bool CarouselsSideBySide { get; set; } = false;
+
+            [SettingsField("Always show the seekbar", SettingsField.TOGGLE, "Keep the progress bar (with the Smart Chapters heatmap) visible even after the controls fade out", 10)]
+            public bool KeepProgressBarVisible { get; set; } = false;
+
+            [SettingsField("Seekbar drop (when alone)", SettingsField.DROPDOWN, "How much lower the seekbar sits when shown on its own", 11)]
+            [SettingsDropdownOptions("0px", "10px", "20px", "30px", "40px", "50px", "60px")]
+            public int SeekbarOffset { get; set; } = 0;
+
+            [SettingsField("Seekbar opacity (when alone)", SettingsField.DROPDOWN, "Transparency of the seekbar heatmap and handle when shown on its own", 12)]
+            [SettingsDropdownOptions("100%", "85%", "70%", "55%", "40%", "25%", "15%")]
+            public int SeekbarOpacity { get; set; } = 0;
+
+            [SettingsField("Persist Queue", SettingsField.TOGGLE, "Restore your playback queue between sessions", 8)]
+            public bool PersistQueue { get; set; } = true;
+
+            [SettingsField("Binge Watch Order", SettingsField.DROPDOWN, "Order in which channel videos are queued when starting a binge watch session", 9)]
+            [SettingsDropdownOptions("Newest first", "Oldest first")]
+            public int BingeWatchOrder { get; set; } = 0;
+
+            [SettingsField("Binge Watch Exclude Watched", SettingsField.TOGGLE, "Exclude videos you have already watched when starting a binge watch session", 10)]
+            public bool BingeWatchExcludeWatched { get; set; } = true;
+
+            [SettingsField("Next Up Countdown", SettingsField.DROPDOWN, "Seconds before automatically playing the next video in the queue. Set to Off to disable the next-up overlay.", 11)]
+            [SettingsDropdownOptions("Off", "3 seconds", "5 seconds", "10 seconds", "15 seconds")]
+            public int NextUpCountdown { get; set; } = 2;
+
+            public int GetNextUpCountdownSeconds()
+            {
+                return NextUpCountdown switch
+                {
+                    0 => 0,
+                    1 => 3,
+                    2 => 5,
+                    3 => 10,
+                    4 => 15,
+                    _ => 5
+                };
             }
 
 
@@ -390,6 +448,50 @@ namespace Grayjay.ClientServer.Settings
                 default: return 1;
             }
         }
+
+        [SettingsField("Smart Analysis", "group", "Configure the Smart Analysis side panel", 10)]
+        public XRayPanelSettings XrayPanel { get; set; } = new XRayPanelSettings();
+        public class XRayPanelSettings
+        {
+            [SettingsField("Background opacity", SettingsField.DROPDOWN, "Transparency of the panel background", 0)]
+            [SettingsDropdownOptions("30%", "45%", "55%", "68%", "80%", "92%")]
+            public int Opacity { get; set; } = 3;
+
+            [SettingsField("Font size", SettingsField.DROPDOWN, "Text size inside the panel", 1)]
+            [SettingsDropdownOptions("5px", "6px", "7px", "8px", "9px", "10px", "11px", "12px", "13px", "14px", "15px", "16px", "17px", "18px", "19px", "20px", "21px", "22px", "23px", "24px", "25px", "26px", "27px", "28px", "29px", "30px")]
+            public int FontSize { get; set; } = 9;
+
+            [SettingsField("Max theses shown", SettingsField.DROPDOWN, "Number of main theses displayed (All = no limit)", 2)]
+            [SettingsDropdownOptions("All", "1", "2", "3", "4", "5")]
+            public int MaxTheses { get; set; } = 0;
+
+            [SettingsField("Global summary length", SettingsField.DROPDOWN, "Max characters shown in the global summary", 3)]
+            [SettingsDropdownOptions("All", "100", "200", "350", "500")]
+            public int GlobalSummaryChars { get; set; } = 0;
+
+            [SettingsField("Chapter summary length", SettingsField.DROPDOWN, "Max characters shown per chapter summary", 4)]
+            [SettingsDropdownOptions("All", "80", "150", "250", "400")]
+            public int ChapterSummaryChars { get; set; } = 2;
+
+            [SettingsField("Generation language", SettingsField.DROPDOWN, "Language of generated chapter titles and summaries. Auto uses the video's language.", 5)]
+            [SettingsDropdownOptions("Auto (video language)", "Français", "English", "Español", "Deutsch", "Italiano", "Português", "Nederlands")]
+            public int GenerationLanguage { get; set; } = 0;
+
+            // Nom (en anglais, compris du LLM) de la langue de sortie choisie, ou
+            // null pour "Auto" (le générateur garde alors la langue de la vidéo).
+            public string? GenerationLanguageName() => GenerationLanguage switch
+            {
+                1 => "French",
+                2 => "English",
+                3 => "Spanish",
+                4 => "German",
+                5 => "Italian",
+                6 => "Portuguese",
+                7 => "Dutch",
+                _ => null,
+            };
+        }
+
     }
 
 }

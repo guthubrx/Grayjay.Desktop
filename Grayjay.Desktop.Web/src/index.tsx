@@ -4,11 +4,12 @@ import { render } from 'solid-js/web';
 import './index.css';
 import { Router, Route, RouteSectionProps, useNavigate, Navigator } from '@solidjs/router';
 import SideBar from './components/menus/SideBar';
-import { Component, Show, children, createSignal, lazy, onCleanup, onMount } from 'solid-js';
+import { Component, Match, Show, Switch, children, createSignal, lazy, onCleanup, onMount } from 'solid-js';
 import VideoDetailView from './components/contentDetails/VideoDetailView';
 import { VideoContextValue, VideoProvider, VideoState, useVideo } from './contexts/VideoProvider';
 import SourcesPage from './pages/Sources';
 import ChannelPage from './pages/Channel';
+import { homeStyle$ } from './state/HomeStyleState';
 import SearchPage from './pages/Search';
 import StateGlobal from './state/StateGlobal';
 import DownloadsPage from './pages/Downloads';
@@ -21,6 +22,7 @@ import WatchLaterPage from './pages/WatchLater';
 import RemotePlaylistPage from './pages/RemotePlaylist';
 import SyncPage from './pages/Sync';
 import Globals from './globals';
+import { WindowBackend } from './backend/WindowBackend';
 import PostDetailView from './components/contentDetails/PostDetailsView';
 import StateWebsocket from './state/StateWebsocket';
 import GlobalContextMenu from './components/GlobalContextMenu';
@@ -28,9 +30,12 @@ import BuyPage from './pages/BuyPage';
 import LoaderGameExamplePage from './pages/LoaderGameExamplePage';
 import { FocusProvider } from './FocusProvider';
 import { focusScope } from './focusScope';import ControllerOverlay from './components/ControllerOverlay';
+import ShortcutsOverlay from './components/ShortcutsOverlay';
+import { getKeybinding } from './state/StateKeybindings';
  void focusScope;
 
 const HomePage = lazy(() => import('./pages/Home'));
+const HomeClassicPage = lazy(() => import('./pages/HomeClassic'));
 const SubscriptionsPage = lazy(() => import('./pages/Subscriptions'));
 const CreatorsPage = lazy(() => import('./pages/Creators'));
 const PlaylistsPage = lazy(() => import('./pages/Playlists'));
@@ -50,6 +55,39 @@ root?.addEventListener("click", function(event) {
   StateGlobal.onGlobalClick?.invoke(event);
 });
 
+const HomeRouter: Component<RouteSectionProps> = () => (
+    <Switch>
+        <Match when={homeStyle$() === 'classic'}><HomeClassicPage /></Match>
+        <Match when={homeStyle$() !== 'classic'}><HomePage /></Match>
+    </Switch>
+);
+
+// Cmd/Ctrl+click flag lives briefly so the next navigation can consume it.
+const CMD_CLICK_FLAG_RESET_MS = 50;
+// Small delay so the new window finishes mounting before we dispatch the nav.
+const NEW_WINDOW_NAV_DELAY_MS = 200;
+
+let cmdClickResetTimeout: ReturnType<typeof setTimeout> | undefined;
+document.addEventListener('click', (e) => {
+  const pressed = e.metaKey || e.ctrlKey;
+  WindowBackend.markCmdClick(pressed);
+  if (cmdClickResetTimeout !== undefined) clearTimeout(cmdClickResetTimeout);
+  if (pressed)
+    cmdClickResetTimeout = setTimeout(() => WindowBackend.markCmdClick(false), CMD_CLICK_FLAG_RESET_MS);
+}, true);
+
+// Router navigations go through history.pushState; we intercept it so a
+// Cmd/Ctrl+click followed by navigate() opens in a new window instead.
+const _origPushState = history.pushState.bind(history);
+history.pushState = function(state: any, title: string, url?: string | URL | null) {
+  if (WindowBackend.consumeCmdClick() && url) {
+    WindowBackend.openInNewWindow({ route: url.toString() })
+      .catch(e => console.warn("Failed to open route in new window", e));
+    return;
+  }
+  return _origPushState(state, title, url);
+};
+
 var navigate: Navigator | undefined = undefined;
 var video: VideoContextValue | undefined = undefined;
 
@@ -63,6 +101,20 @@ StateWebsocket.registerHandlerNew("OpenUrl", (packet)=>{
 
 const App: Component<RouteSectionProps> = (props) => {
   const [isDropping$, setIsDropping] = createSignal<boolean>();
+  const [showShortcuts$, setShowShortcuts] = createSignal(false);
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    const editable = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+    if (editable) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === getKeybinding("showShortcuts")) {
+      setShowShortcuts(s => !s);
+      e.preventDefault();
+    }
+  };
+  onMount(() => window.addEventListener("keydown", onKeyDown));
+  onCleanup(() => window.removeEventListener("keydown", onKeyDown));
 
   function dragOver(ev: any){
     setIsDropping(true);
@@ -96,6 +148,25 @@ const App: Component<RouteSectionProps> = (props) => {
   const renderContent = () => {
     navigate = useNavigate();
     video = useVideo();
+
+    // New window started by Cmd/Ctrl+click reads the intent left by the parent.
+    try {
+      const intent = WindowBackend.consumeNavIntent();
+      const navigateNow = navigate;
+      const videoNow = video;
+      if (intent && navigateNow) {
+        if (intent.route) {
+          const route = intent.route;
+          setTimeout(() => navigateNow(route), NEW_WINDOW_NAV_DELAY_MS);
+        } else if (intent.url && videoNow) {
+          const url = intent.url;
+          setTimeout(() => Globals.handleUrl(url, videoNow, navigateNow), NEW_WINDOW_NAV_DELAY_MS);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to restore new-window navigation intent", e);
+    }
+
 
     function dragDrop(ev: any){
       ev.stopPropagation();
@@ -137,6 +208,7 @@ const App: Component<RouteSectionProps> = (props) => {
         </div>
       </Show>
       <GlobalContextMenu />
+      <ShortcutsOverlay show={showShortcuts$()} onClose={() => setShowShortcuts(false)} />
       <div style="position: absolute; bottom: 8px; right: 20px; z-index: 5;">
         <ControllerOverlay />
       </div>
@@ -154,9 +226,10 @@ const App: Component<RouteSectionProps> = (props) => {
 
 render(() => (
   <Router root={App}>
-    <Route path="/web/index.html" component={HomePage} />
-    <Route path="/web" component={HomePage} />
-    <Route path="/web/home" component={HomePage} />
+    <Route path="/web/index.html" component={HomeRouter} />
+    <Route path="/web" component={HomeRouter} />
+    <Route path="/web/home" component={HomeRouter} />
+    <Route path="/web/discover" component={HomePage} />
     <Route path="/web/search" component={SearchPage} />
     <Route path="/web/subscriptions" component={SubscriptionsPage} />
     <Route path="/web/creators" component={CreatorsPage} />

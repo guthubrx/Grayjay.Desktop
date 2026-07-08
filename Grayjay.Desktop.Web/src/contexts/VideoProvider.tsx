@@ -1,11 +1,16 @@
-import { createContext, useContext, JSX, ParentComponent, createSignal, Accessor, batch, createMemo, onMount } from "solid-js";
+import { createContext, useContext, JSX, ParentComponent, createSignal, Accessor, batch, createMemo, createEffect, onMount } from "solid-js";
+import StateGlobal from "../state/StateGlobal";
 import { range, shuffleArray } from "../utility";
 import { IOrderedPlatformVideo, WatchLaterBackend } from "../backend/WatchLaterBackend";
 import { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
+import { IPlatformContent } from "../backend/models/content/IPlatformContent";
+import { ContentType } from "../backend/models/ContentType";
 import { Duration } from "luxon";
 import { SettingsBackend } from "../backend/SettingsBackend";
 import StateWebsocket from "../state/StateWebsocket";
 import { DetailsBackend } from "../backend/DetailsBackend";
+import { Pager } from "../backend/models/pagers/Pager";
+import { WindowBackend } from "../backend/WindowBackend";
 
 export enum VideoState {
     Closed = 0,
@@ -37,6 +42,7 @@ export interface VideoContextValue {
     desiredMode: Accessor<VideoMode>;
     theatrePinned: Accessor<boolean>;
     volume: Accessor<number>;
+    bingeChannelUrl: Accessor<string | undefined>;
     //queueType watch later, playlist en queue of undefined
     actions: {
         openVideo: (video: IPlatformVideo, time?: Duration, videoState?: VideoState) => void;
@@ -44,6 +50,7 @@ export interface VideoContextValue {
         setQueue: (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState) => void;
         addToQueue: (v: IPlatformVideo) => void;
         setIndex: (index: number) => void;
+        consumeAndSetIndex: (index: number) => void;
         setRepeat: (value: boolean) => void;
         setShuffle: (value: boolean) => void;
         closeVideo: () => void;
@@ -53,6 +60,8 @@ export interface VideoContextValue {
         setTheatrePinned: (pinned: boolean) => void;
         setVolume: (volume: number) => void;
         setStartTime: (startTime: Duration | undefined) => void;
+        startBinge: (channelUrl: string, videos: IPlatformVideo[], pager: Pager<IPlatformContent>) => void;
+        stopBinge: () => void;
     }
 };
 
@@ -71,6 +80,10 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     const [desiredMode, setDesiredModeInternal] = createSignal<VideoMode>(VideoMode.Theatre);
     const [theatrePinned, setTheatrePinnedInternal] = createSignal<boolean>(true);
     const [volume, setVolumeInternal] = createSignal<number>(1);
+    const [bingePager, setBingePager] = createSignal<Pager<IPlatformContent> | undefined>();
+    const [bingeChannelUrl, setBingeChannelUrl] = createSignal<string | undefined>();
+    const [bingeLoading, setBingeLoading] = createSignal<boolean>(false);
+    let bingePagerConsumed = 0;
     const video = createMemo(() => {
         const q = queue();
         const i = index();
@@ -81,7 +94,12 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         return q[i];
     })
 
-    const openVideo = (v: IPlatformVideo, time?: Duration, videoState?: VideoState) => { 
+    const openVideo = (v: IPlatformVideo, time?: Duration, videoState?: VideoState) => {
+        if (WindowBackend.consumeCmdClick() && v.url) {
+            WindowBackend.openInNewWindow({ url: v.url })
+                .catch(e => console.warn("Failed to open video in new window", e));
+            return;
+        }
         const desiredVideoState = videoState ?? VideoState.Maximized;
         batch(() => {
             setIndex(0);
@@ -91,7 +109,12 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
                 setState(desiredVideoState);
         });
     };
-    const openVideoByUrl = async (url: string, time?: Duration, videoState?: VideoState) => { 
+    const openVideoByUrl = async (url: string, time?: Duration, videoState?: VideoState) => {
+        if (WindowBackend.consumeCmdClick() && url) {
+            WindowBackend.openInNewWindow({ url })
+                .catch(e => console.warn("Failed to open video in new window", e));
+            return;
+        }
         const desiredVideoState = videoState ?? VideoState.Maximized;
         if (state() !== desiredVideoState)
             setState(desiredVideoState);
@@ -130,20 +153,81 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
 
         setQueue([ ... (queue() ?? []), video ]);
     };
+    const consumeAndSetIndex = (targetIndex: number) => {
+        const currentIndex = index();
+        const currentQueue = queue();
+        if (currentIndex === undefined || !currentQueue || targetIndex === currentIndex) return;
+        const newQueue = currentQueue.filter((_, i) => i !== currentIndex);
+        const newIndex = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
+        batch(() => {
+            setQueue(newQueue);
+            setIndex(Math.max(0, Math.min(newIndex, newQueue.length - 1)));
+            setStartTime(undefined);
+        });
+    };
+
+    const stopBinge = () => {
+        batch(() => {
+            setBingeChannelUrl(undefined);
+            setBingePager(undefined);
+        });
+        bingePagerConsumed = 0;
+    };
+
+    const startBinge = (channelUrl: string, videos: IPlatformVideo[], pager: Pager<IPlatformContent>) => {
+        if (videos.length === 0) return;
+        bingePagerConsumed = pager.data.length;
+        batch(() => {
+            setBingeChannelUrl(channelUrl);
+            setBingePager(pager);
+            sq(0, videos);
+        });
+    };
+
+    // Auto-extend the queue when fewer than 5 videos remain ahead in a binge session.
+    // Tracks consumed pager offset separately from queue length so non-video items (posts,
+    // playlists) filtered out of the queue do not corrupt subsequent slice boundaries.
+    createEffect(() => {
+        const q = queue();
+        const i = index();
+        const pager = bingePager();
+        if (!q || i === undefined || !pager || bingeLoading()) return;
+        if (q.length - 1 - i >= 5) return;
+        if (!pager.hasMore) return;
+        setBingeLoading(true);
+        const beforeLength = pager.data.length;
+        pager.nextPage()
+            .then(() => {
+                // The user may have closed the video or started a different binge while the
+                // page was loading. In both cases the captured pager is no longer current.
+                if (bingePager() !== pager || queue() === undefined) return;
+                const newItems = (pager.data as IPlatformContent[]).slice(bingePagerConsumed);
+                bingePagerConsumed = pager.data.length;
+                if (pager.data.length === beforeLength) return;
+                const videos = newItems.filter((v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA);
+                if (videos.length > 0) {
+                    setQueue([...(queue() ?? []), ...videos]);
+                }
+            })
+            .catch(() => {})
+            .finally(() => setBingeLoading(false));
+    });
+
+
     const closeVideo = () => {
         batch(()=>{
-            console.log("Closing video");
             setIndex(undefined);
             setQueue(undefined);
             setStartTime(undefined);
             setState(VideoState.Closed);
+            setBingeChannelUrl(undefined);
+            setBingePager(undefined);
         });
     };
 
     const refetchWatchLater = async () => {
         const videos = await WatchLaterBackend.getAll();
         setWatchLater(videos);
-        console.log("set watch later", videos);
     }
     const [watchLater, setWatchLater] = createSignal<IOrderedPlatformVideo[]>();
     onMount(async () => {
@@ -166,7 +250,6 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     };
 
     StateWebsocket.registerHandlerNew("WatchLaterChanged", (packet)=>{
-        console.log("WatchLater changed");
         refetchWatchLater();
     }, "videoProvider");
     
@@ -182,6 +265,7 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         desiredMode,
         theatrePinned,
         volume,
+        bingeChannelUrl,
         actions: {
             setIndex: (i: number) => {
                 batch(() => {
@@ -189,13 +273,13 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
                     setStartTime(undefined);
                 });
             },
+            consumeAndSetIndex,
             openVideo,
             openVideoByUrl,
             setQueue: sq,
             closeVideo,
             addToQueue,
             setState: (videoState: VideoState) => {
-                console.info("VIDEO STATE CHANGED", videoState);
                 setState(videoState);
             },
             setRepeat,
@@ -204,13 +288,36 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             setTheatrePinned,
             setVolume,
             refetchWatchLater,
-            setStartTime
+            setStartTime,
+            startBinge,
+            stopBinge
         }
     };
 
     SettingsBackend.persistGet("desiredMode", VideoMode.Theatre).then((r: VideoMode) => setDesiredModeInternal(r)).catch(e => console.error("Failed to get persistent setting 'desiredMode'.", e));
     SettingsBackend.persistGet("theatrePinned", true).then((r: boolean) => setTheatrePinnedInternal(r)).catch(e => console.error("Failed to get persistent setting 'theatrePinned'.", e));
     SettingsBackend.persistGet("volume", 1).then((r: number) => setVolumeInternal(r)).catch(e => console.error("Failed to get persistent setting 'volume'.", e));
+
+    SettingsBackend.persistGet("playQueue", null).then((r: any) => {
+        if (StateGlobal.settings$()?.object?.playback?.persistQueue === false) return;
+        if (!r || !Array.isArray(r.queue) || r.queue.length === 0) return;
+        batch(() => {
+            setQueue(r.queue);
+            setIndex(typeof r.index === 'number' ? r.index : 0);
+            if (typeof r.repeat === 'boolean') setRepeat(r.repeat);
+            if (typeof r.shuffle === 'boolean') setShuffle(r.shuffle);
+        });
+    }).catch(e => console.error("Failed to get persistent setting 'playQueue'.", e));
+
+    createEffect(() => {
+        const q = queue();
+        const i = index();
+        const r = repeat();
+        const s = shuffle();
+        if (StateGlobal.settings$()?.object?.playback?.persistQueue === false) return;
+        const payload = (q && q.length > 0) ? { queue: q, index: i, repeat: r, shuffle: s } : null;
+        SettingsBackend.persistSet("playQueue", payload).catch(e => console.warn("Failed to persist playQueue", e));
+    });
 
     return (
         <VideoContext.Provider value={value}>

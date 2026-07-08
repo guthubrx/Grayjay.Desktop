@@ -358,11 +358,10 @@ const DownloadsPage: Component = () => {
                   groupId: 'downloads',
                   groupType: 'grid',
                   groupIndices: [row(), col()],
-                  onPress: () => {
-                    
+                  onPress: (_, inputSource) => {
                     const videoDetails = item()?.videoDetails;
                     if(videoDetails) {
-                      video?.actions.openVideo(videoDetails, undefined, VideoState.Fullscreen);
+                      video?.actions.openVideo(videoDetails, undefined, inputSource === "gamepad" ? VideoState.Fullscreen : undefined);
                     }
                   },
                   onOptions: (el, inputSource) => onSettingsClicked(el, item(), inputSource)

@@ -1,0 +1,476 @@
+.banner {
+    position: relative;
+    width: 100%;
+    height: 420px;
+    overflow: hidden;
+    background: #111;
+    flex-shrink: 0;
+}
+
+/* Full-width blurred background */
+.blurredBg {
+    position: absolute;
+    inset: -20px;
+    background-size: cover;
+    background-position: center;
+    filter: blur(28px) brightness(0.35);
+    transition: background-image 0s, opacity 0.4s ease;
+}
+
+/* Bottom gradient fade into page background */
+.gradient {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 160px;
+    background: linear-gradient(to bottom, transparent, rgba(18, 18, 18, 0.85) 60%, rgba(18, 18, 18, 1) 100%);
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Top gradient — miroir atténué pour équilibrer visuellement le centre */
+.gradientTop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100px;
+    background: linear-gradient(to bottom, rgba(18, 18, 18, 0.55) 0%, transparent 100%);
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Centered content container */
+.inner {
+    position: relative;
+    z-index: 2;
+    max-width: 1100px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 36px;
+    padding: 0 56px;
+    transition: opacity 0.4s ease;
+}
+
+.innerFading {
+    opacity: 0;
+}
+
+/* Sharp thumbnail — wider */
+.thumbnail {
+    height: 300px;
+    width: auto;
+    max-width: min(534px, 50%);
+    object-fit: cover;
+    border-radius: 8px;
+    flex-shrink: 1;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+}
+
+.meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 8px 0;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.channelRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 20px 0;
+}
+
+.channelAvatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+
+.channel {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Action row: Play + Watch Later + Info + Dismiss */
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.playButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #111111;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.playButton:hover { background: #ffffff; }
+
+.infoButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    background: transparent;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    font-style: italic;
+    font-family: Georgia, serif;
+}
+
+.infoButton:hover {
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Shared icon button (watch later, etc.) */
+.iconButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    background: transparent;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    padding: 0;
+}
+
+.iconButton img {
+    width: 18px;
+    height: 18px;
+    opacity: 0.85;
+}
+
+.iconButton:hover {
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.iconButtonActive {
+    border-color: #ffffff;
+    background: #ffffff;
+}
+
+.iconButtonActive img {
+    filter: brightness(0);
+    opacity: 1;
+}
+
+/* Dismiss button — slightly distinct */
+.dismissButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    background: transparent;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    padding: 0;
+    margin-left: 4px;
+}
+
+.dismissButton img {
+    width: 18px;
+    height: 18px;
+    opacity: 0.6;
+}
+
+.dismissButton:hover {
+    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 0, 0, 0.15);
+}
+
+.dismissButton:hover img {
+    opacity: 1;
+}
+
+/* Inline dismiss feedback */
+.dismissMessage {
+    margin: 12px 0 0 0;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.65);
+    animation: fadeInMessage 0.2s ease;
+}
+
+.dismissLink {
+    text-decoration: underline;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.85);
+    transition: color 0.15s ease;
+}
+
+.dismissLink:hover {
+    color: #ffffff;
+}
+
+@keyframes fadeInMessage {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Navigation arrows */
+.arrowLeft,
+.arrowRight {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+    background: rgba(0, 0, 0, 0.5);
+    color: #ffffff;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
+}
+
+.arrowLeft { left: 12px; }
+.arrowRight { right: 12px; }
+.arrowLeft:hover, .arrowRight:hover { background: rgba(0, 0, 0, 0.75); }
+
+/* Dots */
+.dots {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.dot,
+.dotActive {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.dot { background: rgba(255, 255, 255, 0.35); }
+.dotActive { background: #ffffff; transform: scale(1.3); }
+
+/* Info overlay backdrop */
+.overlayBackdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(6px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Info card */
+.overlayCard {
+    background: #1a1a1a;
+    border-radius: 12px;
+    width: 760px;
+    max-width: 90vw;
+    max-height: 85vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8);
+}
+
+.overlayThumbnail {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 12px 12px 0 0;
+    display: block;
+}
+
+.overlayBody {
+    padding: 24px;
+}
+
+.overlayTitle {
+    font-size: 20px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 6px 0;
+}
+
+.overlayChannel {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.55);
+    margin: 0 0 16px 0;
+}
+
+.overlayMeta {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 20px;
+}
+
+/* Overlay action row: Play + Watch Later */
+.overlayActions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.overlayPlayButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #111;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.overlayPlayButton:hover { background: #ffffff; }
+
+.overlayClose {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    border: none;
+    color: #ffffff;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.overlayClose:hover { background: rgba(0, 0, 0, 0.85); }
+
+.overlayDescription {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.6;
+    margin-bottom: 20px;
+    white-space: pre-line;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.overlayDescriptionExpanded {
+    -webkit-line-clamp: unset;
+    overflow: visible;
+}
+
+.overlayDescriptionToggle {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 20px;
+    text-decoration: underline;
+}
+
+.overlayLoading {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 16px;
+}
+
+.overlayChannelVideos {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+}
+
+.overlayChannelVideos::-webkit-scrollbar { display: none; }
+
+.overlaySectionTitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+    .banner { height: 360px; }
+    .inner { padding: 0 32px; gap: 24px; }
+    .thumbnail { height: 240px; max-width: 427px; }
+    .title { font-size: 19px; }
+    .playButton { padding: 9px 18px; font-size: 14px; }
+}
+
+@media (max-width: 800px) {
+    .banner { height: 300px; }
+    .inner { padding: 0 20px; gap: 16px; }
+    .thumbnail { height: 180px; max-width: 320px; }
+    .title { font-size: 16px; }
+    .playButton { padding: 8px 14px; font-size: 13px; }
+}
+
+@media (max-width: 600px) {
+    .banner { height: 260px; }
+    .inner { padding: 0 16px; }
+    .thumbnail { display: none; }
+    .title { font-size: 15px; -webkit-line-clamp: 2; }
+}

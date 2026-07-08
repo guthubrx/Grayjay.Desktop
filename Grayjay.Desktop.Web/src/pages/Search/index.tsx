@@ -22,6 +22,32 @@ import StateGlobal from '../../state/StateGlobal';
 import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from "../../focusable"; void focusable;
 import { createResourceDefault } from '../../utility';
+import { IPlatformContent } from '../../backend/models/content/IPlatformContent';
+
+type SortEntry = { field: string; dir: 'asc' | 'desc' };
+
+const SORT_OPTIONS = [
+  { text: "Date",     value: "date",     defaultDir: 'desc' as const },
+  { text: "Views",    value: "views",    defaultDir: 'desc' as const },
+  { text: "Duration", value: "duration", defaultDir: 'desc' as const },
+  { text: "Name",     value: "name",     defaultDir: 'asc'  as const },
+];
+
+const numericCompare = (av: number | undefined, bv: number | undefined): number => {
+  const aMissing = av === undefined || av === null || Number.isNaN(av);
+  const bMissing = bv === undefined || bv === null || Number.isNaN(bv);
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return Number.POSITIVE_INFINITY;
+  if (bMissing) return Number.NEGATIVE_INFINITY;
+  return (av as number) - (bv as number);
+};
+
+const BASE_COMPARATORS: Record<string, (a: IPlatformContent, b: IPlatformContent) => number> = {
+  date:     (a, b) => numericCompare(a.dateTime ? new Date(a.dateTime).getTime() : undefined, b.dateTime ? new Date(b.dateTime).getTime() : undefined),
+  views:    (a, b) => numericCompare((a as any).viewCount, (b as any).viewCount),
+  duration: (a, b) => numericCompare((a as any).duration, (b as any).duration),
+  name:     (a, b) => a.name.localeCompare(b.name),
+};
 
 const SearchPage: Component = () => {
   const navigate = useNavigate();
@@ -31,6 +57,7 @@ const SearchPage: Component = () => {
   const [searchType$, setSearchType] = createSignal(params.type ? parseInt(params.type) as ContentType : ContentType.MEDIA);
   const [filterValues$, setFilterValues] = createSignal<Record<string, string[]> | undefined>(params.filters ? JSON.parse(params.filters) : undefined);
   const [sortBy$, setSortBy] = createSignal(params.sortBy);
+  const [clientSort$, setClientSort] = createSignal<SortEntry[]>([]);
   const [enabledSources$, setEnabledSources] = createSignal<string[]>(params.clientIds ? JSON.parse(params.clientIds) : (StateGlobal.sourceStates$() ?? []).map(v => v.config.id));
   const disabledSources$ = createMemo<string[]>(()=>((StateGlobal.sourceStates$() ?? []).filter(x=>enabledSources$().indexOf(x.config.id) < 0).map(v => v.config.id)));
   let filtersChanged = false;
@@ -149,7 +176,39 @@ const SearchPage: Component = () => {
     };
   }));
 
+  createEffect(() => {
+    const pager = searchPager();
+    const sort = clientSort$();
+    if (!pager) return;
+    if (sort.length === 0) {
+      pager.setSortComparator(undefined);
+      return;
+    }
+    pager.setSortComparator((a, b) => {
+      for (const { field, dir } of sort) {
+        const cmp = BASE_COMPARATORS[field](a as IPlatformContent, b as IPlatformContent);
+        if (cmp === 0) continue;
+        if (cmp === Number.POSITIVE_INFINITY) return 1;
+        if (cmp === Number.NEGATIVE_INFINITY) return -1;
+        return dir === 'asc' ? cmp : -cmp;
+      }
+      return 0;
+    });
+  });
+
   let scrollContainerRef: HTMLDivElement | undefined;
+
+  const sortToggle = (opt: typeof SORT_OPTIONS[0]) => {
+    const current = clientSort$().find(e => e.field === opt.value);
+    if (!current) {
+      setClientSort([...clientSort$(), { field: opt.value, dir: opt.defaultDir }]);
+    } else if (current.dir === opt.defaultDir) {
+      const flipped: 'asc' | 'desc' = current.dir === 'asc' ? 'desc' : 'asc';
+      setClientSort(clientSort$().map(e => e.field === opt.value ? { ...e, dir: flipped } : e));
+    } else {
+      setClientSort(clientSort$().filter(e => e.field !== opt.value));
+    }
+  };
 
   const handleBack = () => {
     if (filtersDialogVisible$()) {
@@ -204,11 +263,11 @@ const SearchPage: Component = () => {
                   <div class={styles.filterHeader}>Select sources</div>
                   <ToggleItemBigButtonGroupMulti items={sourceFilters$()} defaultSelectedValues={enabledSources$()} onValueChanged={(items) => {
                     setEnabledSources(items);
-                    filtersChanged = true; 
+                    filtersChanged = true;
                   }} focusable={true} onBack={handleBack} focusableGroupOpts={{
                     groupId: 'select-sources',
                     groupEscapeTo: {
-                      down: ['sort-by', filterGroupId(0)]
+                      down: ['sort-by', 'order-results', filterGroupId(0)]
                     }
                   }} />
                   <Show when={sortItems$() && sortItems$()?.length}>
@@ -217,13 +276,41 @@ const SearchPage: Component = () => {
                       setSortBy(item);
                       filtersChanged = true;
                     }} focusable={true} onBack={handleBack} focusableGroupOpts={{
-                    groupId: 'sort-by',
-                    groupEscapeTo: {
-                      up: ['select-sources'],
-                      down: [filterGroupId(0)]
-                    }
-                  }} />
+                      groupId: 'sort-by',
+                      groupEscapeTo: {
+                        up: ['select-sources'],
+                        down: ['order-results', filterGroupId(0)]
+                      }
+                    }} />
                   </Show>
+                  <div class={styles.filterHeader}>Order results</div>
+                  <div class={styles.sortGroup}>
+                    <For each={SORT_OPTIONS}>{(opt) => {
+                      const entry = () => clientSort$().find(e => e.field === opt.value);
+                      const rank  = () => clientSort$().findIndex(e => e.field === opt.value) + 1;
+                      return (
+                        <div class={styles.sortButton} classList={{ [styles.sortButtonActive]: !!entry() }}
+                          onClick={() => sortToggle(opt)}
+                          use:focusable={{
+                            onPress: () => sortToggle(opt),
+                            onBack: handleBack,
+                            groupId: 'order-results',
+                            groupEscapeTo: {
+                              up: ['sort-by', 'select-sources'],
+                              down: [filterGroupId(0)]
+                            }
+                          }}>
+                          {opt.text}
+                          <Show when={entry()}>
+                            <span>{entry()!.dir === 'asc' ? '↑' : '↓'}</span>
+                            <Show when={clientSort$().length > 1}>
+                              <span class={styles.sortPriority}>{rank()}</span>
+                            </Show>
+                          </Show>
+                        </div>
+                      );
+                    }}</For>
+                  </div>
                   <For each={commonCapabilities$()?.filters}>{(item, i) => {
                     const items$ = createMemo(() => item.filters.map<ToggleButtonGroupItem>(v => {
                       return {
@@ -244,7 +331,7 @@ const SearchPage: Component = () => {
                           }} focusable={true} onBack={handleBack} focusableGroupOpts={{
                             groupId: filterGroupId(i()),
                             groupEscapeTo: {
-                              up: i() === 0 ? ['sort-by', 'select-sources'] : [filterGroupId(i() - 1), 'sort-by', 'select-sources'],
+                              up: i() === 0 ? ['order-results', 'sort-by', 'select-sources'] : [filterGroupId(i() - 1), 'order-results', 'sort-by', 'select-sources'],
                               down: i() < commonCapabilities$()!.filters!.length - 1 ? [filterGroupId(i() + 1)] : undefined
                             }
                           }} />
@@ -255,7 +342,7 @@ const SearchPage: Component = () => {
                           }} focusable={true} onBack={handleBack} focusableGroupOpts={{
                             groupId: filterGroupId(i()),
                             groupEscapeTo: {
-                              up: i() === 0 ? ['sort-by', 'select-sources'] : [filterGroupId(i() - 1), 'sort-by', 'select-sources'],
+                              up: i() === 0 ? ['order-results', 'sort-by', 'select-sources'] : [filterGroupId(i() - 1), 'order-results', 'sort-by', 'select-sources'],
                               down: i() < commonCapabilities$()!.filters!.length - 1 ? [filterGroupId(i() + 1)] : undefined
                             }
                           }} />

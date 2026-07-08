@@ -48,7 +48,10 @@ export interface IMenuItemOption extends MenuItem {
   value: any,
   onSelected: (val: any) => void,
   isSelected: boolean,
-  visible?: Accessor<boolean> | undefined
+  visible?: Accessor<boolean> | undefined,
+  trailingIcon?: string,
+  trailingActive?: boolean,
+  onTrailingClick?: () => void,
 }
 export class MenuItemOption implements IMenuItemOption {
   type = "option"
@@ -534,11 +537,26 @@ const SettingsMenu: Component<SettingsMenuProps> = (props: SettingsMenuProps) =>
                   }}
                 >
                   <div class={styles.name} style={{
-                    "font-weight": ((item as IMenuItemOption).isSelected) ? "bold" : "regular", 
+                    "font-weight": ((item as IMenuItemOption).isSelected) ? "bold" : "regular",
                     color: ((item as IMenuItemOption).isSelected) ? "#FFFFFF" : "#AAAAAA"
                   }}>
                     {(item as IMenuItemOption).name}
                   </div>
+                  <Show when={(item as IMenuItemOption).onTrailingClick}>
+                    <img
+                      src={(item as IMenuItemOption).trailingIcon}
+                      onClick={(e) => { e.stopPropagation(); (item as IMenuItemOption).onTrailingClick!(); }}
+                      style={{
+                        position: "absolute",
+                        right: "16px",
+                        top: "12px",
+                        width: "24px",
+                        height: "24px",
+                        opacity: (item as IMenuItemOption).trailingActive ? 1 : 0.4,
+                        cursor: "pointer",
+                      }}
+                    />
+                  </Show>
                 </div>
                 </Show>
               </Match>

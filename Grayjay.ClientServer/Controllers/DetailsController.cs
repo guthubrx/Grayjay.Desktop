@@ -377,6 +377,19 @@ namespace Grayjay.ClientServer.Controllers
         }
 
         [HttpGet]
+        public string VideoDescription(string url)
+        {
+            try
+            {
+                var details = StatePlatform.GetContentDetails(url);
+                if (details is PlatformVideoDetails video)
+                    return video.Description;
+            }
+            catch { }
+            return null;
+        }
+
+        [HttpGet]
         public PlatformVideoDetails VideoCurrent()
             => EnsureVideo(this.State());
 

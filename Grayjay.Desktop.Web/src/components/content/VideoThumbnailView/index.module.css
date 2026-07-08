@@ -61,6 +61,10 @@
     font-weight: 200;
     line-height: normal;
 }
+/* Marqueur "video indexee" : anneau bleu autour de la duree (sans decaler le layout) */
+.durationIndexed {
+    box-shadow: 0 0 0 1.5px #019BE8;
+}
 .isLive {
     border-radius: 4px;
     background: red;
@@ -168,6 +172,20 @@
     line-height: 1.2em;
     height: 1.2em;
     flex-grow: 1;
+}
+
+.settingsOverlay {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 2;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+}
+.container:hover .settingsOverlay {
+    opacity: 1;
 }
 
 .progressBar {
