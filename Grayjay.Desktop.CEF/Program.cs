@@ -26,6 +26,31 @@ namespace Grayjay.Desktop
         private const int StartupTimeoutSeconds = 5;
         private const int NewWindowTimeoutSeconds = 5;
 
+        private static bool ShouldCheckAppUpdates()
+        {
+            if (!GrayjaySettings.Instance.Notifications.AppUpdates)
+                return false;
+
+            if (IsBlueJayRuntime())
+            {
+                Logger.i(nameof(Program), "Skipping Grayjay app update check for BlueJay runtime.");
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsBlueJayRuntime()
+        {
+            if (string.Equals(Environment.GetEnvironmentVariable("BLUEJAY_DISABLE_APP_UPDATES"), "1", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var processPath = Environment.ProcessPath ?? string.Empty;
+            var processName = Path.GetFileNameWithoutExtension(processPath);
+            return string.Equals(processName, "BlueJay", StringComparison.OrdinalIgnoreCase)
+                || processPath.Contains($"{Path.DirectorySeparatorChar}BlueJay.app{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool IsProcessRunningByPath(string path, out Process? matchingProcess)
         {
             matchingProcess = null;
@@ -532,7 +557,7 @@ namespace Grayjay.Desktop
             }).Start();
             */
 
-            if (GrayjaySettings.Instance.Notifications.AppUpdates)
+            if (ShouldCheckAppUpdates())
             {
                 StateWindow.WaitForReady(() =>
                 {
