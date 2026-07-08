@@ -17,6 +17,7 @@ namespace Grayjay.ClientServer
     public class GrayjayServer
     {
         private const bool ShowAspLogs = false;
+        private const string AutomationTokenFileName = "automation-token";
 
         WebApplication _app;
 
@@ -97,6 +98,7 @@ namespace Grayjay.ClientServer
                 if (BaseUrl.EndsWith('/'))
                     BaseUrl = BaseUrl.Substring(0, BaseUrl.Length - 1);
 
+                RegisterAutomationToken();
                 StartedResetEvent.Set();
             });
 
@@ -233,6 +235,43 @@ namespace Grayjay.ClientServer
         public void RegisterToken(string token)
         {
             _tokens.TryAdd(token, null);
+        }
+
+        private void RegisterAutomationToken()
+        {
+            if (!UseTokenSecurity || ServerMode)
+                return;
+
+            try
+            {
+                var token = Guid.NewGuid().ToString("N");
+                RegisterToken(token);
+
+                var tokenPath = Path.Combine(Constants.Directories.Base, AutomationTokenFileName);
+                Directory.CreateDirectory(Path.GetDirectoryName(tokenPath)!);
+                File.WriteAllText(tokenPath, token + Environment.NewLine);
+                RestrictAutomationTokenFile(tokenPath);
+                Logger.i(nameof(GrayjayServer), $"Automation token written to {tokenPath}.");
+            }
+            catch (Exception ex)
+            {
+                Logger.w(nameof(GrayjayServer), "Failed to write automation token.", ex);
+            }
+        }
+
+        private static void RestrictAutomationTokenFile(string tokenPath)
+        {
+            if (OperatingSystem.IsWindows())
+                return;
+
+            try
+            {
+                File.SetUnixFileMode(tokenPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+            catch
+            {
+                // Best effort only; the token still rotates on every app start.
+            }
         }
 
         public async Task RegisterTokenWindow(IWindow window)

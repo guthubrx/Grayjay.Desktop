@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using Grayjay.ClientServer.Constants;
 using Grayjay.ClientServer.Settings;
 using Grayjay.Desktop.POC;
 using Grayjay.Desktop.POC.Port.States;
@@ -25,7 +26,10 @@ public static class StateHighlightsIndexer
     private static readonly object _lock = new();
     private static readonly Dictionary<string, IndexJob> _jobs = new();
     private static readonly Queue<(string Url, string Command)> _queue = new();
-    private static bool _running = false;
+    private static int _activeWorkers = 0;
+    private const int DefaultParallelism = 1;
+    private const int MaxParallelism = 24;
+    private const string ParallelismFileName = "smart-chapters-parallelism";
 
     // Garde-fou anti-injection : l'URL est interpolée dans une ligne shell,
     // on refuse tout métacaractère shell.
@@ -58,14 +62,54 @@ public static class StateHighlightsIndexer
             _jobs[url] = job;
             _queue.Enqueue((url, command));
             StateWebsocket.HighlightsIndexChanged(job);
-
-            if (!_running)
-            {
-                _running = true;
-                _ = Task.Run(WorkerLoop);
-            }
+            EnsureWorkersLocked();
             return job;
         }
+    }
+
+    private static void EnsureWorkersLocked()
+    {
+        var desired = DesiredParallelism();
+        while (_queue.Count > 0 && _activeWorkers < desired)
+        {
+            _activeWorkers++;
+            _ = Task.Run(WorkerLoop);
+        }
+    }
+
+    private static int DesiredParallelism()
+    {
+        var fromFile = ReadParallelismFile();
+        if (fromFile.HasValue)
+            return ClampParallelism(fromFile.Value);
+
+        if (int.TryParse(Environment.GetEnvironmentVariable("BLUEJAY_SMART_CHAPTERS_PARALLELISM"), out var fromEnv))
+            return ClampParallelism(fromEnv);
+
+        return DefaultParallelism;
+    }
+
+    private static int? ReadParallelismFile()
+    {
+        try
+        {
+            var path = Path.Combine(Directories.Base, ParallelismFileName);
+            if (!File.Exists(path))
+                return null;
+
+            var text = File.ReadAllText(path).Trim();
+            return int.TryParse(text, out var value) ? value : null;
+        }
+        catch (Exception ex)
+        {
+            Logger.w(nameof(StateHighlightsIndexer), $"Could not read smart chapters parallelism: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static int ClampParallelism(int value)
+    {
+        return Math.Clamp(value, 1, MaxParallelism);
     }
 
     private static async Task WorkerLoop()
@@ -76,9 +120,9 @@ public static class StateHighlightsIndexer
             IndexJob job;
             lock (_lock)
             {
-                if (_queue.Count == 0)
+                if (_queue.Count == 0 || _activeWorkers > DesiredParallelism())
                 {
-                    _running = false;
+                    _activeWorkers = Math.Max(0, _activeWorkers - 1);
                     return;
                 }
                 item = _queue.Dequeue();
@@ -91,7 +135,11 @@ public static class StateHighlightsIndexer
             try
             {
                 await RunCommand(item.Command, item.Url);
-                lock (_lock) job.Status = "done";
+                lock (_lock)
+                {
+                    job.Status = "done";
+                    EnsureWorkersLocked();
+                }
                 StateWebsocket.HighlightsChanged(item.Url);
             }
             catch (Exception ex)
@@ -101,6 +149,7 @@ public static class StateHighlightsIndexer
                 {
                     job.Status = "error";
                     job.Error = ex.Message;
+                    EnsureWorkersLocked();
                 }
             }
             StateWebsocket.HighlightsIndexChanged(job);
