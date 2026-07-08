@@ -4,8 +4,10 @@ import { Portal } from 'solid-js/web';
 import { DetailsBackend } from '../../../backend/DetailsBackend';
 import { SubscriptionsBackend } from '../../../backend/SubscriptionsBackend';
 import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
+import { IVideoHighlightSummary } from '../../../backend/models/highlights/IVideoHighlightSummary';
 import { WatchLaterBackend } from '../../../backend/WatchLaterBackend';
 import VideoThumbnailView from '../../content/VideoThumbnailView';
+import { interestDetailText, interestFromSummary, starsText } from '../../../utils/highlightInterest';
 import styles from './index.module.css';
 
 import iconWatchLater from '../../../assets/icons/icon24_watch_later.svg';
@@ -18,6 +20,7 @@ interface HeroBannerProps {
     onDismissedChannel?: (url: string) => void;
     intervalMs?: number;
     watchLaterUrls?: () => Set<string>;
+    highlightSummaryForVideo?: (video?: IPlatformVideo) => IVideoHighlightSummary | undefined;
 }
 
 function getBestThumbnail(v: IPlatformVideo): string | undefined {
@@ -96,6 +99,9 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
     });
 
     const currentVideo = () => props.videos[displayIndex()];
+    const currentHighlightSummary = () => props.highlightSummaryForVideo?.(currentVideo());
+    const currentGlobalSummary = () => currentHighlightSummary()?.globalSummary?.trim();
+    const currentInterest = () => interestFromSummary(currentHighlightSummary(), currentVideo());
     const thumbnailUrl = () => getBestThumbnail(currentVideo()) ?? '';
     const multiSlide = () => props.videos.length > 1;
 
@@ -198,6 +204,20 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                 </Show>
                 <div class={styles.meta}>
                     <p class={styles.title}>{currentVideo()?.name}</p>
+                    <Show when={currentGlobalSummary()}>
+                        {(summary) => <p class={styles.smartSummary}>{summary()}</p>}
+                    </Show>
+                    <Show when={currentInterest()}>
+                        {(interest) => (
+                            <div class={styles.heroInterest}>
+                                <span class={styles.heroInterestStars}>{starsText(interest().stars)}</span>
+                                <span class={styles.heroInterestLabel}>{interest().label}</span>
+                                <Show when={interestDetailText(interest())}>
+                                    {(detail) => <span class={styles.heroInterestDetail}>{detail()}</span>}
+                                </Show>
+                            </div>
+                        )}
+                    </Show>
                     <div class={styles.channelRow}>
                         <Show when={currentVideo()?.author?.thumbnail}>
                             <img class={styles.channelAvatar} src={currentVideo()!.author!.thumbnail} alt="" />
@@ -288,8 +308,29 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                                     <span>{new Date(currentVideo()!.dateTime!).toLocaleDateString()}</span>
                                 </Show>
                             </div>
+                            <Show when={currentInterest()}>
+                                {(interest) => (
+                                    <div class={styles.overlayInterest}>
+                                        <div class={styles.overlayInterestStars}>{starsText(interest().stars)}</div>
+                                        <div class={styles.overlayInterestCopy}>
+                                            <div class={styles.overlayInterestLabel}>{interest().label}</div>
+                                            <Show when={interestDetailText(interest())}>
+                                                {(detail) => <div class={styles.overlayInterestDetail}>{detail()}</div>}
+                                            </Show>
+                                        </div>
+                                    </div>
+                                )}
+                            </Show>
+                            <Show when={currentGlobalSummary()}>
+                                {(summary) => (
+                                    <div class={styles.overlaySmartSummary}>
+                                        <div class={styles.overlaySmartSummaryLabel}>Smart summary</div>
+                                        <p>{summary()}</p>
+                                    </div>
+                                )}
+                            </Show>
                             <Show when={overlayLoading()}>
-                                <p class={styles.overlayLoading}>Chargement…</p>
+                                <p class={styles.overlayLoading}>Loading...</p>
                             </Show>
                             <Show when={overlayDescription()}>
                                 <p class={`${styles.overlayDescription} ${overlayDescExpanded() ? styles.overlayDescriptionExpanded : ''}`}>
@@ -300,7 +341,7 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                                 </button>
                             </Show>
                             <Show when={overlayChannelVideos().length > 0}>
-                                <p class={styles.overlaySectionTitle}>Autres vidéos</p>
+                                <p class={styles.overlaySectionTitle}>More videos</p>
                                 <div class={styles.overlayChannelVideos}>
                                     <For each={overlayChannelVideos()}>
                                         {(cv) => (

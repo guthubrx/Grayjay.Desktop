@@ -25,7 +25,7 @@ import store from '../../../assets/icons/icon24_store.svg';
 import more from '../../../assets/icons/icon_button_more.svg';
 import donate from '../../../assets/icons/icon24_donate.svg';
 import VideoPlayerView, { VideoPlayerViewHandle } from "../../player/VideoPlayerView";
-import { VideoMode, VideoState, useVideo } from "../../../contexts/VideoProvider";
+import { VideoMode, VideoState, useVideo, type VideoQueueItemMeta } from "../../../contexts/VideoProvider";
 import ScrollContainer from "../../containers/ScrollContainer";
 import VirtualFlexibleArrayList from "../../containers/VirtualFlexibleArrayList";
 import StickyShrinkOnScrollContainer from "../../containers/StickyShrinkOnScrollContainer";
@@ -108,8 +108,25 @@ import { SearchBackend } from "../../../backend/SearchBackend";
 import history from '../../../assets/icons/icon_nav_history.svg';
 import iconHighlights from '../../../assets/icons/label_important_24dp_FFFFFF_FILL1_wght300_GRAD0_opsz24.svg';
 import { Portal } from "solid-js/web";
+import { interestDetailText, interestFromSet, starsText } from "../../../utils/highlightInterest";
 
 const SCOPE_ID = "video-detail-view";
+const SMART_TV_INTRO_MODES = ['hidden', 'sticky', 'timed'] as const;
+const SMART_TV_INTRO_CLOSE_DELAYS_MS = [3000, 5000, 7000, 9000, 12000, 15000, 20000, 30000, 45000, 60000];
+
+type SmartTvIntroMode = typeof SMART_TV_INTRO_MODES[number];
+
+function indexedSetting<T>(values: readonly T[], index: unknown, fallback: T): T {
+    return typeof index === 'number' && Number.isFinite(index) ? (values[index] ?? fallback) : fallback;
+}
+
+function smartTvIntroSettingsFromObject(settingsObject: any): { mode: SmartTvIntroMode; closeDelayMs: number } {
+    const smartTv = settingsObject?.xrayPanel?.smartTv;
+    return {
+        mode: indexedSetting(SMART_TV_INTRO_MODES, smartTv?.introSummaryMode, 'timed'),
+        closeDelayMs: indexedSetting(SMART_TV_INTRO_CLOSE_DELAYS_MS, smartTv?.introCloseDelay, 9000),
+    };
+}
 
 export interface SourceSelected {
     url: string;
@@ -228,6 +245,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     let errorCounter: number = 0;
     const [playerPosition$, setPlayerPosition] = createSignal<number>(0);
     const [nextUpCancelled$, setNextUpCancelled] = createSignal<boolean>(false);
+    const [smartTvIntroVisible$, setSmartTvIntroVisible] = createSignal(false);
     const video = useVideo();
     const focus = useFocus()!;
     const casting = useCasting()!;
@@ -253,6 +271,41 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     });
     const currentVideoUrl$ = createMemo(() => {
         return currentVideo$()?.backendUrl ?? currentVideo$()?.url;
+    });
+    const currentSmartTvMeta$ = createMemo<VideoQueueItemMeta | undefined>(() => {
+        const index = video?.index();
+        if (index === undefined) return undefined;
+        const meta = video?.queueMetadata()?.[index];
+        return meta?.source === 'smart-tv' ? meta : undefined;
+    });
+    const smartTvIntroSummary$ = createMemo(() => {
+        const meta = currentSmartTvMeta$();
+        return meta?.summary || meta?.globalSummary;
+    });
+    const smartTvIntroTime$ = createMemo(() => {
+        const meta = currentSmartTvMeta$();
+        if (meta?.startSeconds === undefined) return undefined;
+        const start = formatDuration(Duration.fromMillis(meta.startSeconds * 1000));
+        if (meta.endSeconds === undefined) return start;
+        return `${start} - ${formatDuration(Duration.fromMillis(meta.endSeconds * 1000))}`;
+    });
+    const smartTvIntroSettings$ = createMemo(() => smartTvIntroSettingsFromObject(StateGlobal.settings$()?.object));
+    let smartTvIntroTimer: ReturnType<typeof setTimeout> | undefined;
+    createEffect(() => {
+        const meta = currentSmartTvMeta$();
+        const introSettings = smartTvIntroSettings$();
+        if (smartTvIntroTimer) clearTimeout(smartTvIntroTimer);
+        if (!meta || video?.state() === VideoState.Minimized || introSettings.mode === 'hidden') {
+            setSmartTvIntroVisible(false);
+            return;
+        }
+        setSmartTvIntroVisible(true);
+        if (introSettings.mode === 'timed') {
+            smartTvIntroTimer = setTimeout(() => setSmartTvIntroVisible(false), introSettings.closeDelayMs);
+        }
+    });
+    onCleanup(() => {
+        if (smartTvIntroTimer) clearTimeout(smartTvIntroTimer);
     });
     const [videoLoaded$, videoLoadedResource] = createResourceDefault(() => currentVideoUrl$(), async (url) => {
         if (!url || !url.length) {
@@ -292,14 +345,17 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     });
     const [videoHighlights$, videoHighlightsResource] = createResourceDefault(() => videoHighlightUrls$(), async (urls) => {
         for (const url of urls) {
-            const highlights = await HighlightsBackend.get(url);
-            if ((highlights?.segments?.length ?? 0) > 0) {
-                return highlights;
-            }
+            try {
+                const highlights = await HighlightsBackend.get(url);
+                if ((highlights?.segments?.length ?? 0) > 0) {
+                    return highlights;
+                }
+            } catch {}
         }
         return undefined;
     });
-    // Recharge les highlights quand l'indexeur en a généré de nouveaux.
+    const videoInterest$ = createMemo(() => interestFromSet(videoHighlights$(), videoLoaded$() ?? currentVideo$()));
+    // Reload highlights when the indexer has generated new data.
     StateWebsocket.registerHandlerNew("HighlightsChanged", () => {
         videoHighlightsResource.refetch();
     }, "videoDetailHighlights");
@@ -1515,9 +1571,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         UIOverlay.overlayAddToPlaylist(loadedVideo, ()=>{});
     }
 
-    // L'enqueue réussit tout de suite (job "queued") ; la génération réelle
-    // tourne dans un worker et peut échouer plus tard. On surveille le job de la
-    // vidéo courante et on remonte l'issue asynchrone à l'utilisateur.
+    // The enqueue call succeeds immediately with a queued job; actual generation
+    // runs in a worker and can fail later. Watch the current video's job so the
+    // asynchronous outcome can be surfaced to the user.
     let lastJobKey: string | undefined;
     createEffect(() => {
         const url = currentVideo$()?.url;
@@ -1941,7 +1997,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     maximumHeight={minimumMaximumHeight().maximum}
                     heightChanged={(newHeight) => setCurrentPlayerHeight(newHeight)}
                     sticky={mode() === VideoMode.Theatre && theatrePinned() || isMinimized()}>
-                    <div style="height: 100%;" ref={videoContainer}>
+                    <div class={styles.playerShell} style="height: 100%;" ref={videoContainer}>
                         <VideoPlayerView ref={setVideoPlayerContainerRef}
                             video={videoLoaded$()}
                             minimized={isMinimized()}
@@ -2118,6 +2174,52 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     onHide={onHideVideoContextMenu} />
                             </Show>
                         </VideoPlayerView>
+                        <Show when={!isMinimized() && smartTvIntroVisible$() && currentSmartTvMeta$()}>
+                            {(intro) => {
+                                const channelName = () => intro().channelName ?? videoLoaded$()?.author?.name ?? 'Smart TV';
+                                return (
+                                    <div
+                                        class={styles.smartTvIntroOverlay}
+                                        role="status"
+                                        aria-live="polite"
+                                    >
+                                        <button
+                                            type="button"
+                                            class={styles.smartTvIntroClose}
+                                            onClick={() => setSmartTvIntroVisible(false)}
+                                            aria-label="Hide Smart TV context"
+                                        >
+                                            <img src={ic_close} alt="" />
+                                        </button>
+                                        <div class={styles.smartTvIntroHeader}>
+                                            <Show
+                                                when={intro().channelThumbnail}
+                                                fallback={<div class={styles.smartTvIntroAvatarFallback}>{channelName().slice(0, 1).toUpperCase()}</div>}
+                                            >
+                                                {(thumbnail) => (
+                                                    <img
+                                                        class={styles.smartTvIntroAvatar}
+                                                        src={proxyImage(thumbnail())}
+                                                        alt=""
+                                                    />
+                                                )}
+                                            </Show>
+                                            <div class={styles.smartTvIntroSource}>
+                                                <span class={styles.smartTvIntroKicker}>{intro().sessionTitle ?? 'Smart TV'}</span>
+                                                <span class={styles.smartTvIntroChannel}>{channelName()}</span>
+                                            </div>
+                                        </div>
+                                        <div class={styles.smartTvIntroTitle}>{intro().title ?? videoLoaded$()?.name}</div>
+                                        <Show when={smartTvIntroSummary$()}>
+                                            {(summary) => <div class={styles.smartTvIntroSummary}>{summary()}</div>}
+                                        </Show>
+                                        <Show when={smartTvIntroTime$()}>
+                                            {(time) => <div class={styles.smartTvIntroTime}>{time()}</div>}
+                                        </Show>
+                                    </div>
+                                );
+                            }}
+                        </Show>
                     </div>
                 </StickyShrinkOnScrollContainer>
                 <Show when={anyHorizontalCarousel$()}>
@@ -2326,12 +2428,23 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 </div>
                             </div>
 
-                            <Show when={videoHighlights$()?.globalSummary || (videoHighlights$()?.theses?.length ?? 0) > 0}>
+                            <Show when={videoHighlights$()?.globalSummary || videoInterest$() || (videoHighlights$()?.theses?.length ?? 0) > 0}>
                                 <div class={styles.smartAnalysis}>
                                     <div class={styles.smartAnalysisHeader}>
                                         <img src={iconHighlights} class={styles.smartAnalysisIcon} alt="" />
                                         <span>Smart Analysis</span>
                                     </div>
+                                    <Show when={videoInterest$()}>
+                                        {(interest) => (
+                                            <div class={styles.smartAnalysisInterest}>
+                                                <span class={styles.smartAnalysisInterestStars}>{starsText(interest().stars)}</span>
+                                                <span class={styles.smartAnalysisInterestLabel}>{interest().label}</span>
+                                                <Show when={interestDetailText(interest())}>
+                                                    {(detail) => <span class={styles.smartAnalysisInterestDetail}>{detail()}</span>}
+                                                </Show>
+                                            </div>
+                                        )}
+                                    </Show>
                                     <Show when={videoHighlights$()?.globalSummary}>
                                         <p class={styles.smartAnalysisSummary}>{videoHighlights$()!.globalSummary}</p>
                                     </Show>

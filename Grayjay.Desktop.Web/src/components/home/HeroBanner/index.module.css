@@ -87,6 +87,58 @@
     overflow: hidden;
 }
 
+.smartSummary {
+    display: -webkit-box;
+    max-width: 640px;
+    margin: 0 0 13px 0;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 16px;
+    font-weight: 560;
+    line-height: 1.46;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.78);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.heroInterest {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    width: fit-content;
+    max-width: min(640px, 100%);
+    margin: 0 0 13px 0;
+    padding: 6px 9px;
+    border: 1px solid rgba(245, 198, 74, 0.18);
+    border-radius: 7px;
+    background: rgba(16, 14, 10, 0.42);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(8px);
+}
+
+.heroInterestStars {
+    color: rgba(245, 198, 74, 0.96);
+    font-size: 13px;
+    font-weight: 850;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.heroInterestLabel {
+    color: rgba(255, 255, 255, 0.90);
+    font-size: 12px;
+    font-weight: 760;
+    line-height: 1.15;
+}
+
+.heroInterestDetail {
+    color: rgba(255, 255, 255, 0.66);
+    font-size: 12px;
+    font-weight: 620;
+    line-height: 1.15;
+}
+
 .channelRow {
     display: flex;
     align-items: center;
@@ -355,6 +407,65 @@
     margin-bottom: 20px;
 }
 
+.overlayInterest {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: fit-content;
+    max-width: 100%;
+    margin: -4px 0 18px;
+    padding: 9px 12px;
+    border: 1px solid rgba(245, 198, 74, 0.22);
+    border-radius: 7px;
+    background: linear-gradient(135deg, rgba(245, 198, 74, 0.14), rgba(255, 255, 255, 0.04));
+}
+
+.overlayInterestStars {
+    color: rgba(245, 198, 74, 0.96);
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.overlayInterestCopy {
+    min-width: 0;
+}
+
+.overlayInterestLabel {
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    font-weight: 750;
+}
+
+.overlayInterestDetail {
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.overlaySmartSummary {
+    margin: 0 0 20px;
+    padding-left: 12px;
+    border-left: 2px solid rgba(245, 198, 74, 0.58);
+}
+
+.overlaySmartSummaryLabel {
+    margin-bottom: 5px;
+    color: rgba(245, 198, 74, 0.86);
+    font-size: 11px;
+    font-weight: 850;
+    text-transform: uppercase;
+}
+
+.overlaySmartSummary p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.55;
+}
+
 /* Overlay action row: Play + Watch Later */
 .overlayActions {
     display: flex;
@@ -457,6 +568,7 @@
     .inner { padding: 0 32px; gap: 24px; }
     .thumbnail { height: 240px; max-width: 427px; }
     .title { font-size: 19px; }
+    .smartSummary { font-size: 15px; }
     .playButton { padding: 9px 18px; font-size: 14px; }
 }
 
@@ -465,6 +577,8 @@
     .inner { padding: 0 20px; gap: 16px; }
     .thumbnail { height: 180px; max-width: 320px; }
     .title { font-size: 16px; }
+    .smartSummary { font-size: 14px; -webkit-line-clamp: 1; }
+    .heroInterestDetail { display: none; }
     .playButton { padding: 8px 14px; font-size: 13px; }
 }
 
@@ -473,4 +587,6 @@
     .inner { padding: 0 16px; }
     .thumbnail { display: none; }
     .title { font-size: 15px; -webkit-line-clamp: 2; }
+    .smartSummary { display: none; }
+    .heroInterest { margin-bottom: 12px; }
 }
