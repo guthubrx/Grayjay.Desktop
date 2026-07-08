@@ -1,4 +1,4 @@
-import { Component, For, JSX } from 'solid-js';
+import { Component, For, JSX, Show } from 'solid-js';
 
 import styles from './index.module.css';
 
@@ -8,6 +8,7 @@ interface HomeCarouselProps {
     title: string;
     items: any[];
     builder: (index: number, item: any) => JSX.Element;
+    leadingItem?: JSX.Element;
     onTitleClick?: () => void;
     onEnd?: () => void;
 }
@@ -45,6 +46,13 @@ const HomeCarousel: Component<HomeCarouselProps> = (props) => {
             </div>
             <div ref={scrollRef} class={styles.scrollWrapper}>
                 <div class={styles.itemsRow}>
+                    <Show when={props.leadingItem}>
+                        {(leadingItem) => (
+                            <div class={styles.leadingItem}>
+                                {leadingItem()}
+                            </div>
+                        )}
+                    </Show>
                     <For each={props.items}>
                         {(item, index) => props.builder(index(), item)}
                     </For>

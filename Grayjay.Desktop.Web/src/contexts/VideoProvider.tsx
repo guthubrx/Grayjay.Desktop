@@ -24,6 +24,18 @@ export enum VideoMode {
     Theatre
 };
 
+export interface VideoQueueItemMeta {
+    source?: string;
+    sessionTitle?: string;
+    title?: string;
+    summary?: string;
+    globalSummary?: string;
+    channelName?: string;
+    channelThumbnail?: string;
+    startSeconds?: number;
+    endSeconds?: number;
+}
+
 export interface VideoContextState {
     state: VideoState;
     index?: number;
@@ -34,6 +46,7 @@ export interface VideoContextValue {
     state: Accessor<VideoState>;
     index: Accessor<number | undefined>;
     queue: Accessor<IPlatformVideo[] | undefined>;
+    queueMetadata: Accessor<(VideoQueueItemMeta | undefined)[] | undefined>;
     watchLater: Accessor<IOrderedPlatformVideo[] | undefined>;
     video: Accessor<IPlatformVideo | undefined>;
     repeat: Accessor<boolean>;
@@ -47,7 +60,7 @@ export interface VideoContextValue {
     actions: {
         openVideo: (video: IPlatformVideo, time?: Duration, videoState?: VideoState) => void;
         openVideoByUrl: (url: string, time?: Duration, videoState?: VideoState) => void;
-        setQueue: (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState) => void;
+        setQueue: (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState, time?: Duration, startTimes?: (Duration | undefined)[], metadata?: (VideoQueueItemMeta | undefined)[]) => void;
         addToQueue: (v: IPlatformVideo) => void;
         setIndex: (index: number) => void;
         consumeAndSetIndex: (index: number) => void;
@@ -72,6 +85,8 @@ export interface VideoContextProps {
 
 export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     const [queue, setQueue] = createSignal<IPlatformVideo[] | undefined>();
+    const [queueStartTimes, setQueueStartTimes] = createSignal<(Duration | undefined)[] | undefined>();
+    const [queueMetadata, setQueueMetadata] = createSignal<(VideoQueueItemMeta | undefined)[] | undefined>();
     const [index, setIndex] = createSignal<number | undefined>();
     const [startTime, setStartTime] = createSignal<Duration | undefined>();
     const [state, setState] = createSignal<VideoState>(VideoState.Closed);
@@ -104,6 +119,8 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         batch(() => {
             setIndex(0);
             setStartTime(time);
+            setQueueStartTimes(time ? [time] : undefined);
+            setQueueMetadata(undefined);
             setQueue([ v ]);
             if (state() !== desiredVideoState)
                 setState(desiredVideoState);
@@ -122,21 +139,27 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         batch(() => {
             setIndex(0);
             setStartTime(time);
+            setQueueStartTimes(time ? [time] : undefined);
+            setQueueMetadata(undefined);
             setQueue([ videoLoadResult.video ]);
 
         });
     };
-    const sq = (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState) => { 
+    const sq = (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState, time?: Duration, startTimes?: (Duration | undefined)[], metadata?: (VideoQueueItemMeta | undefined)[]) => {
         if (index < 0 || index >= queue.length) {
             console.error("index not valid for queue", {index, queue});
             return;
         }
 
         const desiredVideoState = videoState ?? VideoState.Maximized;
+        const normalizedStartTimes = startTimes?.slice(0, queue.length);
+        const normalizedMetadata = metadata?.slice(0, queue.length);
         batch(() => {
             setIndex(index);
             setQueue(queue);
-            setStartTime(undefined);
+            setQueueStartTimes(normalizedStartTimes);
+            setQueueMetadata(normalizedMetadata);
+            setStartTime(normalizedStartTimes?.[index] ?? time);
             if (repeat !== undefined)
                 setRepeat(repeat);
             if (shuffle !== undefined)
@@ -151,7 +174,11 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             return;
         }
 
-        setQueue([ ... (queue() ?? []), video ]);
+        batch(() => {
+            setQueue([ ... (queue() ?? []), video ]);
+            setQueueStartTimes(prev => prev ? [...prev, undefined] : undefined);
+            setQueueMetadata(prev => prev ? [...prev, undefined] : undefined);
+        });
     };
     const consumeAndSetIndex = (targetIndex: number) => {
         const currentIndex = index();
@@ -159,10 +186,14 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         if (currentIndex === undefined || !currentQueue || targetIndex === currentIndex) return;
         const newQueue = currentQueue.filter((_, i) => i !== currentIndex);
         const newIndex = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
+        const newStartTimes = queueStartTimes()?.filter((_, i) => i !== currentIndex);
+        const newMetadata = queueMetadata()?.filter((_, i) => i !== currentIndex);
         batch(() => {
             setQueue(newQueue);
             setIndex(Math.max(0, Math.min(newIndex, newQueue.length - 1)));
-            setStartTime(undefined);
+            setQueueStartTimes(newStartTimes);
+            setQueueMetadata(newMetadata);
+            setStartTime(newStartTimes?.[Math.max(0, Math.min(newIndex, newQueue.length - 1))]);
         });
     };
 
@@ -218,6 +249,8 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         batch(()=>{
             setIndex(undefined);
             setQueue(undefined);
+            setQueueStartTimes(undefined);
+            setQueueMetadata(undefined);
             setStartTime(undefined);
             setState(VideoState.Closed);
             setBingeChannelUrl(undefined);
@@ -256,6 +289,7 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
     const value: VideoContextValue = {
         index,
         queue,
+        queueMetadata,
         watchLater,
         state,
         repeat,
@@ -270,7 +304,7 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             setIndex: (i: number) => {
                 batch(() => {
                     setIndex(i);
-                    setStartTime(undefined);
+                    setStartTime(queueStartTimes()?.[i]);
                 });
             },
             consumeAndSetIndex,

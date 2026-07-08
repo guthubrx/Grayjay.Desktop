@@ -24,45 +24,191 @@
     overflow: hidden;
 }
 
-.smartChapterFallback {
+.globalSmartTvBand {
+    display: flex;
+    padding: 0 24px 28px 24px;
+}
+
+.smartTvTile {
+    position: relative;
     aspect-ratio: 16 / 9;
+    width: 280px;
+    min-height: 158px;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    gap: 8px;
-    min-height: 158px;
+    align-items: flex-start;
+    flex-shrink: 0;
     padding: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 0;
     border-radius: 8px;
+    font: inherit;
     background:
-        linear-gradient(135deg, rgba(245, 198, 74, 0.18), rgba(36, 180, 126, 0.12)),
-        #111416;
-    color: #fff;
+        linear-gradient(145deg, rgba(245, 198, 74, 0.22) 0%, rgba(36, 180, 126, 0.12) 48%, rgba(17, 20, 22, 0.92) 100%),
+        #101315;
+    color: #ffffff;
     cursor: pointer;
     overflow: hidden;
     text-align: left;
+    transition: transform 0.16s ease, background 0.16s ease;
 }
 
-.smartChapterFallback:hover {
-    border-color: rgba(255, 255, 255, 0.24);
+.smartTvTile::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
     background:
-        linear-gradient(135deg, rgba(245, 198, 74, 0.24), rgba(36, 180, 126, 0.18)),
-        #15191c;
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+        radial-gradient(ellipse at 22% 88%, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.74) 34%, rgba(0, 0, 0, 0.10) 68%, transparent 100%),
+        linear-gradient(180deg, rgba(6, 7, 8, 0.12) 0%, rgba(6, 7, 8, 0.08) 34%, rgba(6, 7, 8, 0.56) 70%, rgba(6, 7, 8, 0.96) 100%);
+    background-size: 28px 28px, 28px 28px, auto, auto;
+    opacity: 1;
+    pointer-events: none;
+    z-index: 1;
 }
 
-.smartChapterFallbackKicker {
-    color: rgba(255, 255, 255, 0.62);
+.smartTvTile::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.smartTvTile:hover {
+    background:
+        linear-gradient(145deg, rgba(245, 198, 74, 0.28) 0%, rgba(36, 180, 126, 0.18) 48%, rgba(20, 24, 27, 0.94) 100%),
+        #14181b;
+    transform: translateY(-1px);
+}
+
+.smartTvTile:hover::after {
+    border-color: rgba(245, 198, 74, 0.48);
+}
+
+.smartTvTile:focus-visible {
+    outline: 2px solid rgba(245, 198, 74, 0.88);
+    outline-offset: 3px;
+}
+
+.smartTvTile:disabled {
+    cursor: default;
+    opacity: 0.72;
+    transform: none;
+}
+
+.smartTvTileGlobal {
+    width: min(520px, calc(100vw - 64px));
+    min-height: 146px;
+}
+
+.smartTvKicker,
+.smartTvTitle,
+.smartTvMeta,
+.smartTvPool,
+.smartTvCopy {
+    position: relative;
+    z-index: 2;
+}
+
+.smartTvCopy {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: min(100%, 430px);
+    padding-top: 44px;
+}
+
+.smartTvArtwork {
+    position: absolute;
+    inset: -1px;
+    z-index: 0;
+    display: grid;
+    gap: 1px;
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: inherit;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.smartTvArtworkImage {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    filter: saturate(0.88) contrast(0.96) brightness(0.74);
+    object-fit: cover;
+}
+
+.smartTvArtwork1 {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+}
+
+.smartTvArtwork2 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr;
+}
+
+.smartTvArtwork3 {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.smartTvArtwork3 .smartTvArtworkImage:first-child {
+    grid-row: 1 / span 2;
+}
+
+.smartTvArtwork4 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.smartTvKicker {
+    color: rgba(245, 198, 74, 0.96);
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 850;
+    letter-spacing: 0;
     text-transform: uppercase;
 }
 
-.smartChapterFallbackTitle {
+.smartTvTitle {
     display: -webkit-box;
+    max-width: 100%;
     overflow: hidden;
-    font-size: 14px;
-    font-weight: 700;
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.12;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.92);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.smartTvMeta {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 12px;
+    font-weight: 650;
     line-height: 1.25;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
+}
+
+.smartTvPool {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.66);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.25;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }

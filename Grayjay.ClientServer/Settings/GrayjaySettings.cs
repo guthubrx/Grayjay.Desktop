@@ -449,7 +449,7 @@ namespace Grayjay.ClientServer.Settings
             }
         }
 
-        [SettingsField("Smart Analysis", "group", "Configure the Smart Analysis side panel", 10)]
+        [SettingsField("Smart Analysis", "group", "Configure Smart Analysis, Smart Chapters, and Smart TV", 10)]
         public XRayPanelSettings XrayPanel { get; set; } = new XRayPanelSettings();
         public class XRayPanelSettings
         {
@@ -477,8 +477,53 @@ namespace Grayjay.ClientServer.Settings
             [SettingsDropdownOptions("Auto (video language)", "Français", "English", "Español", "Deutsch", "Italiano", "Português", "Nederlands")]
             public int GenerationLanguage { get; set; } = 0;
 
-            // Nom (en anglais, compris du LLM) de la langue de sortie choisie, ou
-            // null pour "Auto" (le générateur garde alors la langue de la vidéo).
+            [SettingsField("Smart TV", SettingsField.GROUP, "Configure Smart TV session building", 20)]
+            public SmartTvSettings SmartTv { get; set; } = new SmartTvSettings();
+            public class SmartTvSettings
+            {
+                [SettingsField("Target duration", SettingsField.DROPDOWN, "Target playback duration for a fixed Smart TV session", 0)]
+                [SettingsDropdownOptions("15 min", "30 min", "45 min", "1 hour", "1h 30", "2 hours", "3 hours", "4 hours", "6 hours")]
+                public int TargetDuration { get; set; } = 3;
+
+                [SettingsField("Max videos", SettingsField.DROPDOWN, "Maximum number of videos in a fixed Smart TV session", 1)]
+                [SettingsDropdownOptions("3", "5", "8", "12", "16", "24", "32", "50")]
+                public int MaxVideos { get; set; } = 2;
+
+                [SettingsField("Max chapters", SettingsField.DROPDOWN, "Maximum number of chapters in a fixed Smart TV session", 2)]
+                [SettingsDropdownOptions("5", "8", "12", "16", "24", "36", "50", "75", "100")]
+                public int MaxChapters { get; set; } = 2;
+
+                [SettingsField("Max chapters per video", SettingsField.DROPDOWN, "Limit how much one video can dominate a Smart TV session", 3)]
+                [SettingsDropdownOptions("1", "2", "3", "4", "5", "All")]
+                public int MaxChaptersPerVideo { get; set; } = 1;
+
+                [SettingsField("Minimum chapter score", SettingsField.DROPDOWN, "Lowest Smart Chapter score eligible for Smart TV sessions", 4)]
+                [SettingsDropdownOptions("Any", "0.45", "0.55", "0.65", "0.75", "0.85", "0.92")]
+                public int MinimumScore { get; set; } = 2;
+
+                [SettingsField("Candidate videos scanned", SettingsField.DROPDOWN, "How many candidate videos are loaded to build one Smart TV session", 5)]
+                [SettingsDropdownOptions("12", "24", "40", "60", "100")]
+                public int CandidateVideos { get; set; } = 1;
+
+                [SettingsField("Repeat video penalty", SettingsField.DROPDOWN, "Score penalty applied to the second, third, etc. chapter from the same video", 6)]
+                [SettingsDropdownOptions("None", "Light", "Medium", "Strong")]
+                public int RepeatVideoPenalty { get; set; } = 1;
+
+                [SettingsField("Tile preview thumbnails", SettingsField.DROPDOWN, "How many first-video thumbnails are shown on Smart TV tiles", 7)]
+                [SettingsDropdownOptions("None", "1", "2", "3", "4")]
+                public int TilePreviewThumbnails { get; set; } = 4;
+
+                [SettingsField("Intro summary", SettingsField.DROPDOWN, "How Smart TV chapter context appears when playback moves to another video", 8)]
+                [SettingsDropdownOptions("Do not show", "Show until closed", "Auto-close")]
+                public int IntroSummaryMode { get; set; } = 2;
+
+                [SettingsField("Intro close delay", SettingsField.DROPDOWN, "How long the Smart TV chapter context stays visible in auto-close mode", 9)]
+                [SettingsDropdownOptions("3 sec", "5 sec", "7 sec", "9 sec", "12 sec", "15 sec", "20 sec", "30 sec", "45 sec", "1 min")]
+                public int IntroCloseDelay { get; set; } = 3;
+            }
+
+            // English language name understood by the generator, or null for
+            // "Auto" so the generator keeps the video's language.
             public string? GenerationLanguageName() => GenerationLanguage switch
             {
                 1 => "French",

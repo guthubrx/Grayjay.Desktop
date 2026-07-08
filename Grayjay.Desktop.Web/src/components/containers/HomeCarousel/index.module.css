@@ -77,3 +77,28 @@
     flex-direction: row;
     gap: 12px;
 }
+
+.leadingItem {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+    margin-right: 28px;
+}
+
+.leadingItem::after {
+    content: "";
+    position: absolute;
+    top: 12px;
+    right: -20px;
+    bottom: 12px;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        rgba(245, 198, 74, 0.42) 18%,
+        rgba(255, 255, 255, 0.16) 50%,
+        rgba(245, 198, 74, 0.30) 82%,
+        transparent
+    );
+    pointer-events: none;
+}
