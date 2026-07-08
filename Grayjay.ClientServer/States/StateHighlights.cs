@@ -11,6 +11,9 @@ namespace Grayjay.ClientServer.States;
 public static class StateHighlights
 {
     private const string StoreName = "highlights";
+    private const double InterestMinScore = 0.55;
+    private const double InterestStrongScore = 0.88;
+    private const double InterestExcellentScore = 0.93;
 
     private static DirectoryInfo StoreDirectory
     {
@@ -84,18 +87,47 @@ public static class StateHighlights
 
     public static List<VideoHighlightSummary> GetSummaries()
     {
-        return GetAll()
-            .Select(x => new VideoHighlightSummary
-            {
-                VideoUrl = x.VideoUrl,
-                Source = x.Source ?? "external",
-                UpdatedAt = x.UpdatedAt,
-                SegmentCount = x.Segments.Count,
-                TotalDuration = x.Segments.Sum(s => Math.Max(0, s.End - s.Start)),
-                GlobalSummary = x.GlobalSummary,
-                Video = x.Video
-            })
+        var sets = GetAll();
+        var cachedVideos = StateCache.GetCachedVideos(sets
+            .Where(set => set.Video == null)
+            .Select(set => set.VideoUrl));
+
+        return sets
+            .Select(set => CreateSummary(set, cachedVideos.GetValueOrDefault(set.VideoUrl)))
             .ToList();
+    }
+
+    private static VideoHighlightSummary CreateSummary(VideoHighlightSet set, PlatformVideo? cachedVideo)
+    {
+        var segments = set.Segments ?? new List<VideoHighlightSegment>();
+        var scored = segments.Where(s => s.Score.HasValue).ToList();
+        var useful = segments.Where(s => (s.Score ?? InterestMinScore) >= InterestMinScore).ToList();
+        var video = set.Video ?? cachedVideo;
+
+        return new VideoHighlightSummary
+        {
+            VideoUrl = set.VideoUrl,
+            Source = set.Source ?? "external",
+            UpdatedAt = set.UpdatedAt,
+            SegmentCount = scored.Count > 0 ? useful.Count : segments.Count,
+            TotalDuration = segments.Sum(s => Math.Max(0, s.End - s.Start)),
+            InterestingDuration = scored.Count > 0
+                ? useful.Sum(s => Math.Max(0, s.End - s.Start))
+                : segments.Sum(s => Math.Max(0, s.End - s.Start)),
+            AverageScore = scored.Count > 0 ? scored.Average(s => ClampScore(s.Score!.Value)) : null,
+            TopScore = scored.Count > 0 ? scored.Max(s => ClampScore(s.Score!.Value)) : null,
+            StrongSegmentCount = scored.Count(s => ClampScore(s.Score!.Value) >= InterestStrongScore),
+            ExcellentSegmentCount = scored.Count(s => ClampScore(s.Score!.Value) >= InterestExcellentScore),
+            GlobalSummary = set.GlobalSummary,
+            Video = video
+        };
+    }
+
+    private static double ClampScore(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            return 0;
+        return Math.Max(0, Math.Min(1, value));
     }
 
     public static VideoHighlightSet CreateOrUpdate(VideoHighlightSet set, PlatformVideo? fallbackVideo = null)

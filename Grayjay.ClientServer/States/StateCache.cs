@@ -7,6 +7,7 @@ using Grayjay.Engine.Models.Feed;
 using Grayjay.Engine.Pagers;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Grayjay.ClientServer.States
 {
@@ -93,6 +94,93 @@ namespace Grayjay.ClientServer.States
         public static DBSubscriptionCacheIndex? GetCachedContent(string url)
         {
             return _subscriptionCache.Query(nameof(DBSubscriptionCacheIndex.Url), url).FirstOrDefault();
+        }
+
+        public static PlatformVideo? GetCachedVideo(string url)
+        {
+            foreach (var candidate in GetLookupUrls(url))
+            {
+                try
+                {
+                    if (GetCachedContent(candidate)?.Object is PlatformVideo video)
+                        return video;
+                }
+                catch (Exception ex)
+                {
+                    Logger.w(TAG, $"Failed to read cached video [{candidate}]: {ex.Message}");
+                }
+            }
+
+            return null;
+        }
+
+        public static Dictionary<string, PlatformVideo> GetCachedVideos(IEnumerable<string> urls)
+        {
+            var lookupToRequested = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var requestedUrl in urls.Where(url => !string.IsNullOrWhiteSpace(url)))
+            {
+                foreach (var lookupUrl in GetLookupUrls(requestedUrl))
+                {
+                    if (!lookupToRequested.ContainsKey(lookupUrl))
+                        lookupToRequested[lookupUrl] = requestedUrl;
+                }
+            }
+
+            var videos = new Dictionary<string, PlatformVideo>(StringComparer.Ordinal);
+            if (lookupToRequested.Count == 0)
+                return videos;
+
+            foreach (var lookupChunk in lookupToRequested.Keys.Chunk(500))
+            {
+                foreach (var cached in _subscriptionCache.QueryIn(nameof(DBSubscriptionCacheIndex.Url), lookupChunk.ToArray()))
+                {
+                    try
+                    {
+                        if (cached.Object is not PlatformVideo video)
+                            continue;
+
+                        if (lookupToRequested.TryGetValue(cached.Url, out var requestedUrl) && !videos.ContainsKey(requestedUrl))
+                            videos[requestedUrl] = video;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.w(TAG, $"Failed to read cached video [{cached.Url}]: {ex.Message}");
+                    }
+                }
+            }
+
+            return videos;
+        }
+
+        private static IEnumerable<string> GetLookupUrls(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                yield break;
+
+            var trimmed = url.Trim();
+            yield return trimmed;
+
+            var youtubeId = ExtractYouTubeVideoId(trimmed);
+            if (youtubeId == null)
+                yield break;
+
+            yield return $"https://www.youtube.com/watch?v={youtubeId}";
+            yield return $"https://youtube.com/watch?v={youtubeId}";
+            yield return $"https://youtu.be/{youtubeId}";
+        }
+
+        private static string? ExtractYouTubeVideoId(string value)
+        {
+            var match = Regex.Match(
+                value,
+                @"(?:youtube(?:-nocookie)?\.com/(?:watch\?[^#\s]*v=|embed/|shorts/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})",
+                RegexOptions.IgnoreCase);
+            if (match.Success)
+                return match.Groups[1].Value;
+
+            match = Regex.Match(value, @"(?:[?&]v=)([A-Za-z0-9_-]{11})", RegexOptions.IgnoreCase);
+            return match.Success ? match.Groups[1].Value : null;
         }
 
 
