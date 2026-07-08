@@ -56,6 +56,16 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>ffmpeg</TargetPath>
     </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/osx-x64/ffmpeg" Condition="'$(RuntimeIdentifier)'=='osx-x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>ffmpeg</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/osx-arm64/ffmpeg" Condition="'$(RuntimeIdentifier)'=='osx-arm64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>ffmpeg</TargetPath>
+    </ContentWithTargetPath>
 
     <ContentWithTargetPath Include="deps/win-x64/libcurl.dll" Condition="'$(RuntimeIdentifier)'=='win-x64'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -71,6 +81,16 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>libcurl-impersonate.so</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/osx-x64/libcurl-impersonate.dylib" Condition="'$(RuntimeIdentifier)'=='osx-x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>libcurl-impersonate.dylib</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/osx-arm64/libcurl-impersonate.dylib" Condition="'$(RuntimeIdentifier)'=='osx-arm64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>libcurl-impersonate.dylib</TargetPath>
     </ContentWithTargetPath>
 
     <ContentWithTargetPath Include="deps/win-x64/curlshim.dll" Condition="'$(RuntimeIdentifier)'=='win-x64'">
@@ -88,6 +108,16 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>libcurlshim.so</TargetPath>
     </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/osx-x64/curlshim.dylib" Condition="'$(RuntimeIdentifier)'=='osx-x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>curlshim.dylib</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/osx-arm64/curlshim.dylib" Condition="'$(RuntimeIdentifier)'=='osx-arm64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>curlshim.dylib</TargetPath>
+    </ContentWithTargetPath>
 
     <ContentWithTargetPath Include="deps/win-x64/steam_api64.dll" Condition="'$(RuntimeIdentifier)'=='win-x64'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -98,6 +128,16 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>cef/libsteam_api.so</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/osx-x64/libsteam_api.dylib" Condition="'$(RuntimeIdentifier)'=='osx-x64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>cef/libsteam_api.dylib</TargetPath>
+    </ContentWithTargetPath>
+    <ContentWithTargetPath Include="deps/osx-arm64/libsteam_api.dylib" Condition="'$(RuntimeIdentifier)'=='osx-arm64'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>cef/libsteam_api.dylib</TargetPath>
     </ContentWithTargetPath>
 
     <Content Include="logo.ico">
