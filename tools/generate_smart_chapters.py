@@ -569,6 +569,14 @@ def run_command(cmd: list[str], *, cwd: Path | None = None, check: bool = True) 
     )
 
 
+def command_failure_tail(exc: subprocess.CalledProcessError, *, lines: int = 18) -> str:
+    output = "\n".join(part for part in [exc.stderr, exc.stdout] if part)
+    output = output.strip()
+    if not output:
+        return str(exc)
+    return "\n".join(output.splitlines()[-lines:])
+
+
 def ytdlp_cookie_args(args: argparse.Namespace) -> list[str]:
     return ["--cookies-from-browser", args.cookies_from_browser] if getattr(args, "cookies_from_browser", None) else []
 
@@ -901,10 +909,50 @@ def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path
     ytdlp = resolve_binary("yt-dlp")
     if not ytdlp:
         raise RuntimeError("yt-dlp introuvable pour télécharger l'audio (voir --check).")
-    run_command([ytdlp, "-x", "--audio-format", "wav", "--audio-quality", "0",
-                 "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000",
-                 "-o", str(workdir / "audio.%(ext)s"),
-                 *ytdlp_runtime_args(), *ytdlp_cookie_args(args), task.url], check=True)
+
+    def cleanup_audio_outputs() -> None:
+        for candidate in workdir.glob("audio.*"):
+            try:
+                candidate.unlink()
+            except OSError:
+                pass
+
+    def download_with_format(format_selector: str | None = None) -> None:
+        cmd = [ytdlp]
+        if format_selector:
+            cmd.extend(["-f", format_selector])
+        cmd.extend([
+            "--no-progress",
+            "-x", "--audio-format", "wav", "--audio-quality", "0",
+            "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000",
+            "-o", str(workdir / "audio.%(ext)s"),
+            *ytdlp_runtime_args(), *ytdlp_cookie_args(args), task.url,
+        ])
+        run_command(cmd, check=True)
+
+    try:
+        download_with_format()
+    except subprocess.CalledProcessError as exc:
+        detail = command_failure_tail(exc)
+        if "HTTP Error 403" not in detail or not extract_youtube_id(task.url):
+            raise RuntimeError(f"yt-dlp audio download failed:\n{detail}") from exc
+
+        log("  audio-only download refused (HTTP 403); retrying low-bandwidth HLS for Whisper")
+        last_error = detail
+        for format_selector in ["91", "92", "93", "94", "95", "96"]:
+            cleanup_audio_outputs()
+            try:
+                download_with_format(format_selector)
+                log(f"  HLS fallback succeeded with format {format_selector}")
+                break
+            except subprocess.CalledProcessError as fallback_exc:
+                last_error = command_failure_tail(fallback_exc, lines=8)
+                log(f"  HLS fallback format {format_selector} failed: {last_error.splitlines()[-1]}")
+        else:
+            raise RuntimeError(
+                "yt-dlp audio download failed after HLS fallback:\n"
+                f"initial error:\n{detail}\nlast fallback error:\n{last_error}"
+            ) from exc
     produced = list(workdir.glob("audio.wav")) or list(workdir.glob("audio.*"))
     if not produced:
         raise RuntimeError("Le téléchargement audio n'a produit aucun fichier.")
