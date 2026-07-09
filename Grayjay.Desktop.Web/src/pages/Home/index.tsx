@@ -953,11 +953,11 @@ const HomePage: Component = () => {
         batch(() => { setVideoMenuAnchor(a); setVideoMenuContent(c); setVideoMenuShow(true); });
     };
 
-    const recentInProgressUrls = () => new Set(
+    const recentInProgressUrls = createMemo(() => new Set(
         (historyItems() ?? []).map(h => h.video?.url).filter(Boolean) as string[]
-    );
+    ));
 
-    const watchedUrlKeys = () => {
+    const watchedUrlKeys = createMemo(() => {
         const keys = new Set<string>();
         const addUrl = (url?: string) => {
             for (const key of highlightKeys(url)) keys.add(key);
@@ -966,7 +966,7 @@ const HomePage: Component = () => {
         for (const url of watchedHistoryUrls() ?? []) addUrl(url);
         for (const url of recentInProgressUrls()) addUrl(url);
         return keys;
-    };
+    });
 
     const hasWatchedUrl = (url?: string) => {
         if (!url) return false;
@@ -975,7 +975,7 @@ const HomePage: Component = () => {
     };
 
     // Hero videos — 1:1 interleave of recent subs + platform recos, thumbnail required
-    const heroVideos = () => {
+    const heroVideos = createMemo(() => {
         const dVideos = dismissedVideos$();
         const dChannels = dismissedChannels$();
         const exclude = (v: IPlatformVideo) =>
@@ -1004,40 +1004,46 @@ const HomePage: Component = () => {
             }
         }
         return result;
-    };
+    });
 
     // Continue watching — excludes dismissed videos/channels
-    const continueWatchingItems = () => {
+    const continueWatchingItems = createMemo(() => {
         const dV = dismissedVideos$();
         const dC = dismissedChannels$();
         return (historyItems() ?? []).filter(h =>
             !dV.has(h.video?.url ?? '') && !dC.has(h.video?.author?.url ?? '')
         );
-    };
+    });
 
     // Recommended = home pager items after the hero, with valid metadata only, excluding watched
-    const recommendedItems = () => {
+    const recommendedItems = createMemo(() => {
         const live = (homePager()?.data ?? []) as IPlatformVideo[];
         const source = live.length > 0 ? live : homeCached();
         return source
             .slice(HERO_COUNT)
             .filter(v => v.name && v.name.trim() && (v as IPlatformVideo).duration > 0 && !hasWatchedUrl((v as IPlatformVideo).url)) as IPlatformVideo[];
-    };
+    });
 
-    const continueWatchingSmartTvSources = () =>
-        smartTvSourcesFromVideos(continueWatchingItems().map(item => item.video));
+    const continueWatchingSmartTvSources = createMemo(() =>
+        smartTvSourcesFromVideos(continueWatchingItems().map(item => item.video))
+    );
+    const continueWatchingSmartTvStats = createMemo(() => smartTvStats(continueWatchingSmartTvSources()));
 
-    const watchLaterSmartTvSources = () =>
-        smartTvSourcesFromVideos(watchLaterItems() ?? []);
+    const watchLaterSmartTvSources = createMemo(() =>
+        smartTvSourcesFromVideos(watchLaterItems() ?? [])
+    );
+    const watchLaterSmartTvStats = createMemo(() => smartTvStats(watchLaterSmartTvSources()));
 
-    const smartChapterSmartTvSources = () =>
+    const smartChapterSmartTvSources = createMemo(() =>
         smartTvSourcesFromSummaries(smartChapterItems() ?? [])
-            .slice(0, smartTvSettings().candidateVideos);
+            .slice(0, smartTvSettings().candidateVideos));
 
-    const recommendedSmartTvSources = () =>
-        smartTvSourcesFromVideos(recommendedItems());
+    const recommendedSmartTvSources = createMemo(() =>
+        smartTvSourcesFromVideos(recommendedItems())
+    );
+    const recommendedSmartTvStats = createMemo(() => smartTvStats(recommendedSmartTvSources()));
 
-    const smartTvCandidateSources = () => {
+    const smartTvCandidateSources = createMemo(() => {
         return dedupeSmartTvSources([
             ...smartTvSourcesFromVideos(heroVideos()),
             ...continueWatchingSmartTvSources(),
@@ -1048,23 +1054,25 @@ const HomePage: Component = () => {
             ...recommendedSmartTvSources(),
             ...smartChapterSmartTvSources(),
         ]);
-    };
+    });
 
-    const watchNowSources = () =>
+    const watchNowSources = createMemo(() =>
         dedupeSmartTvSources(smartTvCandidateSources()
             .filter(source => source.video && !hasWatchedUrl(source.video.url)))
-            .slice(0, MAX_CAROUSEL_ITEMS);
+            .slice(0, MAX_CAROUSEL_ITEMS));
+    const watchNowStats = createMemo(() => smartTvStats(watchNowSources()));
 
-    const watchNowItems = () =>
+    const watchNowItems = createMemo(() =>
         watchNowSources()
             .map(source => source.video)
-            .filter((item): item is IPlatformVideo => item !== undefined);
+            .filter((item): item is IPlatformVideo => item !== undefined));
 
-    const globalSmartTvSources = () =>
+    const globalSmartTvSources = createMemo(() =>
         dedupeSmartTvSources([
             ...watchNowSources(),
             ...smartChapterSmartTvSources(),
-        ]).slice(0, smartTvSettings().candidateVideos);
+        ]).slice(0, smartTvSettings().candidateVideos));
+    const globalSmartTvStats = createMemo(() => smartTvStats(globalSmartTvSources()));
 
     return (
         <div class={styles.container}>
@@ -1107,7 +1115,7 @@ const HomePage: Component = () => {
                             title="Global mix"
                             variant="global"
                             sources={globalSmartTvSources()}
-                            poolStats={smartTvStats(globalSmartTvSources())}
+                            poolStats={globalSmartTvStats()}
                             settings={smartTvSettings()}
                             session={smartTvSessionForKey('global')}
                             loading={smartTvLoadingKey$() === 'global'}
@@ -1124,7 +1132,7 @@ const HomePage: Component = () => {
                             <SmartTvTile
                                 title="Watch now"
                                 sources={watchNowSources()}
-                                poolStats={smartTvStats(watchNowSources())}
+                                poolStats={watchNowStats()}
                                 settings={smartTvSettings()}
                                 session={smartTvSessionForKey('watch-now')}
                                 loading={smartTvLoadingKey$() === 'watch-now'}
@@ -1151,7 +1159,7 @@ const HomePage: Component = () => {
                             <SmartTvTile
                                 title="Continue watching"
                                 sources={continueWatchingSmartTvSources()}
-                                poolStats={smartTvStats(continueWatchingSmartTvSources())}
+                                poolStats={continueWatchingSmartTvStats()}
                                 settings={smartTvSettings()}
                                 session={smartTvSessionForKey('continue-watching')}
                                 loading={smartTvLoadingKey$() === 'continue-watching'}
@@ -1178,7 +1186,7 @@ const HomePage: Component = () => {
                             <SmartTvTile
                                 title="Watch later"
                                 sources={watchLaterSmartTvSources()}
-                                poolStats={smartTvStats(watchLaterSmartTvSources())}
+                                poolStats={watchLaterSmartTvStats()}
                                 settings={smartTvSettings()}
                                 session={smartTvSessionForKey('watch-later')}
                                 loading={smartTvLoadingKey$() === 'watch-later'}
@@ -1201,8 +1209,9 @@ const HomePage: Component = () => {
                 <Show when={(groupCarousels()?.length ?? 0) > 0}>
                     <For each={groupCarousels()}>
                         {(group) => {
-                            const items = () => group.videos.filter(v => !hasWatchedUrl(v.url));
-                            const smartTvSources = () => smartTvSourcesFromVideos(items());
+                            const items = createMemo(() => group.videos.filter(v => !hasWatchedUrl(v.url)));
+                            const smartTvSources = createMemo(() => smartTvSourcesFromVideos(items()));
+                            const smartTvSourceStats = createMemo(() => smartTvStats(smartTvSources()));
                             const smartTvKey = () => `group:${group.name}`;
                             return (
                                 <Show when={items().length > 0}>
@@ -1213,7 +1222,7 @@ const HomePage: Component = () => {
                                             <SmartTvTile
                                                 title={group.name}
                                                 sources={smartTvSources()}
-                                                poolStats={smartTvStats(smartTvSources())}
+                                                poolStats={smartTvSourceStats()}
                                                 settings={smartTvSettings()}
                                                 session={smartTvSessionForKey(smartTvKey())}
                                                 loading={smartTvLoadingKey$() === smartTvKey()}
@@ -1245,7 +1254,7 @@ const HomePage: Component = () => {
                             <SmartTvTile
                                 title="Recommended"
                                 sources={recommendedSmartTvSources()}
-                                poolStats={smartTvStats(recommendedSmartTvSources())}
+                                poolStats={recommendedSmartTvStats()}
                                 settings={smartTvSettings()}
                                 session={smartTvSessionForKey('recommended')}
                                 loading={smartTvLoadingKey$() === 'recommended'}
