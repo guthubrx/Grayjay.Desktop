@@ -33,6 +33,11 @@ from typing import Any
 
 
 DEFAULT_GRAYJAY_DIR = Path.home() / "Library/Application Support/Grayjay"
+DEFAULT_ROUTR_CLIENT = "bluejay-smart-chapters"
+DEFAULT_ROUTR_PHASE = "precompute"
+DEFAULT_ROUTR_PROFILE = "balanced-cheap"
+DEFAULT_ROUTR_PROMPT_VERSION = "smart-chapters-v1"
+DEFAULT_ROUTR_CALLER_ID = "bluejay-smart-chapters-precompute"
 
 
 @dataclass
@@ -161,6 +166,14 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--output-language", default=None, help="Force the language of generated titles/summaries (e.g. French, English). Defaults to the video's own language.")
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
+    generation.add_argument("--routr-client", default=os.environ.get("ROUTR_CLIENT", DEFAULT_ROUTR_CLIENT), help="X-Routr-Client metadata header for Routr.")
+    generation.add_argument("--routr-phase", default=os.environ.get("ROUTR_PHASE", DEFAULT_ROUTR_PHASE), help="X-Routr-Phase metadata header for Routr.")
+    generation.add_argument("--routr-profile", default=os.environ.get("ROUTR_PROFILE", DEFAULT_ROUTR_PROFILE), help="X-Routr-Profile metadata header for Routr.")
+    generation.add_argument("--routr-prompt-version", default=os.environ.get("ROUTR_PROMPT_VERSION", DEFAULT_ROUTR_PROMPT_VERSION), help="X-Routr-Prompt-Version metadata header for Routr.")
+    generation.add_argument("--routr-run-id", default=os.environ.get("ROUTR_RUN_ID", ""), help="X-Routr-Run-Id metadata header for Routr.")
+    generation.add_argument("--routr-caller-id", default=os.environ.get("ROUTR_CALLER_ID", DEFAULT_ROUTR_CALLER_ID), help="X-Routr-Caller-Id metadata header for Routr.")
+    generation.add_argument("--routr-session-mode", default=os.environ.get("ROUTR_SESSION_MODE", "none"), choices=["none", "sticky", "stateful"], help="X-Routr-Session-Mode metadata header for Routr.")
+    generation.add_argument("--routr-session-id", default=os.environ.get("ROUTR_SESSION_ID", ""), help="X-Routr-Session-Id metadata header for Routr.")
 
     fallback = parser.add_argument_group("transcription")
     fallback.add_argument("--subtitle-file", help="Use this VTT/subtitle file directly (skips yt-dlp/Whisper). Used by BlueJay to pass Grayjay's own subtitles.")
@@ -556,6 +569,14 @@ def run_command(cmd: list[str], *, cwd: Path | None = None, check: bool = True) 
     )
 
 
+def command_failure_tail(exc: subprocess.CalledProcessError, *, lines: int = 18) -> str:
+    output = "\n".join(part for part in [exc.stderr, exc.stdout] if part)
+    output = output.strip()
+    if not output:
+        return str(exc)
+    return "\n".join(output.splitlines()[-lines:])
+
+
 def ytdlp_cookie_args(args: argparse.Namespace) -> list[str]:
     return ["--cookies-from-browser", args.cookies_from_browser] if getattr(args, "cookies_from_browser", None) else []
 
@@ -888,10 +909,50 @@ def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path
     ytdlp = resolve_binary("yt-dlp")
     if not ytdlp:
         raise RuntimeError("yt-dlp introuvable pour télécharger l'audio (voir --check).")
-    run_command([ytdlp, "-x", "--audio-format", "wav", "--audio-quality", "0",
-                 "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000",
-                 "-o", str(workdir / "audio.%(ext)s"),
-                 *ytdlp_runtime_args(), *ytdlp_cookie_args(args), task.url], check=True)
+
+    def cleanup_audio_outputs() -> None:
+        for candidate in workdir.glob("audio.*"):
+            try:
+                candidate.unlink()
+            except OSError:
+                pass
+
+    def download_with_format(format_selector: str | None = None) -> None:
+        cmd = [ytdlp]
+        if format_selector:
+            cmd.extend(["-f", format_selector])
+        cmd.extend([
+            "--no-progress",
+            "-x", "--audio-format", "wav", "--audio-quality", "0",
+            "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000",
+            "-o", str(workdir / "audio.%(ext)s"),
+            *ytdlp_runtime_args(), *ytdlp_cookie_args(args), task.url,
+        ])
+        run_command(cmd, check=True)
+
+    try:
+        download_with_format()
+    except subprocess.CalledProcessError as exc:
+        detail = command_failure_tail(exc)
+        if "HTTP Error 403" not in detail or not extract_youtube_id(task.url):
+            raise RuntimeError(f"yt-dlp audio download failed:\n{detail}") from exc
+
+        log("  audio-only download refused (HTTP 403); retrying low-bandwidth HLS for Whisper")
+        last_error = detail
+        for format_selector in ["91", "92", "93", "94", "95", "96"]:
+            cleanup_audio_outputs()
+            try:
+                download_with_format(format_selector)
+                log(f"  HLS fallback succeeded with format {format_selector}")
+                break
+            except subprocess.CalledProcessError as fallback_exc:
+                last_error = command_failure_tail(fallback_exc, lines=8)
+                log(f"  HLS fallback format {format_selector} failed: {last_error.splitlines()[-1]}")
+        else:
+            raise RuntimeError(
+                "yt-dlp audio download failed after HLS fallback:\n"
+                f"initial error:\n{detail}\nlast fallback error:\n{last_error}"
+            ) from exc
     produced = list(workdir.glob("audio.wav")) or list(workdir.glob("audio.*"))
     if not produced:
         raise RuntimeError("Le téléchargement audio n'a produit aucun fichier.")
@@ -1142,10 +1203,7 @@ def call_openai(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {args.api_key}",
-        },
+        headers=openai_request_headers(args),
         method="POST",
     )
     try:
@@ -1164,6 +1222,28 @@ def call_openai(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(raw, str):
         raise RuntimeError("OpenAI-compatible response content was not text.")
     return parse_model_json(raw)
+
+
+def openai_request_headers(args: argparse.Namespace) -> dict[str, str]:
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {args.api_key}",
+    }
+    routr_headers = {
+        "X-Routr-Client": getattr(args, "routr_client", ""),
+        "X-Routr-Phase": getattr(args, "routr_phase", ""),
+        "X-Routr-Profile": getattr(args, "routr_profile", ""),
+        "X-Routr-Prompt-Version": getattr(args, "routr_prompt_version", ""),
+        "X-Routr-Run-Id": getattr(args, "routr_run_id", ""),
+        "X-Routr-Caller-Id": getattr(args, "routr_caller_id", ""),
+        "X-Routr-Session-Mode": getattr(args, "routr_session_mode", ""),
+        "X-Routr-Session-Id": getattr(args, "routr_session_id", ""),
+    }
+    for key, value in routr_headers.items():
+        value = str(value or "").strip()
+        if value:
+            headers[key] = value
+    return headers
 
 
 def call_ollama(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
