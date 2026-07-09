@@ -1,5 +1,4 @@
-import { createSignal, type Component, For, createResource, Show, createEffect, createMemo, Accessor, onMount, onCleanup } from 'solid-js';
-import { getKeybinding } from '../../state/StateKeybindings';
+import { createSignal, type Component, For, createResource, Show, createEffect, createMemo, Accessor } from 'solid-js';
 import styles from './index.module.css';
 import { SubscriptionsBackend } from '../../backend/SubscriptionsBackend';
 import SearchBar from '../../components/topbars/SearchBar';
@@ -12,13 +11,9 @@ import { HomeBackend } from '../../backend/HomeBackend';
 import ContentGrid from '../../components/containers/ContentGrid';
 import NavigationBar from '../../components/topbars/NavigationBar';
 
-import iconRefresh from "../../assets/icons/icon_reload_temp.svg"
 import StateWebsocket from '../../state/StateWebsocket';
 import StateGlobal from '../../state/StateGlobal';
-import IconButton from '../../components/buttons/IconButton';
-import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overlays/SettingsMenu';
-import Anchor, { AnchorStyle } from '../../utility/Anchor';
-import { Portal } from 'solid-js/web';
+import ReloadButton from '../../components/buttons/ReloadButton';
 import LoaderGrid from '../../components/basics/loaders/LoaderGrid';
 import { Pager } from '../../backend/models/pagers/Pager';
 import Button from '../../components/buttons/Button';
@@ -260,36 +255,10 @@ const SubscriptionsPage: Component = () => {
     pager.setFilter(condition);
   }
 
-  const [showReloadMenu$, setShowReloadMenu] = createSignal(false);
-  const anchor = new Anchor(null, showReloadMenu$, AnchorStyle.BottomRight);
-  const reloadMenu = {
-    title: "",
-    items: [
-      new MenuItemButton("Reload from Update", iconRefresh, "Updates the subscriptions", ()=>{
-        doUpdate = true;
-        subPagerResource.refetch();
-        setShowReloadMenu(false);
-      }),
-      new MenuItemButton("Reload from Cache", iconRefresh, "Just reloads the cached view", ()=>{
-        doUpdate = false;
-        subPagerResource.refetch();
-        setShowReloadMenu(false);
-      })
-    ]
-  } as Menu;
-
-  const onReloadKeyDown = (e: KeyboardEvent) => {
-    const t = e.target as HTMLElement | null;
-    if (t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.isContentEditable) return;
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.key === getKeybinding("reload")) {
-      doUpdate = true;
-      subPagerResource.refetch();
-      e.preventDefault();
-    }
-  };
-  onMount(() => window.addEventListener("keydown", onReloadKeyDown));
-  onCleanup(() => window.removeEventListener("keydown", onReloadKeyDown));
+  function reloadSubscriptions(update: boolean) {
+    doUpdate = update;
+    subPagerResource.refetch();
+  }
   function newSubscriptionGroup() {
     UIOverlay.overlayNewSubscriptionGroup((group)=>{
       subGroupsResource.refetch();
@@ -331,23 +300,12 @@ const SubscriptionsPage: Component = () => {
   return (
     <div class={styles.container}>
       <NavigationBar isRoot={true} childrenAfter={
-        <IconButton
-          icon={iconRefresh}
-          variant="none"
-          shape="circle"
-          width="30px"
-          height="30px"
-          iconInset="0px"
+        <ReloadButton
+          onReloadUpdate={() => reloadSubscriptions(true)}
+          onReloadCache={() => reloadSubscriptions(false)}
+          updateDescription="Updates the subscriptions"
           style={{ "margin-left": "24px" }}
-          onClick={(e) => {
-            anchor.setElement(e.currentTarget as HTMLElement);
-            setShowReloadMenu(true);
-          }}
           focusableOpts={{
-            onPress: (el) => {
-              anchor.setElement(el);
-              setShowReloadMenu(true);
-            },
             groupId: 'nav-bar',
             groupIndices: [1],
             groupType: 'horizontal',
@@ -514,9 +472,6 @@ const SubscriptionsPage: Component = () => {
           </Show>
           <Show when={currentPager$() && (!hasSelectedCreator$() || filterPager$.state == "ready")}>
             <div class={styles.content}>
-              <Portal>
-                <SettingsMenu menu={reloadMenu} show={showReloadMenu$()} anchor={anchor} onHide={()=>setShowReloadMenu(false)} />
-              </Portal>
               <ContentGrid pager={currentPager$()} outerContainerRef={scrollContainerRef} useCache={true} openChannelButton={true} />
             </div>
           </Show>

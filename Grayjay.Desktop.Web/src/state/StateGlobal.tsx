@@ -7,6 +7,7 @@ import { SettingsBackend } from "../backend/SettingsBackend";
 import { HomeBackend } from "../backend/HomeBackend";
 import { IPlatformContent } from "../backend/models/content/IPlatformContent";
 import { RefreshPager } from "../backend/models/pagers/RefreshPager";
+import { Pager } from "../backend/models/pagers/Pager";
 import { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
 import { DateTime } from "luxon";
 import { BuyBackend } from "../backend/BuyBackend";
@@ -24,12 +25,12 @@ export interface StateGlobal {
     toasts$: Accessor<{ descriptor: ToastDescriptor, expired$: Accessor<boolean> }[]>,
     sourceStates$: Resource<ISourceConfigState[]>,
     lastHomeTime$: Accessor<DateTime|undefined>,
-    home$: Resource<RefreshPager<IPlatformVideo>>,
+    home$: Resource<Pager<IPlatformVideo>>,
     didPurchase$: Resource<boolean>,
     isDeveloper$: Resource<boolean>,
     onGlobalClick: Event1<MouseEvent>,
     toast(toastDescriptor: ToastDescriptor): void,
-    reloadHome(): void,
+    reloadHome(update?: boolean): void,
     getSourceConfig: (id: string | undefined) => ISourceConfig | undefined,
     getSourceState: (id: string | undefined) => ISourceConfigState | undefined,
     getCommonSearchCapabilities: (sourceIds: string[]) => IResultCapabilities | undefined,
@@ -47,9 +48,13 @@ function createState() {
     const [sources$, sourcesResource] = createResourceDefault(async () => await SourcesBackend.sources());
     const [sourceStates$, sourceStatesResource] = createResourceDefault(async () => await SourcesBackend.sourceStates());
     const [lastHomeTime$, setLastHomeTime] = createSignal<DateTime>();
-    const [home$, homeResource] = createResourceDefault(async () => {
+    // false = recharge lazy depuis le cache ; true = force une mise à jour réseau depuis la source
+    let doHomeUpdate = false;
+    const [home$, homeResource] = createResourceDefault<Pager<IPlatformVideo>>(async () => {
         setLastHomeTime(DateTime.now());
-        return await HomeBackend.homePagerLazy();
+        const update = doHomeUpdate;
+        doHomeUpdate = false;
+        return update ? await HomeBackend.homePager() : await HomeBackend.homePagerLazy();
     });
     const [didPurchase$, didPurchaseResource] = createResourceDefault(async () => {
         return await BuyBackend.didPurchase();
@@ -160,7 +165,8 @@ function createState() {
 
 
         toast: toast,
-        reloadHome(){
+        reloadHome(update: boolean = false){
+            doHomeUpdate = update;
             homeResource.refetch();
         },
 

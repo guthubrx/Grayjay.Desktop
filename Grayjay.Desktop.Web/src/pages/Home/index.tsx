@@ -9,8 +9,7 @@ import { HighlightsBackend } from '../../backend/HighlightsBackend';
 import NavigationBar from '../../components/topbars/NavigationBar';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import StateGlobal from '../../state/StateGlobal';
-import IconButton from '../../components/buttons/IconButton';
-import { getKeybinding } from '../../state/StateKeybindings';
+import ReloadButton from '../../components/buttons/ReloadButton';
 import { useNavigate } from '@solidjs/router';
 import { Duration } from 'luxon';
 import EmptyContentView from '../../components/EmptyContentView';
@@ -18,6 +17,7 @@ import HomeCarousel from '../../components/containers/HomeCarousel';
 import HeroBanner from '../../components/home/HeroBanner';
 import VideoThumbnailView from '../../components/content/VideoThumbnailView';
 import { IPlatformVideo } from '../../backend/models/content/IPlatformVideo';
+import { RefreshPager } from '../../backend/models/pagers/RefreshPager';
 import { IHistoryVideo } from '../../backend/models/content/IHistoryVideo';
 import { IVideoHighlightSummary } from '../../backend/models/highlights/IVideoHighlightSummary';
 import { IVideoHighlightSet } from '../../backend/models/highlights/IVideoHighlightSet';
@@ -29,8 +29,6 @@ import UIOverlay from '../../state/UIOverlay';
 import { interestScoreFromSummary } from '../../utils/highlightInterest';
 
 import { homeStyle$ } from '../../state/HomeStyleState';
-
-import iconRefresh from "../../assets/icons/icon_reload_temp.svg";
 import iconHome from "../../assets/icons/icon_nav_home.svg";
 import iconSources from "../../assets/icons/ic_circles.svg";
 import iconQueue from "../../assets/icons/icon_add_to_queue.svg";
@@ -537,18 +535,6 @@ const HomePage: Component = () => {
         StateGlobal.reloadHome();
     }
 
-    const onKeyDown = (e: KeyboardEvent) => {
-        const t = e.target as HTMLElement | null;
-        if (t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.isContentEditable) return;
-        if (e.ctrlKey || e.altKey || e.metaKey) return;
-        if (e.key === getKeybinding("reload")) {
-            StateGlobal.reloadHome();
-            e.preventDefault();
-        }
-    };
-    onMount(() => window.addEventListener("keydown", onKeyDown));
-    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
-
     // Reactive dismiss sets used by heroVideos().
     const [dismissedVideos$, setDismissedVideos] = createSignal<Set<string>>(getDismissed().videos);
     const [dismissedChannels$, setDismissedChannels] = createSignal<Set<string>>(getDismissed().channels);
@@ -569,7 +555,8 @@ const HomePage: Component = () => {
     createEffect(() => {
         const pager = homePager();
         if (!pager) return;
-        void pager.hadInitialUpdate$?.();
+        // En mode cache (RefreshPager) on s'abonne au signal de fin de refresh ; en mode update (Pager simple) il est absent
+        void (pager as RefreshPager<IPlatformVideo>).hadInitialUpdate$?.();
         const data = pager.data as IPlatformVideo[];
         if (data.length === 0) return;
         const dV = dismissedVideos$();
@@ -1077,20 +1064,15 @@ const HomePage: Component = () => {
     return (
         <div class={styles.container}>
             <NavigationBar isRoot={true} childrenAfter={
-                <IconButton
-                    icon={iconRefresh}
-                    variant="none"
-                    shape="circle"
-                    width="30px"
-                    height="30px"
-                    iconInset="0px"
+                <ReloadButton
+                    onReloadUpdate={() => StateGlobal.reloadHome(true)}
+                    onReloadCache={() => StateGlobal.reloadHome(false)}
+                    updateDescription="Updates the highlights"
                     style={{ 'margin-left': '24px' }}
-                    onClick={() => StateGlobal.reloadHome()}
                     focusableOpts={{
                         groupId: 'nav-bar',
                         groupIndices: [1],
                         groupType: 'horizontal',
-                        onPress: () => StateGlobal.reloadHome(),
                     }}
                 />
             } />
