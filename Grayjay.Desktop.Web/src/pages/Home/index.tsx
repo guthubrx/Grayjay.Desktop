@@ -9,6 +9,7 @@ import { HighlightsBackend } from '../../backend/HighlightsBackend';
 import NavigationBar from '../../components/topbars/NavigationBar';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import StateGlobal from '../../state/StateGlobal';
+import StateWebsocket from '../../state/StateWebsocket';
 import ReloadButton from '../../components/buttons/ReloadButton';
 import { useNavigate } from '@solidjs/router';
 import EmptyContentView from '../../components/EmptyContentView';
@@ -98,7 +99,13 @@ const HomePage: Component = () => {
         StateGlobal.reloadHome();
     }
 
-    // Reactive dismiss sets — source of vérité pour heroVideos()
+    // Barre de progression du rafraîchissement des abonnements (même source et même condition que la page Subscriptions)
+    const [subProgress$, setSubProgress] = createSignal<number>(0);
+    StateWebsocket.registerHandlerNew("subProgress", (packet) => {
+        setSubProgress(packet.payload.progress / packet.payload.total);
+    }, "homebar");
+
+    // Reactive dismiss sets - source de vérité pour heroVideos()
     const [dismissedVideos$, setDismissedVideos] = createSignal<Set<string>>(getDismissed().videos);
     const [dismissedChannels$, setDismissedChannels] = createSignal<Set<string>>(getDismissed().channels);
 
@@ -346,6 +353,10 @@ const HomePage: Component = () => {
                         intervalMs={15000}
                         watchLaterUrls={() => new Set((watchLaterItems() ?? []).map(v => v.url ?? '').filter(Boolean))}
                     />
+                    <Show when={subProgress$() > 0 && subProgress$() < 1}>
+                        <div style={{height: "2px", width: (subProgress$() * 100) + "%", background: "linear-gradient(267deg, rgb(1, 214, 230) -100.57%, rgb(1, 130, 231) 90.96%)"}}>
+                        </div>
+                    </Show>
                 </Show>
 
                 <Show when={continueWatchingItems().length > 0}>
