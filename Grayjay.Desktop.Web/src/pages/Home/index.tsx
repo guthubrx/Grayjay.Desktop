@@ -9,6 +9,7 @@ import { HighlightsBackend } from '../../backend/HighlightsBackend';
 import NavigationBar from '../../components/topbars/NavigationBar';
 import ScrollContainer from '../../components/containers/ScrollContainer';
 import StateGlobal from '../../state/StateGlobal';
+import StateWebsocket from '../../state/StateWebsocket';
 import ReloadButton from '../../components/buttons/ReloadButton';
 import { useNavigate } from '@solidjs/router';
 import { Duration } from 'luxon';
@@ -534,6 +535,12 @@ const HomePage: Component = () => {
     if (lastHomeMillis > 2 * 60 * 1000) {
         StateGlobal.reloadHome();
     }
+
+    // Barre de progression du rafraîchissement des abonnements (même source et même condition que la page Subscriptions)
+    const [subProgress$, setSubProgress] = createSignal<number>(0);
+    StateWebsocket.registerHandlerNew("subProgress", (packet) => {
+        setSubProgress(packet.payload.progress / packet.payload.total);
+    }, "homebar");
 
     // Reactive dismiss sets used by heroVideos().
     const [dismissedVideos$, setDismissedVideos] = createSignal<Set<string>>(getDismissed().videos);
@@ -1089,6 +1096,10 @@ const HomePage: Component = () => {
                         watchLaterUrls={() => new Set((watchLaterItems() ?? []).map(v => v.url ?? '').filter(Boolean))}
                         highlightSummaryForVideo={(video) => summaryForUrl(video?.url)}
                     />
+                    <Show when={subProgress$() > 0 && subProgress$() < 1}>
+                        <div style={{height: "2px", width: (subProgress$() * 100) + "%", background: "linear-gradient(267deg, rgb(1, 214, 230) -100.57%, rgb(1, 130, 231) 90.96%)"}}>
+                        </div>
+                    </Show>
                 </Show>
 
                 <Show when={globalSmartTvSources().length > 0}>
