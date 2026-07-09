@@ -11,6 +11,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import bisect
 import hashlib
 import html
 import json
@@ -809,7 +810,9 @@ def parse_vtt(text: str) -> list[TranscriptCue]:
         if clean and (not cues or cues[-1].text != clean):
             cues.append(TranscriptCue(start=start, end=max(end, start + 0.1), text=clean))
         i += 1
-    return merge_short_cues(cues)
+    # Cues fines (une par ligne de sous-titre) : la fusion en blocs ~18 s pour le
+    # LLM se fait plus tard, on garde ici le grain phrase pour recaler les bornes.
+    return cues
 
 
 def parse_timestamp(value: str) -> float:
@@ -1004,7 +1007,8 @@ def parse_whisper_text(text: str, duration: float | None) -> list[TranscriptCue]
             continue
         timestamped.append(TranscriptCue(parse_timestamp(match.group(1)), parse_timestamp(match.group(2)), body))
     if timestamped:
-        return merge_short_cues(timestamped)
+        # Grain fin conservé (cf. parse_vtt) : la fusion pour le LLM est faite en aval.
+        return timestamped
 
     paragraphs = [clean_caption_text(p) for p in re.split(r"\n\s*\n", text) if clean_caption_text(p)]
     if not paragraphs:
@@ -1344,6 +1348,85 @@ def validate_segments(data: dict[str, Any], duration: float | None, args: argpar
     return cleaned
 
 
+# Ponctuation de fin de phrase (point, ?, !, points de suspension), avec
+# guillemets/parenthèses fermantes éventuels juste après.
+_SENTENCE_END_RE = re.compile(r"[.!?…][\"'»)\]]*\s*$")
+
+
+def sentence_start_times(cues: list[TranscriptCue], min_pause: float = 0.45) -> list[float]:
+    """Instants où commence une nouvelle phrase, dérivés des cues fines.
+
+    Une cue amorce une phrase si la précédente se termine par une ponctuation
+    forte (transcripts ponctués : Whisper, sous-titres manuels) OU si une pause
+    nette la précède (auto-captions sans ponctuation). La première cue amorce
+    toujours une phrase. Complexité O(n) sur le nombre de cues."""
+    starts: list[float] = []
+    prev_end: float | None = None
+    starts_new = True
+    for cue in cues:
+        pause = (cue.start - prev_end) if prev_end is not None else 0.0
+        if starts_new or pause >= min_pause:
+            starts.append(round(cue.start, 3))
+        prev_end = cue.end
+        starts_new = bool(_SENTENCE_END_RE.search(cue.text.rstrip()))
+    # Dédoublonne en gardant l'ordre croissant (cues potentiellement chevauchantes).
+    unique: list[float] = []
+    for value in sorted(starts):
+        if not unique or value > unique[-1] + 1e-3:
+            unique.append(value)
+    return unique
+
+
+def _nearest_within(sorted_values: list[float], target: float, window: float) -> float | None:
+    """Valeur la plus proche de target dans sorted_values, si à moins de window. O(log n)."""
+    if not sorted_values:
+        return None
+    idx = bisect.bisect_left(sorted_values, target)
+    best: float | None = None
+    best_dist: float | None = None
+    for j in (idx - 1, idx):
+        if 0 <= j < len(sorted_values):
+            dist = abs(sorted_values[j] - target)
+            if dist <= window and (best_dist is None or dist < best_dist):
+                best, best_dist = sorted_values[j], dist
+    return best
+
+
+def snap_segments_to_sentences(segments: list[dict[str, Any]], cues: list[TranscriptCue],
+                               max_shift: float = 8.0) -> list[dict[str, Any]]:
+    """Recale le DÉBUT de chaque chapitre sur l'amorce de phrase la plus proche.
+
+    Le LLM décide OÙ sont les sujets (bien) ; le début exact est confié à une
+    règle déterministe basée sur les vrais temps de parole, pour ne pas tomber
+    en milieu ou en fin de phrase. On ne déplace une borne que si un début de
+    phrase existe dans une fenêtre de ``max_shift`` secondes, sinon on garde la
+    valeur du LLM. Le premier chapitre n'est pas déplacé (couverture depuis le
+    début). Les fins sont réalignées sur le début suivant pour garder des
+    chapitres contigus, sans trou ni chevauchement."""
+    if len(segments) < 2:
+        return segments
+    starts = sentence_start_times(cues)
+    if not starts:
+        return segments
+
+    result = [dict(seg) for seg in segments]
+    prev_start = result[0]["start"]
+    for seg in result[1:]:
+        snapped = _nearest_within(starts, seg["start"], max_shift)
+        # Ne recale que si ça reste après le chapitre précédent (ordre + longueur mini).
+        if snapped is not None and snapped > prev_start + 1.0:
+            seg["start"] = round(snapped, 3)
+        prev_start = seg["start"]
+
+    # Contiguïté : fin d'un chapitre = début du suivant (absorbe le décalage).
+    for i in range(len(result) - 1):
+        if result[i + 1]["start"] > result[i]["start"]:
+            result[i]["end"] = result[i + 1]["start"]
+
+    result = [seg for seg in result if seg["end"] > seg["start"]]
+    return result
+
+
 def highlights_path(video_url: str, output_dir: Path) -> Path:
     digest = hashlib.sha256(video_url.strip().encode("utf-8")).hexdigest()
     return output_dir / f"{digest}.json"
@@ -1492,6 +1575,11 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
             log(f"  workdir: {workdir}")
         cues = get_transcript(task, args, workdir)
 
+        # Le LLM travaille sur des blocs fusionnés (~18 s) : moins de bruit et budget
+        # tokens maîtrisé (comportement identique à avant). On garde les cues fines à
+        # part pour recaler les bornes finales sur de vrais débuts de phrase.
+        llm_cues = merge_short_cues(cues)
+
         # Nombre de thèses/sections adapté à la durée (sauf override explicite).
         duration = task.duration or (cues[-1].end if cues else None)
         if args.max_theses is None:
@@ -1500,14 +1588,15 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
             args.max_segments = auto_max_segments(duration)
         log(f"  targets: {args.max_theses} theses/topics, ~{args.max_segments} sections")
 
-        analysis = run_analysis(task, cues, args)
+        analysis = run_analysis(task, llm_cues, args)
 
-        prompt = build_prompt(task, cues, args, analysis)
+        prompt = build_prompt(task, llm_cues, args, analysis)
         log(f"  chaptering pass 2/{args.provider}: {args.model}")
         generated = call_model(prompt, args)
         duration = task.duration or (cues[-1].end if cues else None)
         segments = validate_segments(generated, duration, args)
-        segments = resplit_long_segments(task, cues, segments, args, analysis)
+        segments = resplit_long_segments(task, llm_cues, segments, args, analysis)
+        segments = snap_segments_to_sentences(segments, cues)
         log(f"  segments: {len(segments)}")
         path = write_highlights(task, segments, analysis, args)
         if args.dry_run:
