@@ -401,3 +401,7 @@ FodyWeavers.xsd
 
 # Steam zip
 Grayjay_Steam.zip
+
+# macOS + agent scratch
+.DS_Store
+.agent/
