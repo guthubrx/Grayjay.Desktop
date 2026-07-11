@@ -480,6 +480,9 @@ namespace Grayjay.ClientServer.Settings
             [SettingsDropdownOptions("Auto (video language)", "Français", "English", "Español", "Deutsch", "Italiano", "Português", "Nederlands")]
             public int GenerationLanguage { get; set; } = 0;
 
+            [SettingsField("Smart Block", SettingsField.TOGGLE, "Automatically skip promotional segments detected by Smart Analysis. Runs in addition to SponsorBlock when both are enabled.", 6)]
+            public bool SmartBlock { get; set; } = false;
+
             [SettingsField("Smart TV", SettingsField.GROUP, "Configure Smart TV session building", 20)]
             public SmartTvSettings SmartTv { get; set; } = new SmartTvSettings();
             public class SmartTvSettings

@@ -21,6 +21,7 @@ import { useCasting } from "../../../contexts/Casting";
 import { Event0 } from "../../../utility/Event";
 import { ChapterType, IChapter } from "../../../backend/models/contentDetails/IChapter";
 import { IPlatformVideoDetails } from "../../../backend/models/contentDetails/IPlatformVideoDetails";
+import { IVideoHighlightPromotionSegment } from "../../../backend/models/highlights/IVideoHighlightPromotionSegment";
 import { IVideoHighlightSegment } from "../../../backend/models/highlights/IVideoHighlightSegment";
 const SMART_CHAPTER_TOOLTIP_WIDTH = 340;
 export type SmartChapterFilter = "video" | "smart" | "good" | "top" | "strong";
@@ -63,6 +64,7 @@ export interface PlayerControlsProps {
     eventMoved?: Event0;
     chapters?: IChapter[];
     smartChapterSegments?: IVideoHighlightSegment[];
+    promotionSegments?: IVideoHighlightPromotionSegment[];
     activeSmartChapterIndex?: number;
     smartChapterFilter?: SmartChapterFilter;
     onSetSmartChapterFilter?: (filter: SmartChapterFilter) => void;
@@ -395,6 +397,20 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
             }))
             .filter(segment => segment.end > segment.start);
     });
+    const promotionSegments$ = createMemo(() => {
+        const durationSeconds = durationSeconds$();
+        if (durationSeconds <= 0)
+            return [];
+
+        return (props.promotionSegments ?? [])
+            .filter(segment => segment.end > segment.start)
+            .map(segment => ({
+                ...segment,
+                start: Math.max(0, Math.min(durationSeconds, segment.start)),
+                end: Math.max(0, Math.min(durationSeconds, segment.end))
+            }))
+            .filter(segment => segment.end > segment.start);
+    });
     const smartChapterStyle = (segment: IVideoHighlightSegment, index: number) => {
         const durationSeconds = durationSeconds$();
         if (durationSeconds <= 0)
@@ -413,6 +429,18 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
             left: `${left}%`,
             width: `${Math.max(width, 0.18)}%`,
             background: `linear-gradient(to right, ${rgbString(cLeft)} 0%, ${rgbString(cThis)} 50%, ${rgbString(cRight)} 100%)`
+        };
+    };
+    const promotionSegmentStyle = (segment: IVideoHighlightPromotionSegment) => {
+        const durationSeconds = durationSeconds$();
+        if (durationSeconds <= 0)
+            return {};
+
+        const left = (segment.start / durationSeconds) * 100;
+        const width = ((segment.end - segment.start) / durationSeconds) * 100;
+        return {
+            left: `${left}%`,
+            width: `${Math.max(width, 0.18)}%`
         };
     };
     const smartChapterTooltipSegment$ = createMemo(() => {
@@ -742,6 +770,17 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                             </div>
                         )}
                     </Show>
+                </Show>
+                <Show when={promotionSegments$().length > 0}>
+                    <div class={styles.progressBarPromotions}>
+                        <Index each={promotionSegments$()}>{(segment$) =>
+                            <div
+                                class={styles.progressBarPromotion}
+                                title={`${segment$().category}: ${formatDuration(Duration.fromMillis(segment$().start * 1000))} - ${formatDuration(Duration.fromMillis(segment$().end * 1000))}`}
+                                style={promotionSegmentStyle(segment$())}
+                            />
+                        }</Index>
+                    </div>
                 </Show>
                 <Show when={(props.chapters?.length ?? 0) > 0}>
                     <div class={styles.progressBarChapters}>
