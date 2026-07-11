@@ -13,4 +13,5 @@ public class VideoHighlightSet
     public List<VideoHighlightThesis>? Theses { get; set; }
     public PlatformVideo? Video { get; set; }
     public List<VideoHighlightSegment> Segments { get; set; } = new();
+    public List<VideoHighlightPromotionSegment>? PromotionSegments { get; set; }
 }

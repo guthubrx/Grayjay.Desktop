@@ -112,6 +112,10 @@ public static class StateHighlights
             .Where(s => s.End > s.Start)
             .OrderBy(s => s.Start)
             .ToList();
+        set.PromotionSegments = set.PromotionSegments?
+            .Where(s => s.End > s.Start)
+            .OrderBy(s => s.Start)
+            .ToList();
 
         var file = GetFile(set.VideoUrl);
         var json = GJsonSerializer.AndroidCompatible.SerializeObj(set);
@@ -176,6 +180,19 @@ public static class StateHighlights
                 throw new ArgumentException("Each segment needs a title");
             if (segment.Start < 0 || segment.End <= segment.Start)
                 throw new ArgumentException($"Invalid segment range for [{segment.Title}]");
+        }
+
+        if (set.PromotionSegments == null)
+            return;
+
+        foreach (var segment in set.PromotionSegments)
+        {
+            if (string.IsNullOrWhiteSpace(segment.Category))
+                throw new ArgumentException("Each promotion segment needs a category");
+            if (string.IsNullOrWhiteSpace(segment.Source))
+                throw new ArgumentException("Each promotion segment needs a source");
+            if (segment.Start < 0 || segment.End <= segment.Start)
+                throw new ArgumentException($"Invalid promotion segment range for [{segment.Category}]");
         }
     }
 

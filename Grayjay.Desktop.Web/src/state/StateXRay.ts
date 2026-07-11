@@ -8,6 +8,7 @@ export interface XRayState {
     globalSummaryChars: number; // 0 = no limit
     chapterSummaryChars: number; // 0 = no limit
     panelWidthPercent: number;  // largeur du volet en % de la largeur du player
+    smartBlock: boolean;
 }
 
 const OPACITY_MAP    = [0.30, 0.45, 0.55, 0.68, 0.80, 0.92];
@@ -26,6 +27,7 @@ const DEFAULTS: XRayState = {
     globalSummaryChars: 0,
     chapterSummaryChars: 150,
     panelWidthPercent: 25,
+    smartBlock: false,
 };
 
 const [xRayState$, setXRayState] = createSignal<XRayState>({ ...DEFAULTS });
@@ -51,6 +53,7 @@ export function applyXRayFromSettings(obj: any, panelWidthPercent?: any) {
         globalSummaryChars:  GLOBAL_SUMMARY_MAP[xray?.globalSummaryChars ?? 0] ?? 0,
         chapterSummaryChars: CHAPTER_SUMMARY_MAP[xray?.chapterSummaryChars ?? 2] ?? 150,
         panelWidthPercent:   validPct ? panelWidthPercent : xRayState$().panelWidthPercent,
+        smartBlock:          xray?.smartBlock ?? false,
     });
 }
 

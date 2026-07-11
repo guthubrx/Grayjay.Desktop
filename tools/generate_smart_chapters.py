@@ -39,6 +39,8 @@ DEFAULT_ROUTR_PHASE = "precompute"
 DEFAULT_ROUTR_PROFILE = "balanced-cheap"
 DEFAULT_ROUTR_PROMPT_VERSION = "smart-chapters-v1"
 DEFAULT_ROUTR_CALLER_ID = "bluejay-smart-chapters-precompute"
+DEFAULT_PROMOTION_CATEGORIES = "sponsor,selfpromo,interaction"
+SPONSORBLOCK_API_BASE = "https://sponsor.ajay.app"
 
 
 @dataclass
@@ -167,6 +169,8 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--output-language", default=None, help="Force the language of generated titles/summaries (e.g. French, English). Defaults to the video's own language.")
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
+    generation.add_argument("--no-sponsorblock", action="store_true", help="Do not fetch SponsorBlock promotion segments.")
+    generation.add_argument("--promotion-categories", default=DEFAULT_PROMOTION_CATEGORIES, help="Comma-separated promotion categories imported from SponsorBlock and requested from analysis.")
     generation.add_argument("--routr-client", default=os.environ.get("ROUTR_CLIENT", DEFAULT_ROUTR_CLIENT), help="X-Routr-Client metadata header for Routr.")
     generation.add_argument("--routr-phase", default=os.environ.get("ROUTR_PHASE", DEFAULT_ROUTR_PHASE), help="X-Routr-Phase metadata header for Routr.")
     generation.add_argument("--routr-profile", default=os.environ.get("ROUTR_PROFILE", DEFAULT_ROUTR_PROFILE), help="X-Routr-Profile metadata header for Routr.")
@@ -425,6 +429,15 @@ def to_float(value: Any) -> float | None:
         return None
 
 
+def promotion_categories(args: argparse.Namespace) -> list[str]:
+    categories: list[str] = []
+    for category in str(args.promotion_categories or "").split(","):
+        category = category.strip()
+        if category and category not in categories:
+            categories.append(category)
+    return categories or DEFAULT_PROMOTION_CATEGORIES.split(",")
+
+
 def iter_grayjay_videos(grayjay_dir: Path) -> list[VideoTask]:
     tasks: list[VideoTask] = []
 
@@ -599,6 +612,154 @@ def fetch_video_metadata(task: VideoTask, args: argparse.Namespace) -> VideoTask
     except Exception as exc:
         log(f"  metadata warning: {exc}")
     return task
+
+
+def fetch_sponsorblock_segments(task: VideoTask, args: argparse.Namespace, duration: float | None) -> list[dict[str, Any]]:
+    if args.no_sponsorblock:
+        log("  sponsorblock: disabled")
+        return []
+
+    video_id = extract_youtube_id(task.url)
+    if not video_id:
+        return []
+
+    categories = promotion_categories(args)
+    query = urllib.parse.urlencode({
+        "videoID": video_id,
+        "categories": json.dumps(categories, separators=(",", ":")),
+    })
+    url = f"{SPONSORBLOCK_API_BASE}/api/skipSegments?{query}"
+    request = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            log("  sponsorblock: no segments")
+            return []
+        log(f"  sponsorblock warning: HTTP {exc.code}")
+        return []
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        log(f"  sponsorblock warning: {exc}")
+        return []
+
+    raw_segments = data if isinstance(data, list) else []
+    segments: list[dict[str, Any]] = []
+    for item in raw_segments:
+        if not isinstance(item, dict):
+            continue
+        if item.get("actionType") not in (None, "skip"):
+            continue
+        category = str(item.get("category") or "").strip()
+        if category not in categories:
+            continue
+        votes = to_float(item.get("votes"))
+        if votes is not None and votes < 0:
+            continue
+        segment = item.get("segment")
+        if not isinstance(segment, list) or len(segment) < 2:
+            continue
+        start = to_float(segment[0])
+        end = to_float(segment[1])
+        if start is None or end is None:
+            continue
+        segments.append({
+            "start": start,
+            "end": end,
+            "category": category,
+            "source": "sponsorblock",
+            "confidence": 0.95,
+            "summary": "SponsorBlock segment",
+        })
+
+    cleaned = validate_promotion_segments(segments, duration, default_source="sponsorblock")
+    log(f"  sponsorblock: {len(cleaned)} promotion segment(s)")
+    return cleaned
+
+
+def validate_promotion_segments(raw_segments: Any, duration: float | None, *, default_source: str) -> list[dict[str, Any]]:
+    if not isinstance(raw_segments, list):
+        return []
+
+    cleaned: list[dict[str, Any]] = []
+    for item in raw_segments:
+        if not isinstance(item, dict):
+            continue
+        start = to_float(item.get("start"))
+        end = to_float(item.get("end"))
+        category = str(item.get("category") or "").strip()
+        source = str(item.get("source") or default_source).strip()
+        confidence = to_float(item.get("confidence"))
+        summary = str(item.get("summary") or "").strip()
+        if start is None or end is None or not category:
+            continue
+        if duration:
+            start = max(0.0, min(duration, start))
+            end = max(0.0, min(duration, end))
+        else:
+            start = max(0.0, start)
+            end = max(0.0, end)
+        if end <= start:
+            continue
+        if default_source == "analysis" and source != "analysis":
+            source = "analysis"
+        elif source not in {"sponsorblock", "analysis"}:
+            source = default_source
+        cleaned.append({
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "category": category[:48],
+            "source": source,
+            "confidence": round(max(0.0, min(1.0, confidence if confidence is not None else 0.7)), 3),
+            "summary": summary[:240] if summary else None,
+        })
+
+    cleaned.sort(key=lambda item: (item["start"], item["end"]))
+    return [{key: value for key, value in item.items() if value is not None} for item in cleaned]
+
+
+def merge_promotion_segments(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not segments:
+        return []
+
+    result: list[dict[str, Any]] = []
+    for segment in sorted(segments, key=lambda item: (item["start"], 0 if item.get("source") == "sponsorblock" else 1, item["end"])):
+        current = dict(segment)
+        if not result:
+            result.append(current)
+            continue
+
+        previous = result[-1]
+        same_category = previous["category"] == current["category"]
+        overlaps = current["start"] <= previous["end"] + 2.0
+        if not same_category or not overlaps:
+            result.append(current)
+            continue
+
+        previous["end"] = round(max(previous["end"], current["end"]), 3)
+        previous["confidence"] = round(max(
+            to_float(previous.get("confidence")) or 0.0,
+            to_float(current.get("confidence")) or 0.0,
+        ), 3)
+        if previous.get("source") != current.get("source") and current.get("source") == "sponsorblock":
+            previous["source"] = "sponsorblock"
+            previous["summary"] = current.get("summary")
+        elif not previous.get("summary") and current.get("summary"):
+            previous["summary"] = current["summary"]
+
+    return result
+
+
+def format_known_promotions(segments: list[dict[str, Any]]) -> str:
+    if not segments:
+        return "None."
+    lines = []
+    for segment in segments:
+        lines.append(
+            f"- {segment['category']} {format_time(segment['start'])}-{format_time(segment['end'])} "
+            f"({segment['start']:.2f}-{segment['end']:.2f}s, source={segment['source']})"
+        )
+    return "\n".join(lines)
 
 
 def transcript_cache_dir(args: argparse.Namespace) -> Path:
@@ -1118,17 +1279,23 @@ def run_analysis(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     return analysis
 
 
-def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Namespace, analysis: dict[str, Any]) -> str:
+def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Namespace,
+                 analysis: dict[str, Any], known_promotions: list[dict[str, Any]]) -> str:
     transcript = cues_to_prompt_transcript(cues, args.max_transcript_chars)
     duration = task.duration or (cues[-1].end if cues else None)
     theses = analysis.get("theses") or []
     theses_block = "\n".join(f"  {t['id']}. {t['statement']}" for t in theses)
     thesis_ids = ", ".join(str(t["id"]) for t in theses)
+    promotion_categories_block = ", ".join(promotion_categories(args))
+    known_promotions_block = format_known_promotions(known_promotions)
     return textwrap.dedent(f"""
     You generate Smart Chapters for a video player used to skip to key moments and display an information overlay.
 
     The video's main theses/topics (for reference only — see scoring rules):
     {theses_block}
+
+    Known read-only SponsorBlock promotion segments:
+    {known_promotions_block}
 
     Return only valid JSON with this exact shape:
     {{
@@ -1140,6 +1307,16 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
           "summary": "2 to 3 dense sentences: what is actually said and why a viewer would care.",
           "score": 0.91,
           "thesis_id": 1
+        }}
+      ],
+      "promotion_segments": [
+        {{
+          "start": 141.5,
+          "end": 228.0,
+          "category": "sponsor",
+          "source": "analysis",
+          "confidence": 0.72,
+          "summary": "Short factual reason this span is promotional."
         }}
       ]
     }}
@@ -1160,6 +1337,11 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     - Judge each section on its OWN merit. A long stretch of the video being off the main thesis (e.g. an interview moving from tech to strategy, leadership or personal advice) is usually still valuable — score it on its content, not its distance from the thesis.
     - SPREAD the scores across the FULL range and score RELATIVELY within THIS video, not in absolute terms. Compare the sections to each other: the single best moment(s) MUST reach >= 0.93, the weakest/most introductory parts MUST go down to about 0.30-0.45, and genuine filler below 0.30. Do NOT cluster everything in 0.60-0.85 — that defeats the purpose. Aim for real contrast: a few clear peaks (>= 0.90), a spread of middle values, and clearly cold intros/low points. If two sections differ in value, their scores MUST differ.
     - thesis_id: OPTIONAL link to which thesis/topic ({thesis_ids}) the section relates to, or null. A null thesis_id MUST NOT lower the score.
+    - promotion_segments: optional non-editorial ranges for these categories only: {promotion_categories_block}. They are IN ADDITION to segments and MUST NOT break coverage or contiguity of segments.
+    - Copy every known SponsorBlock promotion segment exactly into promotion_segments unless the transcript clearly proves the range is invalid.
+    - Add analysis promotion_segments only for explicit sponsorship, self-promotion, affiliate pitches, paid product reads, subscription/like/comment calls, or creator promotion. Do NOT classify normal product discussion, opinion, news, tool reviews or examples as promotion.
+    - Use source="analysis" for transcript detections. Do not use source="sponsorblock" unless it was listed in the known SponsorBlock block above.
+    - Give transcript-only detections lower confidence when uncertain. Do not invent promotional ranges.
     - Titles and summaries must be in {args.output_language or "the video's main language"}.
     - NEVER invent content. Base every title and summary strictly on what the transcript ACTUALLY says for that time span. Do NOT claim "music", "silence", "no dialogue", "intro sequence" or similar unless the transcript truly has no words there. If the transcript has text in a span, describe THAT text; if a span has no transcript text, merge it into an adjacent section rather than fabricating a description.
 
@@ -1432,7 +1614,8 @@ def highlights_path(video_url: str, output_dir: Path) -> Path:
     return output_dir / f"{digest}.json"
 
 
-def write_highlights(task: VideoTask, segments: list[dict[str, Any]], analysis: dict[str, Any], args: argparse.Namespace) -> Path:
+def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_segments: list[dict[str, Any]],
+                     analysis: dict[str, Any], args: argparse.Namespace) -> Path:
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else Path(args.grayjay_dir).expanduser() / "highlights"
     output_dir.mkdir(parents=True, exist_ok=True)
     path = highlights_path(task.url, output_dir)
@@ -1443,7 +1626,7 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], analysis: 
     existing = load_json(path) if path.exists() else None
     created_at = existing.get("createdAt") if isinstance(existing, dict) and existing.get("createdAt") else now
     payload: dict[str, Any] = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "videoUrl": task.url,
         "source": f"smart-chapters-generator+{args.provider}-{args.model}",
         "createdAt": created_at,
@@ -1452,6 +1635,8 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], analysis: 
         "theses": analysis.get("theses"),
         "segments": segments,
     }
+    if promotion_segments:
+        payload["promotionSegments"] = promotion_segments
     if task.video:
         payload["video"] = task.video
 
@@ -1590,15 +1775,24 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
 
         analysis = run_analysis(task, llm_cues, args)
 
-        prompt = build_prompt(task, llm_cues, args, analysis)
+        sponsorblock_segments = fetch_sponsorblock_segments(task, args, duration)
+
+        prompt = build_prompt(task, llm_cues, args, analysis, sponsorblock_segments)
         log(f"  chaptering pass 2/{args.provider}: {args.model}")
         generated = call_model(prompt, args)
         duration = task.duration or (cues[-1].end if cues else None)
         segments = validate_segments(generated, duration, args)
+        analysis_promotion_segments = validate_promotion_segments(
+            generated.get("promotion_segments"),
+            duration,
+            default_source="analysis",
+        )
+        promotion_segments = merge_promotion_segments(sponsorblock_segments + analysis_promotion_segments)
         segments = resplit_long_segments(task, llm_cues, segments, args, analysis)
         segments = snap_segments_to_sentences(segments, cues)
         log(f"  segments: {len(segments)}")
-        path = write_highlights(task, segments, analysis, args)
+        log(f"  promotion segments: {len(promotion_segments)}")
+        path = write_highlights(task, segments, promotion_segments, analysis, args)
         if args.dry_run:
             log(f"  dry-run output: {path}")
             print(json.dumps({
@@ -1606,6 +1800,7 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
                 "globalSummary": analysis.get("globalSummary"),
                 "theses": analysis.get("theses"),
                 "segments": segments,
+                "promotionSegments": promotion_segments,
             }, ensure_ascii=False, indent=2))
         else:
             log(f"  written: {path}")

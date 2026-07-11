@@ -1,4 +1,5 @@
 import { IPlatformVideo } from "../content/IPlatformVideo";
+import { IVideoHighlightPromotionSegment } from "./IVideoHighlightPromotionSegment";
 import { IVideoHighlightSegment } from "./IVideoHighlightSegment";
 import { IVideoHighlightThesis } from "./IVideoHighlightThesis";
 
@@ -12,4 +13,5 @@ export interface IVideoHighlightSet {
     theses?: IVideoHighlightThesis[];
     video?: IPlatformVideo;
     segments: IVideoHighlightSegment[];
+    promotionSegments?: IVideoHighlightPromotionSegment[];
 }

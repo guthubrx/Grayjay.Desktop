@@ -477,8 +477,10 @@ namespace Grayjay.ClientServer.Settings
             [SettingsDropdownOptions("Auto (video language)", "Français", "English", "Español", "Deutsch", "Italiano", "Português", "Nederlands")]
             public int GenerationLanguage { get; set; } = 0;
 
-            // Nom (en anglais, compris du LLM) de la langue de sortie choisie, ou
-            // null pour "Auto" (le générateur garde alors la langue de la vidéo).
+            [SettingsField("Smart Block", SettingsField.TOGGLE, "Automatically skip promotional segments detected by Smart Analysis. Runs in addition to SponsorBlock when both are enabled.", 6)]
+            public bool SmartBlock { get; set; } = false;
+
+            // English language name passed to the generator, or null for Auto.
             public string? GenerationLanguageName() => GenerationLanguage switch
             {
                 1 => "French",

@@ -21,6 +21,8 @@ import { clearLiveChatOnSeek } from '../../../state/StateLiveChat';
 import { focusable } from '../../../focusable'; void focusable;
 import { FocusableOptions, InputSource } from '../../../nav';
 import { SettingsBackend } from '../../../backend/SettingsBackend';
+import { xRayState$ } from '../../../state/StateXRay';
+import { IVideoHighlightPromotionSegment } from '../../../backend/models/highlights/IVideoHighlightPromotionSegment';
 import { decode } from 'html-entities';
 import { IVideoHighlightSegment } from '../../../backend/models/highlights/IVideoHighlightSegment';
 import { IVideoHighlightSet } from '../../../backend/models/highlights/IVideoHighlightSet';
@@ -202,6 +204,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         const segments = activeHighlightSegments$();
         return segments.length > 0 ? segments : (props.smartChapterHighlights?.segments ?? []);
     });
+    const promotionSegments$ = createMemo(() => props.smartChapterHighlights?.promotionSegments ?? []);
     const smartChapterTheses$ = createMemo(() => props.smartChapterHighlights?.theses ?? []);
     const smartChapterMatchesFilter = (segment: IVideoHighlightSegment, filter = smartChapterFilter$()) => {
         if (filter === "video")
@@ -364,11 +367,17 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         play();
     }));
 
+    const SKIP_PREROLL_SECONDS = 0.35;
     let lastSkip: IChapter | undefined = undefined;
+    let lastSmartBlock: IVideoHighlightPromotionSegment | undefined = undefined;
     let skippedOnce: IChapter[] = [];
     createEffect(()=>{
         console.log("Chapters changed: ", props.chapters);
         skippedOnce = [];
+    });
+    createEffect(() => {
+        promotionSegments$();
+        lastSmartBlock = undefined;
     });
     createEffect(()=>{
         const chapter = currentChapter$();
@@ -388,6 +397,38 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             }
         }
     });
+    createEffect(on(position, (pos) => {
+        const chapters = props.chapters;
+        if (!chapters || chapters.length === 0 || isScrubbing())
+            return;
+
+        const posSec = pos.milliseconds / 1000;
+        const chapter = chapters.find(chapter =>
+            chapter.type == ChapterType.SKIP &&
+            chapter.timeStart - SKIP_PREROLL_SECONDS <= posSec &&
+            chapter.timeEnd > posSec
+        );
+        if (!chapter || lastSkip == chapter)
+            return;
+
+        lastSkip = chapter;
+        void seek(Duration.fromMillis(chapter.timeEnd * 1000));
+    }));
+    createEffect(on(position, (pos) => {
+        if (!xRayState$().smartBlock || isScrubbing())
+            return;
+
+        const posSec = pos.milliseconds / 1000;
+        const segment = promotionSegments$().find(segment =>
+            segment.start - SKIP_PREROLL_SECONDS <= posSec &&
+            segment.end > posSec
+        );
+        if (!segment || lastSmartBlock == segment)
+            return;
+
+        lastSmartBlock = segment;
+        void seek(Duration.fromMillis(segment.end * 1000));
+    }));
     function onSkip() {
         const chapter = currentChapter$();
         if(!chapter)
@@ -1673,6 +1714,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     position={position()}
                     positionBuffered={positionBuffered()}
                     smartChapterSegments={smartChapterSegments$()}
+                    promotionSegments={promotionSegments$()}
 
                     activeSmartChapterIndex={displayHighlightIndex$()}
                     smartChapterFilter={smartChapterFilter$()}
