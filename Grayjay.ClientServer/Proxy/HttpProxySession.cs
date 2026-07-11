@@ -140,6 +140,14 @@ namespace Grayjay.ClientServer.Proxy
                 if (isRelativeProxy && !registryEntry.SupportRelativeProxy)
                     throw new InvalidOperationException($"Relative proxy request not supported: " + incomingRequest.Path);
 
+                if (registryEntry.RangeCache?.TryCreateResponse(incomingRequest, out var cachedResponse) == true)
+                {
+                    Logger.i(nameof(HttpProxy), $"playback_prefetch range_cache=hit bytes={cachedResponse!.Data?.Length ?? 0}");
+                    await clientStream.WriteResponseAsync(cachedResponse, _cancellationTokenSource.Token);
+                    await clientStream.FlushAsync(_cancellationTokenSource.Token);
+                    continue;
+                }
+
                 if (incomingRequest.Method == "OPTIONS" && registryEntry.ResponseHeaderOptions.InjectPermissiveCORS && (registryEntry.SupportedMethods == null || registryEntry.SupportedMethods.Contains("OPTIONS")))
                 {
                     await clientStream.WriteResponseAsync(new HttpProxyResponse()

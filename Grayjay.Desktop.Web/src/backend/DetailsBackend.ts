@@ -23,6 +23,12 @@ export abstract class DetailsBackend {
     static async videoLoad(url: string): Promise<IVideoLoadResult> {
         return await Backend.GET("/details/VideoLoad?url=" + encodeURIComponent(url));
     }
+    static async videoPrepare(url: string): Promise<IVideoPrepareResult> {
+        return await Backend.GET("/details/VideoPrepare?url=" + encodeURIComponent(url));
+    }
+    static async videoPrepareCancel(): Promise<void> {
+        await Backend.DELETE("/details/VideoPrepare");
+    }
     static async videoDescription(url: string): Promise<string | null> {
         return await Backend.GET("/details/VideoDescription?url=" + encodeURIComponent(url));
     }
@@ -90,7 +96,24 @@ export abstract class DetailsBackend {
 
 export interface IVideoLoadResult {
     video: IPlatformVideoDetails,
-    local: IVideoLocal
+    local: IVideoLocal,
+    prefetched?: boolean,
+    source?: ISourceDirectDescriptor,
+    sourceReady?: boolean,
+    manifestReady?: boolean,
+    mediaReady?: boolean,
+    mediaBytes?: number,
+    throughputMbps?: number
+}
+export interface IVideoPrepareResult {
+    url: string,
+    status: "prepared" | "deduplicated" | "superseded" | "disabled" | "failed",
+    elapsedMs: number,
+    sourceReady: boolean,
+    manifestReady: boolean,
+    mediaReady: boolean,
+    mediaBytes: number,
+    throughputMbps: number
 }
 export interface IPostLoadResult {
     post: IPlatformPostDetails

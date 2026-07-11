@@ -36,6 +36,7 @@ namespace Grayjay.ClientServer.Proxy
         public string[]? SupportedMethods { get; set; } = null;
         public bool FollowRedirects { get; set; } = true;
         public bool SupportRelativeProxy { get; set; } = false;
+        public HttpProxyRangeCache? RangeCache { get; set; }
 
         public HttpProxyRegistryEntry WithModifyResponseString(Func<HttpProxyResponse, string, string> modifier)
         {

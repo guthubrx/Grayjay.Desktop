@@ -30,6 +30,7 @@ interface VideoProps {
     onVideoDimensionsChanged: (width: number, height: number) => void;
     children: JSX.Element;
     video?: IPlatformVideoDetails,
+    posterUrl?: string;
     source?: SourceSelected;
     sourceQuality?: number;
     onPlayerQualityChanged?: (level: number) => void;
@@ -80,11 +81,14 @@ export type VideoPlayerViewHandle = {
     toggleMute: () => void;
     toggleFullscreen: () => void;
     seek(time: Duration): Promise<void>;
+    pause: () => void;
     playHighlights(segments: IVideoHighlightSegment[]): Promise<void>;
     stopHighlights(): void;
 };
 
 const VideoPlayerView: Component<VideoProps> = (props) => {
+    const AUDIO_TRANSITION_MS = 180;
+    const IMAGE_TRANSITION_MS = 240;
     const casting = useCasting()!;
     
     let videoCaptionsRef: HTMLDivElement | undefined;
@@ -93,7 +97,10 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     let dashPlayer: dashjs.MediaPlayerClass | undefined;
     let hlsPlayer: Hls | undefined;
     let timeout: NodeJS.Timeout | undefined;
+    let transitionPosterTimeout: NodeJS.Timeout | undefined;
     let volumeBeforeMute: number | undefined = undefined;
+    let transitionVolumeChange = false;
+    let currentContentUrl: string | undefined;
     let subtitleMap: Map<string, HTMLParagraphElement> = new Map<string, HTMLParagraphElement>();
     const [areControlsVisible, setAreControlsVisible] = createSignal(false);
     const [duration, setDuration] = createSignal(Duration.fromMillis(0));
@@ -108,6 +115,10 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const [isCasting, setIsCasting] = createSignal(casting?.activeDevice.device() ? true : false);
     const [isAudioOnly, setIsAudioOnly] = createSignal(false);
     const [isLoading, setIsLoading] = createSignal(true);
+    const [hasStartedSource, setHasStartedSource] = createSignal(false);
+    const [transitionVisualPending, setTransitionVisualPending] = createSignal(false);
+    const [transitionPosterVisible, setTransitionPosterVisible] = createSignal(false);
+    const [transitionPosterFading, setTransitionPosterFading] = createSignal(false);
     const [resumePositionVisible, setResumePositionVisible] = createSignal(false);
     const [endControlsVisible$, setEndControlsVisible] = createSignal(false);
     const [loaderGameVisible$, setLoaderGameVisible] = createSignal<number>();
@@ -154,6 +165,16 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     createEffect(() => {
         if (isPlaying()) {
             setLoaderGameVisible(undefined);
+            if (untrack(transitionVisualPending)) {
+                setTransitionVisualPending(false);
+                setTransitionPosterFading(true);
+                clearTimeout(transitionPosterTimeout);
+                transitionPosterTimeout = setTimeout(() => {
+                    setTransitionPosterVisible(false);
+                    setTransitionPosterFading(false);
+                }, IMAGE_TRANSITION_MS);
+            }
+            setHasStartedSource(true);
         }
         props.onIsPlayingChanged?.(isPlaying());
     });
@@ -519,7 +540,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                 await CastingBackend.mediaStop();
             } else {
                 try {
-                    changeSource();
+                    await changeSource();
                 } catch (e) {
                     console.error("Failed to unload source", e);
                 }
@@ -528,7 +549,12 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             return;
         }
 
-        const descriptor = await DetailsBackend.sourceProxy(source.url, source.video, source.videoIsLocal, source.audio, source.audioIsLocal, source.subtitle, source.subtitleIsLocal, currentTag);
+        const directSourceUrl = source.videoSourceUrl?.startsWith("/")
+            ? `${source.videoSourceUrl}${source.videoSourceUrl.includes("?") ? "&" : "?"}tag=${encodeURIComponent(currentTag)}`
+            : source.videoSourceUrl;
+        const descriptor = directSourceUrl && source.videoSourceType
+            ? { url: directSourceUrl, type: source.videoSourceType }
+            : await DetailsBackend.sourceProxy(source.url, source.video, source.videoIsLocal, source.audio, source.audioIsLocal, source.subtitle, source.subtitleIsLocal, currentTag);
         console.log("Direct url", descriptor.url, descriptor.type);
 
         if (untrack(isCasting)) {
@@ -543,9 +569,11 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             });
         } else {
             console.info("change source because changeSourceToSetSource call");
+            const contentChanged = currentContentUrl !== undefined && currentContentUrl !== source.url;
+            currentContentUrl = source.url;
 
             try {
-                changeSource(descriptor.url, descriptor.type, source.shouldResume, source.time);
+                await changeSource(descriptor.url, descriptor.type, source.shouldResume, source.time, contentChanged);
             }
             catch(ex) {
                 console.error("Failed to load source", ex);
@@ -556,7 +584,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     createEffect(on(isCasting, async (isCurrentlyCasting) => {
         if (casting && isCurrentlyCasting) {
             console.info("start casting because isCasting change");
-            changeSource(undefined);
+            await changeSource(undefined);
             stopHideControls();
 
             const s = props.source;
@@ -845,7 +873,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     onCleanup(() => { if (speedChipTimer) clearTimeout(speedChipTimer); });
 
     const onVolumeChanged = (volume: number) => {
-        if (isCasting()) {
+        if (isCasting() || transitionVolumeChange) {
             return;
         }
 
@@ -879,7 +907,32 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         setResumePositionVisible(visible);
     });
 
-    const changeSource = (sourceUrl?: string, mediaType?: string, shouldResume?: boolean, startTime?: Duration) => {
+    const fadeOutCurrentMedia = async () => {
+        if (!videoElement || paused())
+            return;
+
+        const startVolume = volume();
+        if (startVolume <= 0)
+            return;
+
+        transitionVolumeChange = true;
+        try {
+            const steps = 6;
+            for (let step = 1; step <= steps; step++) {
+                const nextVolume = startVolume * (1 - step / steps);
+                if (dashPlayer)
+                    dashPlayer.setVolume(nextVolume);
+                else
+                    videoElement.volume = nextVolume;
+                await new Promise(resolve => setTimeout(resolve, AUDIO_TRANSITION_MS / steps));
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        } finally {
+            transitionVolumeChange = false;
+        }
+    };
+
+    const changeSource = async (sourceUrl?: string, mediaType?: string, shouldResume?: boolean, startTime?: Duration, contentChanged: boolean = false) => {
         //TODO: Implement playWhenReady ?
         console.info("changeSource", {sourceUrl, mediaType, shouldResume, startTime});
         setIsAudioOnly(false);
@@ -903,7 +956,16 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         if (!untrack(isCasting))
             switchPosition = untrack(position);
 
+        const currentVolume = currentVolume$();
+        if (contentChanged) {
+            setTransitionVisualPending(true);
+            setTransitionPosterVisible(true);
+            setTransitionPosterFading(false);
+            await fadeOutCurrentMedia();
+        }
+
         currentUrl = sourceUrl;
+        setHasStartedSource(false);
         console.log("changeSource", {currentUrl, sourceUrl, mediaType, shouldResume, startTime, switchPosition});
 
         for (const subtitle of subtitleMap.values()) {
@@ -912,7 +974,6 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
 
         subtitleMap.clear();          
 
-        const currentVolume = currentVolume$();
         if (dashPlayer) {
             try {
                 dashPlayer.destroy();
@@ -1316,7 +1377,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             setIsLoading(true);
         }
 
-        setVolume(currentVolume);
+        await setVolume(currentVolume);
     };
 
     createEffect(async () => {
@@ -1393,13 +1454,15 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             toggleFullscreen: toggleFullscreen,
             toggleMute: toggleVolume,
             seek,
+            pause,
             playHighlights,
             stopHighlights
         });
     });
 
     onCleanup(async () => {
-        changeSource(undefined, undefined, undefined);
+        clearTimeout(transitionPosterTimeout);
+        await changeSource(undefined, undefined, undefined);
         document.removeEventListener('fullscreenchange', handleFullscreenChange);
         stopHideControls();
 
@@ -1646,8 +1709,22 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             use:focusable={focusableOpts()}>
 
             <ErrorBoundary fallback={(err, reset) => (<div></div>)}>
-                <video ref={videoElement} style="width: 100%; height: 100%;" onclick={()=>console.log("received click")}></video>
+                <video ref={videoElement}
+                    classList={{
+                        [styles.video]: true,
+                        [styles.videoTransitionPending]: transitionVisualPending()
+                    }}
+                    onclick={()=>console.log("received click")}></video>
             </ErrorBoundary>
+
+            <Show when={(!hasStartedSource() || transitionPosterVisible()) && !isCasting() && props.posterUrl}>
+                <img classList={{
+                        [styles.transitionPoster]: true,
+                        [styles.transitionPosterFading]: transitionPosterFading()
+                    }}
+                    src={props.posterUrl}
+                    referrerPolicy='no-referrer' />
+            </Show>
             
             <div class={styles.containerCasting} style={{"display": isAudioOnly() || isCasting() ? "block" : "none"}}>
                 <Show when={props.source?.thumbnailUrl}>

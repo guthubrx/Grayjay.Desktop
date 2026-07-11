@@ -158,6 +158,9 @@ namespace Grayjay.ClientServer.Settings
             [SettingsDropdownOptions("0.25", "0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25")]
             public int DefaultPlaybackSpeed { get; set; } = 3;
 
+            [SettingsField("Prefetch next video", SettingsField.TOGGLE, "Prepare the next queued video, its source, and a bounded startup buffer before playback starts", 13)]
+            public bool PrefetchNextVideo { get; set; } = true;
+
             public float GetDefaultPlaybackSpeed()
             {
                 return DefaultPlaybackSpeed switch
