@@ -30,6 +30,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -44,6 +45,199 @@ namespace Grayjay.ClientServer.Controllers
     [Route("[controller]/[action]")]
     public class DetailsController : ControllerBase
     {
+        public enum PlaybackPreparationStatus
+        {
+            Prepared,
+            Superseded
+        }
+
+        public enum PlaybackPreparationConsumeStatus
+        {
+            Hit,
+            Miss,
+            Expired,
+            Failed,
+            Superseded
+        }
+
+        public class PlaybackPreparationResult<T>
+        {
+            public PlaybackPreparationStatus Status { get; set; }
+            public T Value { get; set; }
+        }
+
+        public sealed class PlaybackPreparation<T>
+        {
+            private sealed class PreparedEntry
+            {
+                public string Url { get; set; }
+                public T Value { get; set; }
+                public DateTime PreparedAt { get; set; }
+            }
+
+            private readonly object _lockObject = new object();
+            private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
+            private readonly Func<DateTime> _utcNow;
+            private int _generation;
+            private string _requestedUrl;
+            private Task<PlaybackPreparationResult<T>> _currentTask;
+            private PreparedEntry _prepared;
+
+            public PlaybackPreparation(Func<DateTime> utcNow = null)
+            {
+                _utcNow = utcNow ?? (() => DateTime.UtcNow);
+            }
+
+            public Task<PlaybackPreparationResult<T>> PrepareAsync(string url, Func<Task<T>> resolve)
+            {
+                lock (_lockObject)
+                {
+                    if (_requestedUrl == url && _currentTask != null)
+                        return _currentTask;
+
+                    var generation = ++_generation;
+                    _requestedUrl = url;
+                    if (_prepared != null)
+                        DisposeValue(_prepared.Value);
+                    _prepared = null;
+                    var task = PrepareInternalAsync(url, generation, resolve);
+                    _currentTask = task;
+                    _ = task.ContinueWith(completedTask =>
+                    {
+                        if (!completedTask.IsFaulted && !completedTask.IsCanceled)
+                            return;
+
+                        lock (_lockObject)
+                        {
+                            if (ReferenceEquals(_currentTask, task))
+                            {
+                                _requestedUrl = null;
+                                _currentTask = null;
+                                _prepared = null;
+                            }
+                        }
+                    }, TaskScheduler.Default);
+                    return task;
+                }
+            }
+
+            private async Task<PlaybackPreparationResult<T>> PrepareInternalAsync(string url, int generation, Func<Task<T>> resolve)
+            {
+                await _gate.WaitAsync();
+                try
+                {
+                    lock (_lockObject)
+                    {
+                        if (_generation != generation)
+                            return new PlaybackPreparationResult<T>() { Status = PlaybackPreparationStatus.Superseded };
+                    }
+
+                    var value = await resolve();
+                    lock (_lockObject)
+                    {
+                        if (_generation != generation)
+                        {
+                            DisposeValue(value);
+                            return new PlaybackPreparationResult<T>() { Status = PlaybackPreparationStatus.Superseded };
+                        }
+
+                        _prepared = new PreparedEntry()
+                        {
+                            Url = url,
+                            Value = value,
+                            PreparedAt = _utcNow()
+                        };
+                        return new PlaybackPreparationResult<T>()
+                        {
+                            Status = PlaybackPreparationStatus.Prepared,
+                            Value = value
+                        };
+                    }
+                }
+                finally
+                {
+                    _gate.Release();
+                }
+            }
+
+            public async Task<T> ConsumeAsync(string url, TimeSpan maxAge, Action<PlaybackPreparationConsumeStatus> onStatus = null)
+            {
+                Task<PlaybackPreparationResult<T>> task;
+                lock (_lockObject)
+                {
+                    if (_requestedUrl != url || _currentTask == null)
+                    {
+                        onStatus?.Invoke(PlaybackPreparationConsumeStatus.Miss);
+                        return default;
+                    }
+                    task = _currentTask;
+                }
+
+                try
+                {
+                    var result = await task;
+                    if (result.Status == PlaybackPreparationStatus.Superseded)
+                    {
+                        onStatus?.Invoke(PlaybackPreparationConsumeStatus.Superseded);
+                        return default;
+                    }
+                }
+                catch
+                {
+                    onStatus?.Invoke(PlaybackPreparationConsumeStatus.Failed);
+                    return default;
+                }
+
+                lock (_lockObject)
+                {
+                    if (_requestedUrl != url || _prepared == null || _prepared.Url != url)
+                    {
+                        onStatus?.Invoke(PlaybackPreparationConsumeStatus.Miss);
+                        return default;
+                    }
+
+                    if (_utcNow() - _prepared.PreparedAt > maxAge)
+                    {
+                        Clear();
+                        onStatus?.Invoke(PlaybackPreparationConsumeStatus.Expired);
+                        return default;
+                    }
+
+                    var value = _prepared.Value;
+                    Clear(false);
+                    onStatus?.Invoke(PlaybackPreparationConsumeStatus.Hit);
+                    return value;
+                }
+            }
+
+            public void Cancel()
+            {
+                lock (_lockObject)
+                {
+                    _generation++;
+                    Clear();
+                }
+            }
+
+            private static void DisposeValue(T value)
+            {
+                if (value is IDisposable disposable)
+                    disposable.Dispose();
+            }
+
+            private void Clear(bool disposePrepared = true)
+            {
+                if (disposePrepared)
+                {
+                    if (_prepared != null)
+                        DisposeValue(_prepared.Value);
+                }
+                _requestedUrl = null;
+                _currentTask = null;
+                _prepared = null;
+            }
+        }
+
         public class DetailsState : IDisposable
         {
             public PlatformPostDetails PostLoaded { get; set; }
@@ -67,6 +261,7 @@ namespace Grayjay.ClientServer.Controllers
             public int CachedDashSubtitleIndex = -1;
             public ProxySettings? CachedDashProxySettings = null;
             public Task<string>? CachedDashTask = null;
+            public PlaybackPreparation<PreparedPlayback> VideoPreparation { get; } = new PlaybackPreparation<PreparedPlayback>();
 
             //TODO: Either remove static or include window id somehow for cleanup.
             public static ConcurrentDictionary<string, IRequestModifier> Modifiers = new ConcurrentDictionary<string, IRequestModifier>();
@@ -117,10 +312,81 @@ namespace Grayjay.ClientServer.Controllers
                 }
             }
 
+            public bool HasReadyDash()
+            {
+                lock (_cachedDashLockObject)
+                {
+                    return CachedDashTask?.IsCompletedSuccessfully == true;
+                }
+            }
+
+            public void AdoptPreparedMedia(DetailsState prepared)
+            {
+                _videoRequestExecutor?.Cleanup();
+                _audioRequestExecutor?.Cleanup();
+                _videoRequestExecutor = prepared._videoRequestExecutor;
+                _audioRequestExecutor = prepared._audioRequestExecutor;
+                prepared._videoRequestExecutor = null;
+                prepared._audioRequestExecutor = null;
+
+                lock (prepared._cachedDashLockObject)
+                {
+                    lock (_cachedDashLockObject)
+                    {
+                        CachedDashVideoIndex = prepared.CachedDashVideoIndex;
+                        CachedDashAudioIndex = prepared.CachedDashAudioIndex;
+                        CachedDashSubtitleIndex = prepared.CachedDashSubtitleIndex;
+                        CachedDashProxySettings = prepared.CachedDashProxySettings;
+                        CachedDashTask = prepared.CachedDashTask;
+                        prepared.CachedDashVideoIndex = -1;
+                        prepared.CachedDashAudioIndex = -1;
+                        prepared.CachedDashSubtitleIndex = -1;
+                        prepared.CachedDashProxySettings = null;
+                        prepared.CachedDashTask = null;
+                    }
+                }
+            }
+
+            public void ReleasePreparedMedia()
+            {
+                _videoRequestExecutor?.Cleanup();
+                _audioRequestExecutor?.Cleanup();
+                _videoRequestExecutor = null;
+                _audioRequestExecutor = null;
+                ClearCachedDash();
+            }
+
             public void Dispose()
             {
+                VideoPreparation.Cancel();
                 LiveChatManager?.Stop();
                 LiveChatManager = null;
+            }
+        }
+
+        public sealed class PreparedPlayback : IDisposable
+        {
+            public VideoLoadResult Result { get; set; }
+            public SourceDescriptor Source { get; set; }
+            public WindowState SourceState { get; set; }
+            public bool SourceReady => Source != null;
+            public bool ManifestReady { get; set; }
+
+            public void TransferMediaTo(DetailsState target)
+            {
+                if (SourceState == null)
+                    return;
+
+                target.AdoptPreparedMedia(SourceState.DetailsState);
+                SourceState.Dispose();
+                SourceState = null;
+            }
+
+            public void Dispose()
+            {
+                SourceState?.DetailsState.ReleasePreparedMedia();
+                SourceState?.Dispose();
+                SourceState = null;
             }
         }
 
@@ -305,10 +571,8 @@ namespace Grayjay.ClientServer.Controllers
             return this.State().DetailsState.PostLoaded;
         }
 
-        [HttpGet]
-        public VideoLoadResult VideoLoad(string url)
+        private VideoLoadResult ResolveVideo(string url)
         {
-            Logger.i(nameof(DetailsController), "Loading: " + url);
             VideoLocal local = StateDownloads.GetDownloadedVideo(url);
             IPlatformContentDetails contentDetails = null;
             Exception contentDetailsException = null;
@@ -337,20 +601,23 @@ namespace Grayjay.ClientServer.Controllers
                     ;// StateUI.Toast("Failed to get live video:\n" + ex.Message);
                 contentDetailsException = ex;
             }
-            if (local != null)
-                StateUI.Toast("Offline video loaded");
-
             if (contentDetails is PlatformVideoDetails video)
             {
-                ChangeVideo(video, local);
+                return new VideoLoadResult()
+                {
+                    Video = video,
+                    Local = local
+                };
             }
             else if (local != null)
             {
-                ChangeVideo(null, local);
+                return new VideoLoadResult()
+                {
+                    Local = local
+                };
             }
             else if (contentDetails == null)
             {
-                ChangeVideo(null, null);
                 Logger.e(nameof(DetailsController), "Failed to load video", contentDetailsException);
                 if (contentDetailsException is TargetInvocationException targetInvocationException && targetInvocationException.InnerException != null)
                     contentDetailsException = targetInvocationException.InnerException;
@@ -358,7 +625,6 @@ namespace Grayjay.ClientServer.Controllers
             }
             else
             {
-                ChangeVideo(null, null);
                 throw new DialogException(new ExceptionModel()
                 {
                     Type = ExceptionModel.EXCEPTION_GENERAL,
@@ -367,13 +633,148 @@ namespace Grayjay.ClientServer.Controllers
                     CanRetry = false
                 });
             }
+        }
 
-            var state = this.State().DetailsState;
-            return new VideoLoadResult()
+        [HttpGet]
+        public async Task<VideoLoadResult> VideoLoad(string url)
+        {
+            Logger.i(nameof(DetailsController), "Loading: " + url);
+            var state = this.State();
+            var consumeStatus = PlaybackPreparationConsumeStatus.Miss;
+            var prepared = await state.DetailsState.VideoPreparation.ConsumeAsync(url, TimeSpan.FromHours(2), status => consumeStatus = status);
+            var prefetched = consumeStatus == PlaybackPreparationConsumeStatus.Hit;
+            var resolved = prepared?.Result;
+
+            try
             {
-                Video = state.VideoLoaded,
-                Local = state.VideoLocal
-            };
+                if (resolved == null)
+                {
+                    state.DetailsState.VideoPreparation.Cancel();
+                    resolved = ResolveVideo(url);
+                }
+                ChangeVideo(resolved.Video, resolved.Local);
+                if (prefetched)
+                    prepared.TransferMediaTo(state.DetailsState);
+            }
+            catch
+            {
+                prepared?.Dispose();
+                ChangeVideo(null, null);
+                throw;
+            }
+
+            if (resolved.Local != null)
+                StateUI.Toast("Offline video loaded");
+
+            resolved.Video = state.DetailsState.VideoLoaded;
+            resolved.Local = state.DetailsState.VideoLocal;
+            resolved.Prefetched = prefetched;
+            resolved.SourceReady = prepared?.SourceReady == true;
+            resolved.ManifestReady = prepared?.ManifestReady == true;
+
+            if (prefetched && resolved.Video?.IsLive != true)
+            {
+                resolved.Source = prepared?.Source;
+                if (resolved.Source == null)
+                {
+                    try
+                    {
+                        resolved.Source = await GenerateAutoSource(state);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.w(nameof(DetailsController), $"Prepared source selection failed for [{url}]", ex);
+                    }
+                }
+            }
+
+            prepared?.Dispose();
+            Logger.i(nameof(DetailsController), $"playback_prefetch status={consumeStatus.ToString().ToLowerInvariant()} sourceReady={resolved.SourceReady} manifestReady={resolved.ManifestReady} url=[{url}]");
+            return resolved;
+        }
+
+        private async Task<PreparedPlayback> PreparePlayback(WindowState state, string url)
+        {
+            var resolved = await Task.Run(() => ResolveVideo(url));
+            var prepared = new PreparedPlayback() { Result = resolved };
+            if (resolved.Video?.IsLive == true)
+                return prepared;
+
+            var sourceState = new WindowState(state.WindowID);
+            sourceState.DetailsState.VideoLoaded = resolved.Video ?? resolved.Local;
+            sourceState.DetailsState.VideoLocal = resolved.Local;
+            prepared.SourceState = sourceState;
+
+            try
+            {
+                prepared.Source = await GenerateAutoSource(sourceState, true, false);
+                prepared.ManifestReady = prepared.Source?.Type != "application/dash+xml" || sourceState.DetailsState.HasReadyDash();
+            }
+            catch (Exception ex)
+            {
+                Logger.w(nameof(DetailsController), $"playback_prefetch source preparation failed for [{url}]", ex);
+                sourceState.DetailsState.ReleasePreparedMedia();
+                sourceState.Dispose();
+                prepared.SourceState = null;
+            }
+
+            return prepared;
+        }
+
+        [HttpGet]
+        public async Task<VideoPrepareResult> VideoPrepare(string url)
+        {
+            if (!GrayjaySettings.Instance.Playback.PrefetchNextVideo)
+                return new VideoPrepareResult() { Url = url, Status = "disabled" };
+
+            var watch = Stopwatch.StartNew();
+            try
+            {
+                var windowState = this.State();
+                var state = windowState.DetailsState;
+                Logger.i(nameof(DetailsController), $"playback_prefetch status=started url=[{url}]");
+                var task = state.VideoPreparation.PrepareAsync(url, () => PreparePlayback(windowState, url));
+                var result = await task;
+                if (result.Value?.Result?.Video?.IsLive == true)
+                {
+                    state.VideoPreparation.Cancel();
+                    Logger.i(nameof(DetailsController), $"playback_prefetch status=live_bypass elapsedMs={watch.ElapsedMilliseconds} url=[{url}]");
+                    return new VideoPrepareResult()
+                    {
+                        Url = url,
+                        Status = "superseded",
+                        ElapsedMs = watch.ElapsedMilliseconds
+                    };
+                }
+                var status = result.Status == PlaybackPreparationStatus.Prepared ? "prepared" : "superseded";
+                Logger.i(nameof(DetailsController), $"playback_prefetch status={status} sourceReady={result.Value?.SourceReady == true} manifestReady={result.Value?.ManifestReady == true} elapsedMs={watch.ElapsedMilliseconds} url=[{url}]");
+                return new VideoPrepareResult()
+                {
+                    Url = url,
+                    Status = status,
+                    ElapsedMs = watch.ElapsedMilliseconds,
+                    SourceReady = result.Value?.SourceReady == true,
+                    ManifestReady = result.Value?.ManifestReady == true
+                };
+            }
+            catch (Exception ex)
+            {
+                Logger.w(nameof(DetailsController), $"playback_prefetch status=failed elapsedMs={watch.ElapsedMilliseconds} url=[{url}]", ex);
+                return new VideoPrepareResult()
+                {
+                    Url = url,
+                    Status = "failed",
+                    ElapsedMs = watch.ElapsedMilliseconds
+                };
+            }
+        }
+
+        [HttpDelete]
+        public IActionResult VideoPrepare()
+        {
+            this.State().DetailsState.VideoPreparation.Cancel();
+            Logger.i(nameof(DetailsController), "playback_prefetch status=cancelled");
+            return Ok();
         }
 
         [HttpGet]
@@ -689,7 +1090,7 @@ namespace Grayjay.ClientServer.Controllers
             catch (ScriptReloadRequiredException reloadEx)
             {
                 await StatePlatform.HandleReloadRequired(reloadEx);
-                this.VideoLoad(state.DetailsState.VideoLoaded.Url);
+                await this.VideoLoad(state.DetailsState.VideoLoaded.Url);
                 return await SourceDash(videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal, isLoopback);
             }
             catch (Exception ex)
@@ -1121,18 +1522,22 @@ namespace Grayjay.ClientServer.Controllers
         [HttpGet]
         public async Task<IActionResult> SourceAuto()
         {
-            var state = this.State().DetailsState;
-            if(state.VideoLocal != null)
+            return Ok(await GenerateAutoSource(this.State()));
+        }
+
+        private static async Task<SourceDescriptor> GenerateAutoSource(WindowState state, bool forceReady = false, bool notifyLoading = true)
+        {
+            if(state.DetailsState.VideoLocal != null)
             {
-                var local = EnsureLocal(this.State());
+                var local = EnsureLocal(state);
                 var bestVideoSourceIndex = VideoHelper.SelectBestVideoSourceIndex(local.VideoSources.Cast<IVideoSource>().ToList(), 9999*9999, new List<string>() { "video/mp4" });
                 var bestAudioSourceIndex = VideoHelper.SelectBestAudioSourceIndex(local.AudioSources.Cast<IAudioSource>().ToList(), new List<string>() { "audio/mp4" }, GrayjaySettings.Instance.Playback.GetPrimaryLanguage(), 9999 * 9999);
                 var bestSubtitleSourceIndex = local.SubtitleSources.Count > 0 ? 0 : -1;
-                return await SourceProxy(bestVideoSourceIndex, bestAudioSourceIndex, bestSubtitleSourceIndex, true, true, true);
+                return await GenerateSourceProxy(state, bestVideoSourceIndex, bestAudioSourceIndex, bestSubtitleSourceIndex, true, true, true, forceReady: forceReady, notifyLoading: notifyLoading);
             }
             else
             {
-                var video = EnsureVideo(this.State());
+                var video = EnsureVideo(state);
                 var bestVideoSourceIndex = VideoHelper.SelectBestVideoSourceIndex(video.Video.VideoSources.Cast<IVideoSource>().ToList(), GrayjaySettings.Instance.Playback.GetPreferredQualityPixelCount(), new List<string>() { "video/mp4" });
                 var bestAudioSourceIndex = (video.Video is UnMuxedVideoDescriptor unmuxed) ? 
                     VideoHelper.SelectBestAudioSourceIndex(unmuxed.AudioSources.Cast<IAudioSource>().ToList(), new List<string>() { "audio/mp4" }, GrayjaySettings.Instance.Playback.GetPrimaryLanguage(), 9999 * 9999) : 
@@ -1147,21 +1552,21 @@ namespace Grayjay.ClientServer.Controllers
                     });
 
                 if (bestVideoSourceIndex == -1 && bestAudioSourceIndex == -1 && video.Live != null)
-                    return await SourceProxy(-999, -1, -1, false, false, false);
+                    return await GenerateSourceProxy(state, -999, -1, -1, false, false, false, forceReady: forceReady, notifyLoading: notifyLoading);
 
                 if (bestVideoSourceIndex >= 0 && bestAudioSourceIndex >= 0)
                 {
-                    (var videoSources, var audioSource, _) = GetSources(this.State(), bestVideoSourceIndex, bestAudioSourceIndex, -1, false, false, false);
+                    (var videoSources, var audioSource, _) = GetSources(state, bestVideoSourceIndex, bestAudioSourceIndex, -1, false, false, false);
 
                     if(videoSources is DashManifestRawSource && audioSource is DashManifestRawAudioSource)
                     {
-                        return await SourceProxy(bestVideoSourceIndex, bestAudioSourceIndex, -1, false, false, false);
+                        return await GenerateSourceProxy(state, bestVideoSourceIndex, bestAudioSourceIndex, -1, false, false, false, forceReady: forceReady, notifyLoading: notifyLoading);
                     }
                     else if (!(videoSources is IStreamMetaDataSource) || !(audioSource is IStreamMetaDataSource))
                         throw DialogException.FromException("Cannot play this source",
                             new Exception("Unmuxed sources require IStreamMetaDataSource info to translate to dash"));
                 }
-                return await SourceProxy(bestVideoSourceIndex, bestAudioSourceIndex, -1, false, false, false);
+                return await GenerateSourceProxy(state, bestVideoSourceIndex, bestAudioSourceIndex, -1, false, false, false, forceReady: forceReady, notifyLoading: notifyLoading);
             }
         }
 
@@ -1170,7 +1575,7 @@ namespace Grayjay.ClientServer.Controllers
         {
             return Ok(await GenerateSourceProxy(this.State(), videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal, null, tag));
         }
-        public static async Task<SourceDescriptor> GenerateSourceProxy(WindowState state, int videoIndex, int audioIndex, int subtitleIndex, bool videoIsLocal = false, bool audioIsLocal = false, bool subtitleIsLocal = false, ProxySettings? proxySettings = null, string? tag = null, bool forceReady = false)
+        public static async Task<SourceDescriptor> GenerateSourceProxy(WindowState state, int videoIndex, int audioIndex, int subtitleIndex, bool videoIsLocal = false, bool audioIsLocal = false, bool subtitleIsLocal = false, ProxySettings? proxySettings = null, string? tag = null, bool forceReady = false, bool notifyLoading = true)
         {
             var video = EnsureVideo(state);
 
@@ -1209,10 +1614,11 @@ namespace Grayjay.ClientServer.Controllers
                 {
                     //Preload the DASH
                     (var taskGenerateSourceDash, var promiseMetadata) = GenerateSourceDash(state, videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal, proxySettings);
-                    if (!taskGenerateSourceDash.IsCompleted && promiseMetadata != null)
+                    if (notifyLoading && !taskGenerateSourceDash.IsCompleted && promiseMetadata != null)
                         StateWebsocket.VideoLoader("", promiseMetadata.EstimateDuration, state.WindowID, tag);
                     await taskGenerateSourceDash;
-                    StateWebsocket.VideoLoaderFinish(state.WindowID, tag);
+                    if (notifyLoading)
+                        StateWebsocket.VideoLoaderFinish(state.WindowID, tag);
                 }
 
                 return new SourceDescriptor($"/details/SourceDash?videoIndex={videoIndex}&audioIndex={audioIndex}&subtitleIndex={subtitleIndex}&videoIsLocal={videoIsLocal}&audioIsLocal={audioIsLocal}&subtitleIsLocal={subtitleIsLocal}&isLoopback={proxySettings?.IsLoopback ?? true}&windowId={state.WindowID}&tag={tag}", "application/dash+xml", videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal);
@@ -1235,10 +1641,11 @@ namespace Grayjay.ClientServer.Controllers
                     {
                         //Preload the DASH
                         (var taskGenerateSourceDash, var promiseMetadata) = GenerateSourceDash(state, videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal, proxySettings);
-                        if (!taskGenerateSourceDash.IsCompleted && promiseMetadata != null)
+                        if (notifyLoading && !taskGenerateSourceDash.IsCompleted && promiseMetadata != null)
                             StateWebsocket.VideoLoader("", promiseMetadata.EstimateDuration, state.WindowID, tag);
                         await taskGenerateSourceDash;
-                        StateWebsocket.VideoLoaderFinish(state.WindowID, tag);
+                        if (notifyLoading)
+                            StateWebsocket.VideoLoaderFinish(state.WindowID, tag);
                     }
 
                     return new SourceDescriptor($"/details/SourceDash?videoIndex={videoIndex}&audioIndex={audioIndex}&subtitleIndex={subtitleIndex}&videoIsLocal={videoIsLocal}&audioIsLocal={audioIsLocal}&subtitleIsLocal={subtitleIsLocal}&isLoopback={proxySettings?.IsLoopback ?? true}&windowId={state.WindowID}&tag={tag}", "application/dash+xml", videoIndex, audioIndex, subtitleIndex, videoIsLocal, audioIsLocal, subtitleIsLocal);
@@ -1494,6 +1901,19 @@ namespace Grayjay.ClientServer.Controllers
         {
             public PlatformVideoDetails Video { get; set; }
             public VideoLocal Local { get; set; }
+            public bool Prefetched { get; set; }
+            public SourceDescriptor Source { get; set; }
+            public bool SourceReady { get; set; }
+            public bool ManifestReady { get; set; }
+        }
+
+        public class VideoPrepareResult
+        {
+            public string Url { get; set; }
+            public string Status { get; set; }
+            public long ElapsedMs { get; set; }
+            public bool SourceReady { get; set; }
+            public bool ManifestReady { get; set; }
         }
 
         public class PostLoadResult

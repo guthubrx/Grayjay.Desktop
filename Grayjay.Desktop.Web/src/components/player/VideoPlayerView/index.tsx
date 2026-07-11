@@ -25,6 +25,7 @@ interface VideoProps {
     onVideoDimensionsChanged: (width: number, height: number) => void;
     children: JSX.Element;
     video?: IPlatformVideoDetails,
+    posterUrl?: string;
     source?: SourceSelected;
     sourceQuality?: number;
     onPlayerQualityChanged?: (level: number) => void;
@@ -96,6 +97,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const [isCasting, setIsCasting] = createSignal(casting?.activeDevice.device() ? true : false);
     const [isAudioOnly, setIsAudioOnly] = createSignal(false);
     const [isLoading, setIsLoading] = createSignal(true);
+    const [hasStartedSource, setHasStartedSource] = createSignal(false);
     const [resumePositionVisible, setResumePositionVisible] = createSignal(false);
     const [endControlsVisible$, setEndControlsVisible] = createSignal(false);
     const [loaderGameVisible$, setLoaderGameVisible] = createSignal<number>();
@@ -107,6 +109,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     createEffect(() => {
         if (isPlaying()) {
             setLoaderGameVisible(undefined);
+            setHasStartedSource(true);
         }
         props.onIsPlayingChanged?.(isPlaying());
     });
@@ -310,7 +313,12 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             return;
         }
 
-        const descriptor = await DetailsBackend.sourceProxy(source.url, source.video, source.videoIsLocal, source.audio, source.audioIsLocal, source.subtitle, source.subtitleIsLocal, currentTag);
+        const directSourceUrl = source.videoSourceUrl?.startsWith("/")
+            ? `${source.videoSourceUrl}${source.videoSourceUrl.includes("?") ? "&" : "?"}tag=${encodeURIComponent(currentTag)}`
+            : source.videoSourceUrl;
+        const descriptor = directSourceUrl && source.videoSourceType
+            ? { url: directSourceUrl, type: source.videoSourceType }
+            : await DetailsBackend.sourceProxy(source.url, source.video, source.videoIsLocal, source.audio, source.audioIsLocal, source.subtitle, source.subtitleIsLocal, currentTag);
         console.log("Direct url", descriptor.url, descriptor.type);
 
         if (untrack(isCasting)) {
@@ -643,6 +651,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             switchPosition = untrack(position);
 
         currentUrl = sourceUrl;
+        setHasStartedSource(false);
         console.log("changeSource", {currentUrl, sourceUrl, mediaType, shouldResume, startTime, switchPosition});
 
         for (const subtitle of subtitleMap.values()) {
@@ -1325,6 +1334,10 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             <ErrorBoundary fallback={(err, reset) => (<div></div>)}>
                 <video ref={videoElement} style="width: 100%; height: 100%;" onclick={()=>console.log("received click")}></video>
             </ErrorBoundary>
+
+            <Show when={!hasStartedSource() && !isCasting() && props.posterUrl}>
+                <img class={styles.transitionPoster} src={props.posterUrl} referrerPolicy='no-referrer' />
+            </Show>
             
             <div class={styles.containerCasting} style={{"display": isAudioOnly() || isCasting() ? "block" : "none"}}>
                 <Show when={props.source?.thumbnailUrl}>

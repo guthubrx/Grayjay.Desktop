@@ -26,7 +26,7 @@ import IconButton from "../../buttons/IconButton";
 import CustomButton from "../../buttons/CustomButton";
 import CommentView from "../../CommentView";
 import { createResourceDefault, getBestThumbnail, preventDragDrop, proxyImage, sanitzeHtml, toHumanNowDiffString, toHumanNowDiffStringMinDay, toHumanNumber, formatAudioSourceName, getDefaultPlaybackSpeed, formatDuration } from "../../../utility";
-import { DetailsBackend } from "../../../backend/DetailsBackend";
+import { DetailsBackend, ISourceDirectDescriptor } from "../../../backend/DetailsBackend";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import SubscribeButton from "../../buttons/SubscribeButton";
 import SettingsMenu, { Menu, MenuItem, IMenuItemGroup, IMenuItemOption, MenuItemButton, IMenuFilter } from "../../menus/Overlays/SettingsMenu";
@@ -94,6 +94,7 @@ export interface SourceSelected {
     subtitle: number;
     subtitleIsLocal: boolean;
     videoSourceUrl?: string;
+    videoSourceType?: string;
     thumbnailUrl: string;
     isLive: boolean;
     shouldResume?: boolean;
@@ -122,6 +123,11 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     };
 
     const [videoLocal$, setVideoLocal] = createSignal<IVideoLocal | undefined>();
+    const [preparedSource$, setPreparedSource] = createSignal<ISourceDirectDescriptor>();
+    const [videoLoadPrefetched$, setVideoLoadPrefetched] = createSignal(false);
+    const [loadedRequestUrl$, setLoadedRequestUrl] = createSignal<string>();
+    let transitionStartedAt: number | undefined;
+    let scheduledPrefetchUrl: string | undefined;
     const currentVideo$ = createMemo(() => {
         const queue = video?.queue();
         const index = video?.index();
@@ -147,7 +153,14 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         try {
             return await UIOverlay.catchDialogExceptions(async ()=>{
                 const result = (!url) ? null : (await DetailsBackend.videoLoad(url));
-                setVideoLocal(result?.local);
+                if (untrack(currentVideoUrl$) === url) {
+                    setVideoLocal(result?.local);
+                    setPreparedSource(result?.source);
+                    setVideoLoadPrefetched(result?.prefetched === true);
+                    if (scheduledPrefetchUrl === url)
+                        scheduledPrefetchUrl = undefined;
+                    setLoadedRequestUrl(url);
+                }
                 console.info("set video", { url, video: result?.video, local: result?.local });
                 return result?.video;
             }, ()=>{
@@ -184,6 +197,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     createEffect(on(currentVideoUrl$, (url) => {
         console.info("Reset error counter because video source changed", { url, errorCounter });
         errorCounter = 0;
+        transitionStartedAt = performance.now();
+        setPreparedSource(undefined);
+        setVideoLoadPrefetched(false);
     }));
 
     const [videoSourceQualities$] = createResource<any | undefined>(()=> videoSource$()?.video && !videoSource$()?.videoIsLocal, async () => {
@@ -296,6 +312,66 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }
     };
 
+    const nextPrefetchUrl$ = createMemo(() => {
+        if (video?.shuffle())
+            return undefined;
+
+        const index = video?.index();
+        const queue = video?.queue();
+        if (index === undefined || !queue?.length)
+            return undefined;
+
+        let nextIndex = index + 1;
+        if (nextIndex >= queue.length) {
+            if (!video?.repeat())
+                return undefined;
+            nextIndex = 0;
+        }
+
+        const next = queue[nextIndex];
+        const nextUrl = next?.backendUrl ?? next?.url;
+        return nextUrl && nextUrl !== currentVideoUrl$() ? nextUrl : undefined;
+    });
+
+    createEffect(() => {
+        const enabled = StateGlobal.settings$()?.object?.playback?.prefetchNextVideo !== false;
+        const currentUrl = currentVideoUrl$();
+        const loadedUrl = loadedRequestUrl$();
+        const nextUrl = nextPrefetchUrl$();
+
+        if (!enabled) {
+            if (scheduledPrefetchUrl)
+                void DetailsBackend.videoPrepareCancel();
+            scheduledPrefetchUrl = undefined;
+            return;
+        }
+
+        if (currentUrl === scheduledPrefetchUrl)
+            return;
+
+        if (loadedUrl !== currentUrl || !nextUrl) {
+            if (scheduledPrefetchUrl)
+                void DetailsBackend.videoPrepareCancel();
+            scheduledPrefetchUrl = undefined;
+            return;
+        }
+
+        if (scheduledPrefetchUrl === nextUrl)
+            return;
+
+        if (scheduledPrefetchUrl)
+            void DetailsBackend.videoPrepareCancel();
+        scheduledPrefetchUrl = nextUrl;
+        void DetailsBackend.videoPrepare(nextUrl)
+            .then(result => console.info("playback_prefetch", result))
+            .catch(error => console.warn("playback_prefetch failed", { url: nextUrl, error }));
+    });
+
+    onCleanup(() => {
+        if (scheduledPrefetchUrl)
+            void DetailsBackend.videoPrepareCancel();
+    });
+
     const handleEnded = async () => {
         const currentIndex = video?.index();
         if (currentIndex === undefined) {
@@ -382,6 +458,25 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         console.info("set source", { videoObj });
         if (!videoObj || !videoObj.video)
             return;
+
+        const preparedSource = preparedSource$();
+        if (preparedSource) {
+            setVideoSource({
+                url: videoObj.url,
+                video: preparedSource.videoIndex ?? -1,
+                audio: preparedSource.audioIndex ?? -1,
+                subtitle: preparedSource.subtitleIndex ?? -1,
+                videoIsLocal: preparedSource.videoIsLocal ?? false,
+                audioIsLocal: preparedSource.audioIsLocal ?? false,
+                subtitleIsLocal: preparedSource.subtitleIsLocal ?? false,
+                videoSourceUrl: preparedSource.url,
+                videoSourceType: preparedSource.type,
+                thumbnailUrl: getBestThumbnail(videoObj.thumbnails)?.url,
+                isLive: videoObj.isLive,
+                time: video ? untrack(video.startTime) : undefined
+            });
+            return;
+        }
 
         let tryFetchSourceAuto = async ()=>{
             await UIOverlay.catchDialogExceptions(async ()=>{
@@ -534,6 +629,14 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         if (isPlaying) {
             console.info("Error counter reset because video is playing", errorCounter);
             errorCounter = 0;
+            if (transitionStartedAt !== undefined) {
+                console.info("playback_transition", {
+                    url: currentVideoUrl$(),
+                    prefetched: videoLoadPrefetched$(),
+                    elapsedMs: Math.round(performance.now() - transitionStartedAt)
+                });
+                transitionStartedAt = undefined;
+            }
         }
     };
 
@@ -1462,6 +1565,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     <div style="height: 100%;" ref={videoContainer}>
                         <VideoPlayerView ref={setVideoPlayerContainerRef}
                             video={videoLoaded$()}
+                            posterUrl={getBestThumbnail(currentVideo$()?.thumbnails)?.url}
                             chapters={((!isMinimized()) ? videoChapters$() : undefined) ?? undefined}
                             eventMoved={eventMoved}
                             eventRestart={eventRestart}
