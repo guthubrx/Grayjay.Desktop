@@ -437,6 +437,14 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
 
 
     const [videoSource$, setVideoSource] = createSignal<SourceSelected>();
+    const [translatedSubtitleEnabled$, setTranslatedSubtitleEnabled] = createSignal(false);
+    createEffect(on(videoSource$, (source) => {
+        if (source?.subtitle !== -1)
+            setTranslatedSubtitleEnabled(false);
+    }, { defer: true }));
+    createEffect(on(() => currentVideo$()?.url, () => {
+        setTranslatedSubtitleEnabled(false);
+    }, { defer: true }));
     const [videoQuality$, setVideoQuality] = createSignal<number>(-1);
     const [playerQuality$, setPlayerQuality] = createSignal<number>(-1);
 
@@ -1294,6 +1302,25 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const [selectedVideoLanguage$, setSelectedVideoLanguage] = createSignal<string | undefined>(undefined);
 
     const [videoPlayerViewHandle$, setVideoPlayerViewHandle] = createSignal<VideoPlayerViewHandle>();
+    const selectTranslatedSubtitle = () => {
+        const videoObj = videoLoaded$();
+        const source = videoSource$();
+        if (!videoObj || !source) return;
+
+        setTranslatedSubtitleEnabled(true);
+        setVideoSource({
+            url: videoObj.url,
+            video: source.video,
+            videoIsLocal: source.videoIsLocal,
+            audio: source.audio,
+            audioIsLocal: source.audioIsLocal,
+            subtitle: -1,
+            subtitleIsLocal: false,
+            thumbnailUrl: getBestThumbnail(videoObj.thumbnails)?.url,
+            isLive: videoObj.isLive ?? false,
+            shouldResume: true
+        } as SourceSelected);
+    };
     const settingsDialogMenu$ = createMemo(() => {
         let initialSelected = undefined;
         let prevSelected = untrack(selectedVideoLanguage$);
@@ -1473,6 +1500,30 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                 {
                     type: "seperator"
                 } as MenuItem,
+                videoHighlights$()?.translatedSubtitles ? {
+                    key: "Smart subtitles",
+                    value: translatedSubtitleEnabled$() ? `${videoHighlights$()!.translatedSubtitles!.language} translated` : "None",
+                    type: "group",
+                    subMenu: {
+                        title: "Smart subtitles",
+                        items: [
+                            {
+                                name: "None",
+                                value: "none",
+                                type: "option",
+                                onSelected: () => setTranslatedSubtitleEnabled(false),
+                                isSelected: !translatedSubtitleEnabled$()
+                            } as IMenuItemOption,
+                            {
+                                name: `${videoHighlights$()!.translatedSubtitles!.language} translated`,
+                                value: "translated",
+                                type: "option",
+                                onSelected: selectTranslatedSubtitle,
+                                isSelected: translatedSubtitleEnabled$()
+                            } as IMenuItemOption
+                        ]
+                    }
+                } as MenuItem : undefined,
                 (videoSources$() && videoSources$().length > 0 && videoSource$()) ? {
                     key: "Video Sources (" + (videoSources$().length) + ")",
                     value: (videoSource$() && !videoSource$()?.videoIsLocal) ? videoSources$()[videoSource$()!.video]?.name : undefined,
@@ -2146,6 +2197,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             minimized={isMinimized()}
                             chapters={((!isMinimized()) ? videoChapters$() : undefined) ?? undefined}
                             smartChapterHighlights={videoHighlights$()}
+                            translatedSubtitleEnabled={translatedSubtitleEnabled$()}
                             eventMoved={eventMoved}
                             eventRestart={eventRestart}
                             resumePosition={resumePosition$()}
