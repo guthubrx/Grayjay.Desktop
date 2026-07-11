@@ -30,6 +30,8 @@ export interface VideoQueueItemMeta {
     title?: string;
     summary?: string;
     globalSummary?: string;
+    transitionKind?: 'same-topic' | 'discover' | 'new-angle' | 'best-available';
+    transitionLabel?: string;
     channelName?: string;
     channelThumbnail?: string;
     startSeconds?: number;

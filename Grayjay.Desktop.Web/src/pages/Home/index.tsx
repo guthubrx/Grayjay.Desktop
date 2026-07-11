@@ -28,6 +28,13 @@ import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overl
 import Anchor, { AnchorStyle } from '../../utility/Anchor';
 import UIOverlay from '../../state/UIOverlay';
 import { interestScoreFromSummary } from '../../utils/highlightInterest';
+import {
+    sequenceSmartTvCandidates,
+    type SmartTvCandidate,
+    type SmartTvEditorialMix,
+    type SmartTvSequencerSettings,
+    type SmartTvTransition,
+} from '../../utils/smartTvSequencer';
 
 import { homeStyle$ } from '../../state/HomeStyleState';
 import iconHome from "../../assets/icons/icon_nav_home.svg";
@@ -61,6 +68,8 @@ const SMART_TV_MAX_CHAPTERS_PER_VIDEO = [1, 2, 3, 4, 5, Number.POSITIVE_INFINITY
 const SMART_TV_MIN_SCORE = [0, 0.45, 0.55, 0.65, 0.75, 0.85, 0.92];
 const SMART_TV_CANDIDATE_VIDEOS = [12, 24, 40, 60, 100];
 const SMART_TV_REPEAT_VIDEO_PENALTY = [0, 0.04, 0.08, 0.14];
+const SMART_TV_CREATOR_VARIETY_PENALTY = [0, 0.03, 0.06, 0.1];
+const SMART_TV_EDITORIAL_MIXES: SmartTvEditorialMix[] = ['balanced', 'stay-on-topic', 'explore'];
 const SMART_TV_TILE_PREVIEW_THUMBNAILS = [0, 1, 2, 3, 4];
 const SMART_TV_FALLBACK_PLUGIN_ID = 'smart-tv-fallback';
 
@@ -72,17 +81,13 @@ const DEFAULT_SMART_TV_SETTINGS = {
     minimumScore: 0.55,
     candidateVideos: 24,
     repeatVideoPenalty: 0.04,
+    creatorVarietyPenalty: 0.06,
+    editorialMix: 'balanced' as SmartTvEditorialMix,
     tilePreviewThumbnails: 4,
 };
 
-interface SmartTvResolvedSettings {
-    targetSeconds: number;
-    maxVideos: number;
-    maxChapters: number;
-    maxChaptersPerVideo: number;
-    minimumScore: number;
+interface SmartTvResolvedSettings extends SmartTvSequencerSettings {
     candidateVideos: number;
-    repeatVideoPenalty: number;
     tilePreviewThumbnails: number;
 }
 
@@ -90,6 +95,7 @@ interface SmartTvSource {
     url: string;
     video?: IPlatformVideo;
     summary?: IVideoHighlightSummary;
+    sourceGroup?: string;
 }
 
 interface SmartTvStats {
@@ -107,6 +113,11 @@ interface SmartTvEntry {
     globalSummary?: string;
     chapterKey: string;
     score: number;
+    creatorKey?: string;
+    sourceGroup?: string;
+    subjectText?: string;
+    angleSignal?: boolean;
+    transition?: SmartTvTransition;
 }
 
 interface SmartTvSessionEntry extends SmartTvEntry {
@@ -127,6 +138,8 @@ interface SmartTvSession {
     poolStats: SmartTvStats;
     entries: SmartTvSessionEntry[];
     playedChapterKeys: string[];
+    editorialMix?: SmartTvEditorialMix;
+    creatorVarietyPenalty?: number;
 }
 
 function loadArrayCache<T>(key: string): T[] {
@@ -181,6 +194,8 @@ function smartTvSettingsFromObject(settingsObject: any): SmartTvResolvedSettings
         minimumScore: indexedSetting(SMART_TV_MIN_SCORE, smartTv?.minimumScore, DEFAULT_SMART_TV_SETTINGS.minimumScore),
         candidateVideos: indexedSetting(SMART_TV_CANDIDATE_VIDEOS, smartTv?.candidateVideos, DEFAULT_SMART_TV_SETTINGS.candidateVideos),
         repeatVideoPenalty: indexedSetting(SMART_TV_REPEAT_VIDEO_PENALTY, smartTv?.repeatVideoPenalty, DEFAULT_SMART_TV_SETTINGS.repeatVideoPenalty),
+        creatorVarietyPenalty: indexedSetting(SMART_TV_CREATOR_VARIETY_PENALTY, smartTv?.creatorVariety, DEFAULT_SMART_TV_SETTINGS.creatorVarietyPenalty),
+        editorialMix: indexedSetting(SMART_TV_EDITORIAL_MIXES, smartTv?.editorialMix, DEFAULT_SMART_TV_SETTINGS.editorialMix),
         tilePreviewThumbnails: indexedSetting(SMART_TV_TILE_PREVIEW_THUMBNAILS, smartTv?.tilePreviewThumbnails, DEFAULT_SMART_TV_SETTINGS.tilePreviewThumbnails),
     };
 }
@@ -332,7 +347,11 @@ function dedupeSmartTvSources(sources: SmartTvSource[]): SmartTvSource[] {
         const existing = byKey.get(key);
         const sameVideoState = Boolean(existing?.video) === Boolean(source.video);
         if (!existing || (!existing.video && source.video) || (sameVideoState && sourceScore(source) > sourceScore(existing))) {
-            byKey.set(key, source);
+            byKey.set(key, source.sourceGroup || !existing?.sourceGroup
+                ? source
+                : { ...source, sourceGroup: existing.sourceGroup });
+        } else if (existing && !existing.sourceGroup && source.sourceGroup) {
+            byKey.set(key, { ...existing, sourceGroup: source.sourceGroup });
         }
     }
     return [...byKey.values()].sort((a, b) => sourceScore(b) - sourceScore(a));
@@ -361,50 +380,52 @@ function remainingSessionEntries(session?: SmartTvSession): SmartTvSessionEntry[
     return session.entries.filter(entry => !played.has(entry.chapterKey));
 }
 
-function capSmartTvEntries(entries: SmartTvEntry[], settings: SmartTvResolvedSettings): SmartTvEntry[] {
-    const selected: SmartTvEntry[] = [];
-    const remaining = [...entries];
-    const videoCounts = new Map<string, number>();
-    const selectedVideos = new Set<string>();
-    let totalSeconds = 0;
+function smartTvCreatorKey(video: IPlatformVideo): string | undefined {
+    return normalizeUrlKey(video.author?.url)
+        ?? video.author?.url?.trim()
+        ?? video.author?.name?.trim().toLowerCase();
+}
 
-    while (remaining.length > 0 && selected.length < settings.maxChapters) {
-        const candidates = remaining
-            .map((entry, index) => {
-                const videoKey = smartTvVideoKey(entry);
-                const alreadySelectedFromVideo = videoCounts.get(videoKey) ?? 0;
-                const wouldAddVideo = !selectedVideos.has(videoKey);
-                const duration = Math.max(0, entry.end - entry.start);
-                const overVideoLimit = wouldAddVideo && selectedVideos.size >= settings.maxVideos;
-                const overChapterPerVideo = alreadySelectedFromVideo >= settings.maxChaptersPerVideo;
-                const overDuration = selected.length > 0 && totalSeconds + duration > settings.targetSeconds;
-                return {
-                    entry,
-                    index,
-                    videoKey,
-                    adjustedScore: entry.score - (alreadySelectedFromVideo * settings.repeatVideoPenalty),
-                    rejected: overVideoLimit || overChapterPerVideo || overDuration,
-                };
-            })
-            .filter(candidate => !candidate.rejected)
-            .sort((a, b) => {
-                const adjustedDelta = b.adjustedScore - a.adjustedScore;
-                if (adjustedDelta !== 0) return adjustedDelta;
-                return b.entry.score - a.entry.score;
-            });
+function smartTvSubjectText(set: IVideoHighlightSet, segment: IVideoHighlightSegment): string {
+    const thesis = segment.thesisId == null
+        ? undefined
+        : set.theses?.find(item => item.id === segment.thesisId)?.statement;
+    return [segment.title, segment.summary, thesis, set.globalSummary]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .join('\n');
+}
 
-        const candidate = candidates[0];
-        if (!candidate) break;
-        const [entry] = remaining.splice(candidate.index, 1);
-        const videoKey = smartTvVideoKey(entry);
-        selected.push(entry);
-        selectedVideos.add(videoKey);
-        videoCounts.set(videoKey, (videoCounts.get(videoKey) ?? 0) + 1);
-        const duration = Math.max(0, entry.end - entry.start);
-        totalSeconds += duration;
-    }
+function hasSmartTvAngleSignal(subjectText: string): boolean {
+    const normalized = subjectText
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    return /\b(risk|risks|limit|limits|critique|critical|consequence|challenge|tradeoff|versus|contre|risque|limite|critique|consequence|danger|mais)\b/.test(normalized);
+}
 
-    return selected;
+function sequenceSmartTvEntries(
+    entries: SmartTvEntry[],
+    playedChapterKeys: Set<string>,
+    settings: SmartTvResolvedSettings
+): SmartTvEntry[] {
+    const byChapterKey = new Map(entries.map(entry => [entry.chapterKey, entry]));
+    const candidates: SmartTvCandidate[] = entries.map(entry => ({
+        chapterKey: entry.chapterKey,
+        score: entry.score,
+        durationSeconds: Math.max(0, entry.end - entry.start),
+        videoKey: smartTvVideoKey(entry),
+        creatorKey: entry.creatorKey,
+        sourceGroup: entry.sourceGroup,
+        publishedAt: entry.video.dateTime,
+        subjectText: entry.subjectText,
+        angleSignal: entry.angleSignal,
+    }));
+
+    return sequenceSmartTvCandidates(candidates, playedChapterKeys, settings)
+        .flatMap(({ candidate, transition }) => {
+            const entry = byChapterKey.get(candidate.chapterKey);
+            return entry ? [{ ...entry, transition }] : [];
+        });
 }
 
 function formatSmartTvDuration(totalSeconds: number): string {
@@ -643,12 +664,12 @@ const HomePage: Component = () => {
         return undefined;
     };
 
-    const smartTvSourcesFromVideos = (videos: (IPlatformVideo | undefined)[]): SmartTvSource[] => {
+    const smartTvSourcesFromVideos = (videos: (IPlatformVideo | undefined)[], sourceGroup?: string): SmartTvSource[] => {
         const sources: SmartTvSource[] = [];
         for (const videoItem of videos) {
             const summary = summaryForUrl(videoItem?.url);
             if (!summary) continue;
-            sources.push({ url: summary.videoUrl, video: videoItem, summary });
+            sources.push({ url: summary.videoUrl, video: videoItem, summary, sourceGroup });
         }
         return dedupeSmartTvSources(sources);
     };
@@ -696,32 +717,37 @@ const HomePage: Component = () => {
         });
     }
 
-    async function loadSmartTvEntries(sources: SmartTvSource[], playedKeys: Set<string>, settings: SmartTvResolvedSettings): Promise<SmartTvEntry[]> {
+    async function loadSmartTvEntries(sources: SmartTvSource[], settings: SmartTvResolvedSettings): Promise<SmartTvEntry[]> {
         const deduped = dedupeSmartTvSources(sources).slice(0, settings.candidateVideos);
         const entries = await Promise.all(deduped.map(async (source) => {
             try {
                 const set = await HighlightsBackend.get(source.url);
                 if (!set) return undefined;
+                const videoUrl = set.videoUrl || source.url;
+                if (!videoUrl) return undefined;
                 const fallbackScore = sourceScore(source);
-                const segments = [...(set.segments ?? [])]
-                    .filter(segment => {
-                        const score = segment.score ?? fallbackScore;
-                        return segment.end > segment.start
-                            && score >= settings.minimumScore
-                            && !playedKeys.has(smartTvChapterKey(set.videoUrl, segment));
-                    });
+                const segments = [...(set.segments ?? [])].filter(segment => segment.end > segment.start);
                 if (segments.length === 0) return undefined;
 
-                return segments.map(segment => ({
-                    video: source.video ?? set.video ?? smartTvFallbackVideo(set.videoUrl || source.url, set, segment),
-                    start: Math.max(0, Math.floor(segment.start - SMART_TV_START_PADDING_SECONDS)),
-                    end: segment.end,
-                    title: segment.title,
-                    summary: segment.summary,
-                    globalSummary: set.globalSummary,
-                    chapterKey: smartTvChapterKey(set.videoUrl, segment),
-                    score: segment.score ?? fallbackScore,
-                }));
+                return segments.flatMap(segment => {
+                    const video = source.video ?? set.video ?? smartTvFallbackVideo(videoUrl, set, segment);
+                    if (!video.url) return [];
+                    const subjectText = smartTvSubjectText(set, segment);
+                    return [{
+                        video,
+                        start: Math.max(0, Math.floor(segment.start - SMART_TV_START_PADDING_SECONDS)),
+                        end: segment.end,
+                        title: segment.title,
+                        summary: segment.summary,
+                        globalSummary: set.globalSummary,
+                        chapterKey: smartTvChapterKey(videoUrl, segment),
+                        score: segment.score ?? fallbackScore,
+                        creatorKey: smartTvCreatorKey(video),
+                        sourceGroup: source.sourceGroup,
+                        subjectText,
+                        angleSignal: hasSmartTvAngleSignal(subjectText),
+                    }];
+                });
             } catch (e) {
                 console.warn('Failed to load Smart TV item', source.url, e);
                 return undefined;
@@ -729,8 +755,8 @@ const HomePage: Component = () => {
         }));
         return entries
             .flatMap(entry => entry ?? [])
-            .sort((a, b) => b.score - a.score)
-            .slice(0, settings.maxChapters * Math.max(2, settings.maxChaptersPerVideo === Number.POSITIVE_INFINITY ? 4 : settings.maxChaptersPerVideo));
+            .sort((a, b) => b.score - a.score || a.chapterKey.localeCompare(b.chapterKey))
+            .slice(0, settings.maxChapters * 4);
     }
 
     async function createSmartTvSession(key: string, title: string, sources: SmartTvSource[]): Promise<SmartTvSession | undefined> {
@@ -740,8 +766,9 @@ const HomePage: Component = () => {
         const settings = smartTvSettings();
         setSmartTvLoadingKey(key);
         try {
-            const entries = capSmartTvEntries(
-                await loadSmartTvEntries(deduped, playedSmartTvChapterKeys$(), settings),
+            const entries = sequenceSmartTvEntries(
+                await loadSmartTvEntries(deduped, settings),
+                playedSmartTvChapterKeys$(),
                 settings
             );
             if (entries.length === 0) return;
@@ -756,6 +783,8 @@ const HomePage: Component = () => {
                 maxChaptersPerVideo: settings.maxChaptersPerVideo,
                 minimumScore: settings.minimumScore,
                 candidateVideos: settings.candidateVideos,
+                editorialMix: settings.editorialMix,
+                creatorVarietyPenalty: settings.creatorVarietyPenalty,
                 poolStats: smartTvStats(deduped),
                 entries: entries.map(entry => ({
                     ...entry,
@@ -773,12 +802,14 @@ const HomePage: Component = () => {
     function playSmartTvSession(key: string, session: SmartTvSession) {
         const entries = remainingSessionEntries(session);
         if (entries.length === 0) return;
-        const metadata: VideoQueueItemMeta[] = entries.map(entry => ({
+        const metadata: VideoQueueItemMeta[] = entries.map((entry, index) => ({
             source: 'smart-tv',
             sessionTitle: session.title,
             title: entry.title,
             summary: entry.summary,
             globalSummary: entry.globalSummary,
+            transitionKind: entry.transition?.kind ?? (index > 0 ? 'best-available' : undefined),
+            transitionLabel: entry.transition?.label ?? (index > 0 ? 'Best available' : undefined),
             channelName: isSmartTvFallbackVideo(entry.video) ? undefined : entry.video.author?.name,
             channelThumbnail: isSmartTvFallbackVideo(entry.video) ? undefined : entry.video.author?.thumbnail,
             startSeconds: entry.start,
@@ -1043,7 +1074,7 @@ const HomePage: Component = () => {
             ...continueWatchingSmartTvSources(),
             ...watchLaterSmartTvSources(),
             ...groupCarousels().flatMap(group =>
-                smartTvSourcesFromVideos(group.videos.filter(item => !hasWatchedUrl(item.url)))
+                smartTvSourcesFromVideos(group.videos.filter(item => !hasWatchedUrl(item.url)), group.name)
             ),
             ...recommendedSmartTvSources(),
             ...smartChapterSmartTvSources(),
@@ -1204,7 +1235,7 @@ const HomePage: Component = () => {
                     <For each={groupCarousels()}>
                         {(group) => {
                             const items = createMemo(() => group.videos.filter(v => !hasWatchedUrl(v.url)));
-                            const smartTvSources = createMemo(() => smartTvSourcesFromVideos(items()));
+                            const smartTvSources = createMemo(() => smartTvSourcesFromVideos(items(), group.name));
                             const smartTvSourceStats = createMemo(() => smartTvStats(smartTvSources()));
                             const smartTvKey = () => `group:${group.name}`;
                             return (
