@@ -1047,7 +1047,11 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         }
 
         if (hlsPlayer) {
-            hlsPlayer.destroy();
+            try {
+                hlsPlayer.destroy();
+            } catch (e) {
+                console.warn("Failed to destroy HLS player", e);
+            }
             hlsPlayer = undefined;
         }
 
