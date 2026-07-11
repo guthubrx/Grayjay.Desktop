@@ -526,6 +526,14 @@ namespace Grayjay.ClientServer.Settings
                 [SettingsField("Intro close delay", SettingsField.DROPDOWN, "How long the Smart TV chapter context stays visible in auto-close mode", 9)]
                 [SettingsDropdownOptions("3 sec", "5 sec", "7 sec", "9 sec", "12 sec", "15 sec", "20 sec", "30 sec", "45 sec", "1 min")]
                 public int IntroCloseDelay { get; set; } = 3;
+
+                [SettingsField("Editorial mix", SettingsField.DROPDOWN, "Balance continuity, discovery, and new angles when building the next fixed Smart TV session", 10)]
+                [SettingsDropdownOptions("Balanced", "Stay on topic", "Explore")]
+                public int EditorialMix { get; set; } = 0;
+
+                [SettingsField("Creator variety", SettingsField.DROPDOWN, "Prefer different creators when Smart TV candidates are similarly relevant", 11)]
+                [SettingsDropdownOptions("None", "Light", "Medium", "Strong")]
+                public int CreatorVariety { get; set; } = 1;
             }
 
             // English language name understood by the generator, or null for

@@ -2348,7 +2348,11 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                                 )}
                                             </Show>
                                             <div class={styles.smartTvIntroSource}>
-                                                <span class={styles.smartTvIntroKicker}>{intro().sessionTitle ?? 'Smart TV'}</span>
+                                                <span class={styles.smartTvIntroKicker}>
+                                                    {intro().transitionLabel
+                                                        ? `${intro().sessionTitle ?? 'Smart TV'} - ${intro().transitionLabel}`
+                                                        : intro().sessionTitle ?? 'Smart TV'}
+                                                </span>
                                                 <span class={styles.smartTvIntroChannel}>{channelName()}</span>
                                             </div>
                                         </div>
