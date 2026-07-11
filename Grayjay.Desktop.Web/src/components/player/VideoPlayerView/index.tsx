@@ -687,7 +687,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         if (sourceUrl && mediaType && videoElement) {
             setIsLoading(false);
 
-            if (mediaType === 'application/dash+xml' && !videoElement.canPlayType(mediaType)) {
+            if (mediaType === 'application/dash+xml') {
                 dashPlayer = dashjs.MediaPlayer().create();
                 dashPlayer.updateSettings({
                     streaming: {
