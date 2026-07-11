@@ -28,6 +28,7 @@ import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overl
 import Anchor, { AnchorStyle } from '../../utility/Anchor';
 import UIOverlay from '../../state/UIOverlay';
 import { interestScoreFromSummary } from '../../utils/highlightInterest';
+import { mergeSubscriptionGroupRows } from '../../utils/subscriptionGroupRows';
 import {
     sequenceSmartTvCandidates,
     type SmartTvCandidate,
@@ -862,35 +863,23 @@ const HomePage: Component = () => {
     let groupsAborted = false;
     onCleanup(() => { groupsAborted = true; });
 
-    const replaceGroupCarousels = (groups: GroupCarousel[]) => {
+    const mergeGroupCarousels = (groups: GroupCarousel[]) => {
         if (groups.length === 0) return;
-        saveGroupCarouselsCache(groups);
-        setGroupCarousels(groups);
+        setGroupCarousels(previous => {
+            const merged = mergeSubscriptionGroupRows(previous, groups, MAX_CAROUSEL_ITEMS);
+            saveGroupCarouselsCache(merged);
+            return merged;
+        });
     };
 
     const upsertGroupCarousel = (name: string, videos: IPlatformVideo[]) => {
-        const freshVideos = videos
-            .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
-            .slice(0, MAX_CAROUSEL_ITEMS);
-        if (freshVideos.length === 0) return;
-        setGroupCarousels(prev => {
-            const idx = prev.findIndex(g => g.name === name);
-            if (idx >= 0) {
-                const next = [...prev];
-                next[idx] = { ...next[idx], videos: freshVideos };
-                saveGroupCarouselsCache(next);
-                return next;
-            }
-            const next = [...prev, { name, videos: freshVideos }];
-            saveGroupCarouselsCache(next);
-            return next;
-        });
+        mergeGroupCarousels([{ name, videos }]);
     };
 
     createEffect(() => {
         const bootstrap = subscriptionBootstrapVideos();
         if (bootstrap.length > 0)
-            replaceGroupCarousels(buildGroupCarousels(subscriptionGroups$(), bootstrap));
+            mergeGroupCarousels(buildGroupCarousels(subscriptionGroups$(), bootstrap));
     });
 
     onMount(() => {
@@ -901,7 +890,7 @@ const HomePage: Component = () => {
                 setSubscriptionGroups(subGroups);
                 const bootstrap = subscriptionBootstrapVideos();
                 if (bootstrap.length > 0)
-                    replaceGroupCarousels(buildGroupCarousels(subGroups, bootstrap));
+                    mergeGroupCarousels(buildGroupCarousels(subGroups, bootstrap));
 
                 // Phase 2: load group feeds without forcing a network refresh so rows improve in the background.
                 if (subGroups.length > 0) {
@@ -919,17 +908,17 @@ const HomePage: Component = () => {
                 SubscriptionsBackend.subscriptionsLoad(false)
                     .then(fresh => {
                         if (groupsAborted) return;
-                        replaceGroupCarousels(buildGroupCarousels(subGroups, fresh.results as IPlatformVideo[]));
+                        mergeGroupCarousels(buildGroupCarousels(subGroups, fresh.results as IPlatformVideo[]));
                     })
                     .catch(() => {});
             })
             .catch(e => console.warn('Subscription groups failed, falling back to global subscriptions', e));
 
-        // Phase 3: the existing cache pager remains authoritative once it is reconstructed.
+        // Phase 3: the global cache augments bootstrap rows without discarding videos already shown.
         SubscriptionsBackend.subscriptionsCacheLoad()
             .then(fresh => {
                 if (groupsAborted) return;
-                replaceGroupCarousels(buildGroupCarousels(subscriptionGroups$(), fresh.results as IPlatformVideo[]));
+                mergeGroupCarousels(buildGroupCarousels(subscriptionGroups$(), fresh.results as IPlatformVideo[]));
             })
             .catch(e => console.warn('Subscription cache failed, continuing with group feeds', e));
     });
