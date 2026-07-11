@@ -1222,22 +1222,35 @@ def validate_translated_cues(raw: Any, source_cues: list[TranscriptCue]) -> list
     return translated
 
 
+def translate_cue_batch(cues: list[TranscriptCue], language: str, args: argparse.Namespace) -> list[TranscriptCue]:
+    lines = "\n".join(f'{index}: {cue.text}' for index, cue in enumerate(cues))
+    prompt = (
+        f"Translate subtitle cues into {language}.\n"
+        "Return only valid JSON: {\"cues\":[{\"text\":\"translated cue\"}]}.\n"
+        "Keep exactly one non-empty output cue for every input cue, in the same order.\n"
+        "Do not add timestamps, numbering, commentary, or merge adjacent cues.\n\n"
+        f"Cues:\n{lines}"
+    )
+    response = call_model(prompt, args)
+    raw_cues = response.get("cues")
+    try:
+        return validate_translated_cues(raw_cues, cues)
+    except RuntimeError as exc:
+        actual_count = len(raw_cues) if isinstance(raw_cues, list) else "non-list"
+        if len(cues) == 1:
+            raise RuntimeError(f"Translated subtitle response is invalid for one cue: {exc}") from exc
+        midpoint = len(cues) // 2
+        log(f"  translated subtitles: response has {actual_count}/{len(cues)} cues, splitting the batch")
+        return (
+            translate_cue_batch(cues[:midpoint], language, args)
+            + translate_cue_batch(cues[midpoint:], language, args)
+        )
+
+
 def translate_cues(cues: list[TranscriptCue], language: str, args: argparse.Namespace) -> list[TranscriptCue]:
     translated: list[TranscriptCue] = []
-    for start in range(0, len(cues), 30):
-        batch = cues[start:start + 30]
-        lines = "\n".join(f'{index}: {cue.text}' for index, cue in enumerate(batch))
-        prompt = textwrap.dedent(f"""
-        Translate subtitle cues into {language}.
-        Return only valid JSON: {{"cues":[{{"text":"translated cue"}}]}}.
-        Keep exactly one non-empty output cue for every input cue, in the same order.
-        Do not add timestamps, numbering, commentary, or merge adjacent cues.
-
-        Cues:
-        {lines}
-        """).strip()
-        response = call_model(prompt, args)
-        translated.extend(validate_translated_cues(response.get("cues"), batch))
+    for start in range(0, len(cues), 12):
+        translated.extend(translate_cue_batch(cues[start:start + 12], language, args))
     return translated
 
 
