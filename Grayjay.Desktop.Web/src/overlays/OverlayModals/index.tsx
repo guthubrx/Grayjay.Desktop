@@ -1,4 +1,5 @@
-import { Component, JSX, Show, batch, createMemo, createSignal, onCleanup } from 'solid-js';
+import { Component, JSX, Show, batch, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import styles from './index.module.css';
 import OverlayDialog, { DialogDescriptor, IDialogOutput } from '../OverlayDialog';
 import OverlayDialogLoader, { LoaderDescriptor } from '../OverlayDialogLoader';
@@ -28,6 +29,12 @@ const OverlayModals: Component = () => {
     let overlayCurrent: OverlayRequest | undefined = undefined;
     const overlayQueue: OverlayRequest[] = [];
     const globalDismissEvent = new Event0();
+    const [mount, setMount] = createSignal<HTMLElement>(document.body);
+
+    const onFullscreenChange = () => {
+      setMount((document.fullscreenElement as HTMLElement | null) ?? document.body);
+    };
+    onMount(() => document.addEventListener('fullscreenchange', onFullscreenChange));
 
     UIOverlay.onOverlay.registerOne('overlay', (req) => {
       if (!req.toast) {
@@ -44,7 +51,10 @@ const OverlayModals: Component = () => {
       loadNextRequest();
     });
       
-    onCleanup(() => globalDismissEvent.unregister('onCurrentGlobalDismiss'));
+    onCleanup(() => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      globalDismissEvent.unregister('onCurrentGlobalDismiss');
+    });
 
     function swapContent(next?: OverlayRequest) {
       batch(() => {
@@ -83,6 +93,7 @@ const OverlayModals: Component = () => {
     }
 
     return (
+      <Portal mount={mount()}>
       <div
         class={styles.root}
         // Hide when inactive but DO NOT unmount; avoids provider/context churn.
@@ -93,6 +104,7 @@ const OverlayModals: Component = () => {
         <OverlayDialogLoader dialog={loader$()} />
         {customFactory$()?.()}
       </div>
+      </Portal>
     );
   };
   

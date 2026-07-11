@@ -75,6 +75,7 @@ interface VideoProps {
     onOptions?: (el: HTMLElement, inputSource: InputSource) => void;
     onContextMenu?: (event: MouseEvent) => void;
     smartChapterHighlights?: IVideoHighlightSet;
+    translatedSubtitleEnabled?: boolean;
     minimized?: boolean;
     onReady?: (handle: VideoPlayerViewHandle) => void;
 }
@@ -105,6 +106,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     let transitionVolumeChange = false;
     let currentContentUrl: string | undefined;
     let subtitleMap: Map<string, HTMLParagraphElement> = new Map<string, HTMLParagraphElement>();
+    let translatedSubtitleElement: HTMLParagraphElement | undefined;
     const [areControlsVisible, setAreControlsVisible] = createSignal(false);
     const [duration, setDuration] = createSignal(Duration.fromMillis(0));
     const [videoDimensions, setVideoDimensions] = createSignal({ width: 1920, height: 1080 });
@@ -113,6 +115,24 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const [isScrubbing, setIsScrubbing] = createSignal(false);
     const [position, setPosition] = createSignal(Duration.fromMillis(0));
     let switchPosition = Duration.fromMillis(0);
+
+    createEffect(() => {
+        const translated = props.translatedSubtitleEnabled ? props.smartChapterHighlights?.translatedSubtitles : undefined;
+        const currentSeconds = position().milliseconds / 1000;
+        const cue = translated?.cues.find(item => item.start <= currentSeconds && item.end > currentSeconds);
+
+        if (!cue) {
+            translatedSubtitleElement?.remove();
+            translatedSubtitleElement = undefined;
+            return;
+        }
+
+        if (!translatedSubtitleElement) {
+            translatedSubtitleElement = document.createElement("p");
+            videoCaptionsRef?.appendChild(translatedSubtitleElement);
+        }
+        translatedSubtitleElement.textContent = cue.text;
+    });
     const [positionBuffered, setPositionBuffered] = createSignal(Duration.fromMillis(0));
     const [isFullscreen, setIsFullscreen] = createSignal(false);
     const [isCasting, setIsCasting] = createSignal(casting?.activeDevice.device() ? true : false);

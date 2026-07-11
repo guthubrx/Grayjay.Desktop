@@ -167,6 +167,7 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--max-transcript-chars", type=int, default=120000, help="Transcript character budget sent to LLM. Above this, cues are uniformly down-sampled across the whole duration (never dropping the middle).")
     generation.add_argument("--language", default="fr", help="Preferred transcript/Whisper language.")
     generation.add_argument("--output-language", default=None, help="Force the language of generated titles/summaries (e.g. French, English). Defaults to the video's own language.")
+    generation.add_argument("--translate-subtitles", action="store_true", help="Generate timed translated subtitles in --output-language when it is set.")
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
     generation.add_argument("--no-sponsorblock", action="store_true", help="Do not fetch SponsorBlock promotion segments.")
@@ -815,7 +816,8 @@ def save_cached_transcript(task: VideoTask, cues: list[TranscriptCue], source: s
 
 
 def analysis_cache_path(url: str, args: argparse.Namespace) -> Path:
-    digest = hashlib.sha256(url.strip().encode("utf-8")).hexdigest()
+    language = (args.output_language or "auto").strip().lower()
+    digest = hashlib.sha256(f"{url.strip()}\n{language}".encode("utf-8")).hexdigest()
     base = Path(args.transcript_cache_dir).expanduser() if args.transcript_cache_dir else Path(args.grayjay_dir).expanduser() / "transcripts_cache"
     return base.parent / "analysis_cache" / f"{digest}.json"
 
@@ -1200,6 +1202,79 @@ def cues_to_prompt_transcript(cues: list[TranscriptCue], max_chars: int) -> str:
     note = (f"[... transcript sous-échantillonné : {len(indices)}/{len(lines)} "
             f"segments répartis sur toute la durée pour tenir dans le budget ...]")
     return note + "\n" + sampled
+
+
+def transcript_hash(cues: list[TranscriptCue]) -> str:
+    payload = [{"start": round(cue.start, 3), "end": round(cue.end, 3), "text": cue.text} for cue in cues]
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def validate_translated_cues(raw: Any, source_cues: list[TranscriptCue]) -> list[TranscriptCue]:
+    if not isinstance(raw, list) or len(raw) != len(source_cues):
+        raise RuntimeError("Translated subtitle response does not match the source cue count.")
+
+    translated: list[TranscriptCue] = []
+    for source, item in zip(source_cues, raw):
+        text = item.get("text") if isinstance(item, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError("Translated subtitle response contains an empty cue.")
+        translated.append(TranscriptCue(source.start, source.end, clean_caption_text(text)))
+    return translated
+
+
+def translate_cues(cues: list[TranscriptCue], language: str, args: argparse.Namespace) -> list[TranscriptCue]:
+    translated: list[TranscriptCue] = []
+    for start in range(0, len(cues), 30):
+        batch = cues[start:start + 30]
+        lines = "\n".join(f'{index}: {cue.text}' for index, cue in enumerate(batch))
+        prompt = textwrap.dedent(f"""
+        Translate subtitle cues into {language}.
+        Return only valid JSON: {{"cues":[{{"text":"translated cue"}}]}}.
+        Keep exactly one non-empty output cue for every input cue, in the same order.
+        Do not add timestamps, numbering, commentary, or merge adjacent cues.
+
+        Cues:
+        {lines}
+        """).strip()
+        response = call_model(prompt, args)
+        translated.extend(validate_translated_cues(response.get("cues"), batch))
+    return translated
+
+
+def existing_translated_subtitles(task: VideoTask, cues: list[TranscriptCue], language: str, args: argparse.Namespace) -> dict[str, Any] | None:
+    path = highlights_path(task.url, Path(args.output_dir).expanduser() if args.output_dir else Path(args.grayjay_dir).expanduser() / "highlights")
+    existing = load_json(path)
+    translated = existing.get("translatedSubtitles") if isinstance(existing, dict) else None
+    if not isinstance(translated, dict):
+        return None
+    if translated.get("language") != language or translated.get("sourceTranscriptHash") != transcript_hash(cues):
+        return None
+    try:
+        validated = validate_translated_cues(translated.get("cues"), cues)
+    except RuntimeError:
+        return None
+    return {
+        "language": language,
+        "sourceTranscriptHash": transcript_hash(cues),
+        "cues": [{"start": cue.start, "end": cue.end, "text": cue.text} for cue in validated],
+    }
+
+
+def translated_subtitles(task: VideoTask, cues: list[TranscriptCue], args: argparse.Namespace) -> dict[str, Any] | None:
+    language = (args.output_language or "").strip()
+    if not language or not (args.translate_subtitles or args.output_language):
+        return None
+    cached = existing_translated_subtitles(task, cues, language, args)
+    if cached:
+        log(f"  translated subtitles: cached ({len(cached['cues'])} cues, {language})")
+        return cached
+    log(f"  translated subtitles: generating ({len(cues)} cues, {language})")
+    translated = translate_cues(cues, language, args)
+    return {
+        "language": language,
+        "sourceTranscriptHash": transcript_hash(cues),
+        "cues": [{"start": cue.start, "end": cue.end, "text": cue.text} for cue in translated],
+    }
 
 
 def format_time(seconds: float) -> str:
@@ -1690,7 +1765,8 @@ def highlights_path(video_url: str, output_dir: Path) -> Path:
 
 
 def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_segments: list[dict[str, Any]],
-                     analysis: dict[str, Any], args: argparse.Namespace) -> Path:
+                     analysis: dict[str, Any], args: argparse.Namespace,
+                     translated: dict[str, Any] | None = None) -> Path:
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else Path(args.grayjay_dir).expanduser() / "highlights"
     output_dir.mkdir(parents=True, exist_ok=True)
     path = highlights_path(task.url, output_dir)
@@ -1701,7 +1777,7 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
     existing = load_json(path) if path.exists() else None
     created_at = existing.get("createdAt") if isinstance(existing, dict) and existing.get("createdAt") else now
     payload: dict[str, Any] = {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "videoUrl": task.url,
         "source": f"smart-chapters-generator+{args.provider}-{args.model}",
         "createdAt": created_at,
@@ -1712,6 +1788,8 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
     }
     if promotion_segments:
         payload["promotionSegments"] = promotion_segments
+    if translated:
+        payload["translatedSubtitles"] = translated
     if task.video:
         payload["video"] = task.video
 
@@ -1850,6 +1928,13 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
         log(f"  targets: {args.max_theses} theses/topics, ~{args.max_segments} sections")
 
         analysis = run_analysis(task, llm_cues, args)
+        try:
+            translated = translated_subtitles(task, cues, args)
+        except Exception as exc:
+            # La traduction enrichit la lecture, mais ne doit jamais bloquer
+            # l'analyse ou l'ecriture des Smart Chapters.
+            log(f"  translated subtitles warning: {exc}")
+            translated = None
 
         sponsorblock_segments = fetch_sponsorblock_segments(task, args, duration)
 
@@ -1868,7 +1953,7 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
         segments = snap_segments_to_sentences(segments, cues)
         log(f"  segments: {len(segments)}")
         log(f"  promotion segments: {len(promotion_segments)}")
-        path = write_highlights(task, segments, promotion_segments, analysis, args)
+        path = write_highlights(task, segments, promotion_segments, analysis, args, translated)
         if args.dry_run:
             log(f"  dry-run output: {path}")
             print(json.dumps({
@@ -1877,6 +1962,7 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
                 "theses": analysis.get("theses"),
                 "segments": segments,
                 "promotionSegments": promotion_segments,
+                "translatedSubtitles": translated,
             }, ensure_ascii=False, indent=2))
         else:
             log(f"  written: {path}")

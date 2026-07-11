@@ -11,6 +11,7 @@ public class VideoHighlightSet
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public string? GlobalSummary { get; set; }
     public List<VideoHighlightThesis>? Theses { get; set; }
+    public VideoHighlightSubtitle? TranslatedSubtitles { get; set; }
     public PlatformVideo? Video { get; set; }
     public List<VideoHighlightSegment> Segments { get; set; } = new();
     public List<VideoHighlightPromotionSegment>? PromotionSegments { get; set; }
