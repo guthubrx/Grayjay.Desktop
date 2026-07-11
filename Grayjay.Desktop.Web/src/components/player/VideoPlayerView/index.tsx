@@ -1020,7 +1020,11 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             setTransitionVisualPending(true);
             setTransitionPosterVisible(true);
             setTransitionPosterFading(false);
-            await fadeOutCurrentMedia();
+            try {
+                await fadeOutCurrentMedia();
+            } catch (error) {
+                console.warn("Failed to fade out the previous source", error);
+            }
         }
 
         currentUrl = sourceUrl;
