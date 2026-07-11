@@ -1149,6 +1149,7 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     - COVER THE ENTIRE VIDEO: the sections must be CONTIGUOUS and span the full duration, from 0 to the end. Each section's start must equal the previous section's end. No gaps, no overlaps. Do not skip "boring" parts: include them as their own low-score sections.
     - Keep around {args.max_segments} sections (merge flat stretches into longer sections rather than dropping them).
     - Prefer sections between {args.min_segment_seconds} and {args.max_segment_seconds} seconds, but extend low-interest stretches into longer sections so the whole video stays covered.
+    - Every boundary is a cut between spoken units. Place starts and ends after a complete sentence or a clearly completed thought, never in the middle of a sentence. The timestamps are approximate: prefer the nearest natural transcript boundary over a round duration or an arbitrary timestamp.
     - DISTRIBUTE sections EVENLY across the ENTIRE timeline: the density of sections must stay similar from the first minute to the last. The FINAL section MUST NOT be a catch-all. If the last part of the transcript (e.g. the final 10-20 minutes) still contains speech, split it into several sections exactly like the earlier parts. A single section longer than {args.max_segment_seconds}s is allowed ONLY when the transcript for that whole span is genuinely empty of speech.
     - score = how VALUABLE this section is TO A VIEWER, based on information density, insight, specificity and memorability. It is NOT about whether it proves a thesis. A gripping personal story, a concrete example, a piece of advice, a governance detail or a strong opinion can score HIGH even if it matches no thesis.
       * >= 0.90: high insight — a key idea, striking fact, concrete example, strong argument or memorable takeaway
@@ -1350,73 +1351,147 @@ def validate_segments(data: dict[str, Any], duration: float | None, args: argpar
 
 # Ponctuation de fin de phrase (point, ?, !, points de suspension), avec
 # guillemets/parenthèses fermantes éventuels juste après.
-_SENTENCE_END_RE = re.compile(r"[.!?…][\"'»)\]]*\s*$")
+_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?…]+[\"'»)\]]*(?=\s|$)")
+_UPPERCASE_OR_NUMBER_RE = re.compile(r"^[A-ZÀ-ÖØ-Þ0-9«“]")
 
 
-def sentence_start_times(cues: list[TranscriptCue], min_pause: float = 0.45) -> list[float]:
-    """Instants où commence une nouvelle phrase, dérivés des cues fines.
+def _is_sentence_boundary(text: str, match: re.Match[str]) -> bool:
+    """Évite de prendre un point d'abréviation pour une fin de phrase."""
+    punctuation = match.group(0).lstrip()[:1]
+    if punctuation in "!?…":
+        return True
+    following = text[match.end():].lstrip()
+    if not following:
+        return True
+    return bool(_UPPERCASE_OR_NUMBER_RE.match(following))
 
-    Une cue amorce une phrase si la précédente se termine par une ponctuation
-    forte (transcripts ponctués : Whisper, sous-titres manuels) OU si une pause
-    nette la précède (auto-captions sans ponctuation). La première cue amorce
-    toujours une phrase. Complexité O(n) sur le nombre de cues."""
-    starts: list[float] = []
-    prev_end: float | None = None
-    starts_new = True
-    for cue in cues:
-        pause = (cue.start - prev_end) if prev_end is not None else 0.0
-        if starts_new or pause >= min_pause:
-            starts.append(round(cue.start, 3))
-        prev_end = cue.end
-        starts_new = bool(_SENTENCE_END_RE.search(cue.text.rstrip()))
-    # Dédoublonne en gardant l'ordre croissant (cues potentiellement chevauchantes).
+
+def _deduplicate_times(values: list[float], tolerance: float = 0.05) -> list[float]:
     unique: list[float] = []
-    for value in sorted(starts):
-        if not unique or value > unique[-1] + 1e-3:
-            unique.append(value)
+    for value in sorted(values):
+        if not unique or value > unique[-1] + tolerance:
+            unique.append(round(value, 3))
     return unique
 
 
-def _nearest_within(sorted_values: list[float], target: float, window: float) -> float | None:
-    """Valeur la plus proche de target dans sorted_values, si à moins de window. O(log n)."""
+def sentence_boundary_times(cues: list[TranscriptCue], min_pause: float = 0.45) -> list[float]:
+    """Retourne les frontières temporelles où une coupe est naturellement sûre.
+
+    Les sous-titres peuvent contenir plusieurs phrases dans une seule cue. Dans
+    ce cas, la position de la ponctuation interne est estimée à l'intérieur de
+    la cue, au prorata des mots. Ce n'est pas une nouvelle transcription : c'est
+    une interpolation déterministe des timestamps déjà présents.
+
+    Quand la ponctuation manque (auto-captions), une pause entre deux cues est
+    utilisée comme frontière de repli. La première cue est toujours une
+    frontière. Les valeurs retournées servent à la fois pour les débuts et les
+    fins, puisque les chapitres sont rendus contigus ensuite.
+    """
+    if not cues:
+        return []
+
+    ordered = sorted(cues, key=lambda cue: (cue.start, cue.end))
+    boundaries: list[float] = [ordered[0].start]
+    previous_end: float | None = None
+    for cue in ordered:
+        if previous_end is not None and cue.start - previous_end >= min_pause:
+            boundaries.append(cue.start)
+
+        word_count = max(1, len(re.findall(r"\S+", cue.text)))
+        for match in _SENTENCE_BOUNDARY_RE.finditer(cue.text):
+            if not _is_sentence_boundary(cue.text, match):
+                continue
+            words_until = len(re.findall(r"\S+", cue.text[:match.end()]))
+            ratio = min(1.0, max(0.0, words_until / word_count))
+            estimated = cue.start + (cue.end - cue.start) * ratio
+            boundaries.append(estimated)
+
+        previous_end = max(previous_end or cue.end, cue.end)
+
+    return _deduplicate_times(boundaries)
+
+
+def sentence_start_times(cues: list[TranscriptCue], min_pause: float = 0.45) -> list[float]:
+    """Compatibilité avec l'ancien nom : les frontières servent aux deux bornes."""
+    return sentence_boundary_times(cues, min_pause=min_pause)
+
+
+def cue_boundary_times(cues: list[TranscriptCue]) -> list[float]:
+    """Frontières de repli quand les cues ne portent aucune ponctuation."""
+    if not cues:
+        return []
+    return _deduplicate_times([cue.start for cue in sorted(cues, key=lambda cue: cue.start)])
+
+
+def _nearest_within(sorted_values: list[float], target: float, window: float,
+                    minimum: float | None = None, maximum: float | None = None) -> float | None:
+    """Valeur la plus proche dans une fenêtre et un intervalle optionnel."""
     if not sorted_values:
         return None
-    idx = bisect.bisect_left(sorted_values, target)
+    lower = target - window
+    upper = target + window
+    if minimum is not None:
+        lower = max(lower, minimum)
+    if maximum is not None:
+        upper = min(upper, maximum)
+    if lower > upper:
+        return None
+
+    start = bisect.bisect_left(sorted_values, lower)
+    stop = bisect.bisect_right(sorted_values, upper)
     best: float | None = None
     best_dist: float | None = None
-    for j in (idx - 1, idx):
-        if 0 <= j < len(sorted_values):
-            dist = abs(sorted_values[j] - target)
-            if dist <= window and (best_dist is None or dist < best_dist):
-                best, best_dist = sorted_values[j], dist
+    for value in sorted_values[start:stop]:
+        dist = abs(value - target)
+        if best_dist is None or dist < best_dist:
+            best, best_dist = value, dist
     return best
 
 
 def snap_segments_to_sentences(segments: list[dict[str, Any]], cues: list[TranscriptCue],
                                max_shift: float = 8.0) -> list[dict[str, Any]]:
-    """Recale le DÉBUT de chaque chapitre sur l'amorce de phrase la plus proche.
+    """Recale chaque frontière de chapitre sur une limite de phrase proche.
 
     Le LLM décide OÙ sont les sujets (bien) ; le début exact est confié à une
     règle déterministe basée sur les vrais temps de parole, pour ne pas tomber
-    en milieu ou en fin de phrase. On ne déplace une borne que si un début de
-    phrase existe dans une fenêtre de ``max_shift`` secondes, sinon on garde la
-    valeur du LLM. Le premier chapitre n'est pas déplacé (couverture depuis le
-    début). Les fins sont réalignées sur le début suivant pour garder des
-    chapitres contigus, sans trou ni chevauchement."""
+    en milieu ou en fin de phrase. Les frontières viennent de la ponctuation
+    interne des cues et des pauses quand la ponctuation manque. Le premier
+    chapitre n'est pas déplacé (couverture depuis le début). Les fins sont
+    réalignées sur les débuts corrigés pour garder des chapitres contigus, sans
+    trou ni chevauchement."""
     if len(segments) < 2:
         return segments
-    starts = sentence_start_times(cues)
-    if not starts:
+    boundaries = sentence_boundary_times(cues)
+    fallback_boundaries = cue_boundary_times(cues)
+    if not boundaries and not fallback_boundaries:
         return segments
 
     result = [dict(seg) for seg in segments]
-    prev_start = result[0]["start"]
+    previous_boundary = float(result[0]["start"])
     for seg in result[1:]:
-        snapped = _nearest_within(starts, seg["start"], max_shift)
-        # Ne recale que si ça reste après le chapitre précédent (ordre + longueur mini).
-        if snapped is not None and snapped > prev_start + 1.0:
+        original_start = float(seg["start"])
+        minimum = previous_boundary + 1.0
+        maximum = max(minimum, float(seg["end"]) - 1.0)
+        snapped = _nearest_within(
+            boundaries,
+            original_start,
+            max_shift,
+            minimum=minimum,
+            maximum=maximum,
+        )
+        if snapped is None:
+            snapped = _nearest_within(
+                fallback_boundaries,
+                original_start,
+                max_shift,
+                minimum=minimum,
+                maximum=maximum,
+            )
+        if snapped is not None:
             seg["start"] = round(snapped, 3)
-        prev_start = seg["start"]
+        elif original_start < minimum:
+            seg["start"] = round(minimum, 3)
+        previous_boundary = float(seg["start"])
 
     # Contiguïté : fin d'un chapitre = début du suivant (absorbe le décalage).
     for i in range(len(result) - 1):
@@ -1491,6 +1566,7 @@ def rechapter_span(task: VideoTask, span_cues: list[TranscriptCue], start: float
 
     Rules:
     - Produce {n} CONTIGUOUS sections covering EXACTLY this span. First start = {start:.0f}, last end = {end:.0f}. No gaps, no overlaps.
+    - Every internal boundary must fall after a complete sentence or clearly completed thought. Never cut through a sentence just to reach a round duration; prefer the nearest natural boundary visible in the transcript.
     - This span is NOT filler: it contains real spoken content. Give each section a SPECIFIC title based on what is actually said (never "conclusion", "thanks", "outro" unless the transcript truly is that), and a fair score spread across the range (viewer value, not thesis-adherence).
     - Titles and summaries in {lang}. Base everything strictly on the transcript. Never invent.
 
