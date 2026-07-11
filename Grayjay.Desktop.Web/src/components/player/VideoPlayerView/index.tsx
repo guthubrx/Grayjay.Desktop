@@ -231,10 +231,11 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         if (!highlights)
             return [];
 
-        if (highlights.promotionSegments !== undefined)
+        if (Array.isArray(highlights.promotionSegments))
             return highlights.promotionSegments;
 
-        return highlights.segments
+        const segments = Array.isArray(highlights.segments) ? highlights.segments : [];
+        return segments
             .filter(segment => legacyPromotionPrefix.test(segment.title))
             .map(segment => ({
                 start: segment.start,
