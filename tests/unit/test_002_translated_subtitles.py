@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 MODULE_PATH = Path(__file__).parents[2] / "tools" / "generate_smart_chapters.py"
@@ -86,6 +87,28 @@ class TranslatedSubtitlesTests(unittest.TestCase):
             )
 
         self.assertIsNone(translated)
+
+    def test_002_splits_a_truncated_translation_batch(self):
+        source = [
+            MODULE.TranscriptCue(0.0, 1.0, "Un"),
+            MODULE.TranscriptCue(1.0, 2.0, "Deux"),
+            MODULE.TranscriptCue(2.0, 3.0, "Trois"),
+            MODULE.TranscriptCue(3.0, 4.0, "Quatre"),
+        ]
+        batch_sizes = []
+
+        def fake_call_model(prompt, args):
+            size = sum(1 for line in prompt.splitlines() if line.lstrip()[:1].isdigit() and ": " in line)
+            batch_sizes.append(size)
+            if size == 4:
+                return {"cues": [{"text": "Tronque"}]}
+            return {"cues": [{"text": f"Traduit {index}"} for index in range(size)]}
+
+        with patch.object(MODULE, "call_model", fake_call_model):
+            translated = MODULE.translate_cue_batch(source, "French", SimpleNamespace())
+
+        self.assertEqual(batch_sizes, [4, 2, 2])
+        self.assertEqual([(cue.start, cue.end) for cue in translated], [(0.0, 1.0), (1.0, 2.0), (2.0, 3.0), (3.0, 4.0)])
 
 
 if __name__ == "__main__":
