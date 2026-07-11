@@ -1096,10 +1096,11 @@ const HomePage: Component = () => {
                         watchLaterUrls={() => new Set((watchLaterItems() ?? []).map(v => v.url ?? '').filter(Boolean))}
                         highlightSummaryForVideo={(video) => summaryForUrl(video?.url)}
                     />
-                    <Show when={subProgress$() > 0 && subProgress$() < 1}>
-                        <div style={{height: "2px", width: (subProgress$() * 100) + "%", background: "linear-gradient(267deg, rgb(1, 214, 230) -100.57%, rgb(1, 130, 231) 90.96%)"}}>
-                        </div>
-                    </Show>
+                </Show>
+
+                <Show when={subProgress$() > 0 && subProgress$() < 1}>
+                    <div style={{height: "2px", width: (subProgress$() * 100) + "%", background: "linear-gradient(267deg, rgb(1, 214, 230) -100.57%, rgb(1, 130, 231) 90.96%)"}}>
+                    </div>
                 </Show>
 
                 <Show when={globalSmartTvSources().length > 0}>
