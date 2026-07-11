@@ -659,7 +659,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             });
         }
     };
-
     const handleEnded = async () => {
         const currentIndex = video?.index();
         if (currentIndex === undefined) {

@@ -373,7 +373,6 @@ namespace Grayjay.ClientServer.Controllers
                         prepared.CachedDashTask = null;
                     }
                 }
-
                 ClearStartupMediaTargets();
                 lock (prepared._startupMediaLockObject)
                 {
