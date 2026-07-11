@@ -91,6 +91,7 @@ export type VideoPlayerViewHandle = {
 const VideoPlayerView: Component<VideoProps> = (props) => {
     const AUDIO_TRANSITION_MS = 180;
     const IMAGE_TRANSITION_MS = 240;
+    const legacyPromotionPrefix = /^(?:sponsor|sponsorship|promotion|advertisement|publicit(?:é|e)|partenariat)\s*:/i;
     const casting = useCasting()!;
     
     let videoCaptionsRef: HTMLDivElement | undefined;
@@ -225,7 +226,24 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         const segments = activeHighlightSegments$();
         return segments.length > 0 ? segments : (props.smartChapterHighlights?.segments ?? []);
     });
-    const promotionSegments$ = createMemo(() => props.smartChapterHighlights?.promotionSegments ?? []);
+    const promotionSegments$ = createMemo(() => {
+        const highlights = props.smartChapterHighlights;
+        if (!highlights)
+            return [];
+
+        if (highlights.promotionSegments !== undefined)
+            return highlights.promotionSegments;
+
+        return highlights.segments
+            .filter(segment => legacyPromotionPrefix.test(segment.title))
+            .map(segment => ({
+                start: segment.start,
+                end: segment.end,
+                category: "sponsor",
+                source: "legacy-smart-chapter",
+                summary: segment.summary
+            }));
+    });
     const smartChapterTheses$ = createMemo(() => props.smartChapterHighlights?.theses ?? []);
     const smartChapterMatchesFilter = (segment: IVideoHighlightSegment, filter = smartChapterFilter$()) => {
         if (filter === "video")
