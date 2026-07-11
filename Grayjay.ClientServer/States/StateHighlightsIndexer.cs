@@ -148,12 +148,29 @@ public static class StateHighlightsIndexer
                 lock (_lock)
                 {
                     job.Status = "error";
-                    job.Error = ex.Message;
+                    job.Error = UserFacingError(ex.Message);
                     EnsureWorkersLocked();
                 }
             }
             StateWebsocket.HighlightsIndexChanged(job);
         }
+    }
+
+    private static string UserFacingError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "Unknown generator error.";
+
+        if (message.Contains("quota_exhausted", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("Insufficient Balance", StringComparison.OrdinalIgnoreCase))
+            return "Provider quota exhausted / insufficient balance.";
+
+        var providerStatus = Regex.Match(message, @"OpenAI-compatible request failed \((\d+)\)", RegexOptions.IgnoreCase);
+        if (providerStatus.Success)
+            return $"Provider request failed ({providerStatus.Groups[1].Value}).";
+
+        var clean = Regex.Replace(message, @"\s+", " ").Trim();
+        return clean.Length > 240 ? clean[..237] + "..." : clean;
     }
 
     // Récupère les sous-titres de la vidéo via le moteur Grayjay (plugin) et les

@@ -9,16 +9,23 @@
 
 /* Mode "barre seule" : garde la seekbar (+ heatmap) visible, masque le dégradé
    de fond et les boutons pour laisser voir la vidéo (comme YouTube). Le décalage
-   vertical (--seekbar-offset) fait descendre la barre ; --seekbar-opacity règle
-   la transparence du heatmap et du curseur. */
+   vertical (--seekbar-offset) ne descend que la barre du bas ; --seekbar-opacity
+   règle la transparence du heatmap et du curseur. */
 .container.barOnly {
     background: none;
-    transform: translateY(var(--seekbar-offset, 0px));
 }
 .container.barOnly .leftButtonContainer,
 .container.barOnly .buttonContainer {
     opacity: 0;
     pointer-events: none;
+}
+.container.barOnly .progressBarInteractiveArea,
+.container.barOnly .progressBarContainer,
+.container.barOnly .progressBarHandle,
+.container.barOnly .progressBar,
+.container.barOnly .progressBarProgress,
+.container.barOnly .progressBarBuffer {
+    transform: translateY(var(--seekbar-offset, 0px));
 }
 .container.barOnly .progressBarSmartChapters,
 .container.barOnly .progressBarHandle,
