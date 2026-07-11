@@ -39,6 +39,9 @@ export abstract class SubscriptionsBackend {
     static async subscriptionsCacheLoad(): Promise<PagerResult<IPlatformVideo>> {
         return await Backend.GET("/subscriptions/SubscriptionsCacheLoad") as PagerResult<IPlatformVideo>;
     }
+    static async subscriptionsBootstrapLoad(): Promise<PagerResult<IPlatformVideo>> {
+        return await Backend.GET("/subscriptions/SubscriptionsBootstrapLoad") as PagerResult<IPlatformVideo>;
+    }
     static async subscriptionsCacheNextPage(): Promise<PagerResult<IPlatformVideo>> {
         return await Backend.GET("/subscriptions/SubscriptionsCacheNextPage") as PagerResult<IPlatformVideo>;
     }

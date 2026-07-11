@@ -856,6 +856,9 @@ const HomePage: Component = () => {
     // Phase 1 (fast): show cached data immediately when available
     // Phase 2 (background): load each group feed and update rows as results arrive
     const [groupCarousels, setGroupCarousels] = createSignal<GroupCarousel[]>(loadGroupCarouselsCache());
+    const [subscriptionGroups$, setSubscriptionGroups] = createSignal<ISubscriptionGroup[]>([]);
+    const subscriptionBootstrapVideos = createMemo(() =>
+        (StateGlobal.subscriptionBootstrap$()?.results ?? []) as IPlatformVideo[]);
     let groupsAborted = false;
     onCleanup(() => { groupsAborted = true; });
 
@@ -884,57 +887,51 @@ const HomePage: Component = () => {
         });
     };
 
-    onMount(async () => {
-        let cachedVideos: IPlatformVideo[] = [];
-        try {
-            // Phase 0: disk cache only. If it fails, group rows must still load.
-            const cached = await SubscriptionsBackend.subscriptionsCacheLoad();
-            if (groupsAborted) return;
-            cachedVideos = cached.results as IPlatformVideo[];
-            if (cachedVideos.length > 0)
-                replaceGroupCarousels(buildGroupCarousels([], cachedVideos));
-        } catch (e) {
-            console.warn('Subscription cache failed, continuing with group feeds', e);
-        }
+    createEffect(() => {
+        const bootstrap = subscriptionBootstrapVideos();
+        if (bootstrap.length > 0)
+            replaceGroupCarousels(buildGroupCarousels(subscriptionGroups$(), bootstrap));
+    });
 
-        let subGroups: ISubscriptionGroup[] = [];
-        try {
-            // Phase 1: groups are independent from the global cache.
-            subGroups = await SubscriptionsBackend.subscriptionGroups();
-            if (groupsAborted) return;
-            if (cachedVideos.length > 0)
-                replaceGroupCarousels(buildGroupCarousels(subGroups, cachedVideos));
-        } catch (e) {
-            console.warn('Subscription groups failed, falling back to global subscriptions', e);
-        }
+    onMount(() => {
+        // Phase 1: group definitions and the durable bootstrap are independent from the slow cache pager.
+        SubscriptionsBackend.subscriptionGroups()
+            .then(subGroups => {
+                if (groupsAborted) return;
+                setSubscriptionGroups(subGroups);
+                const bootstrap = subscriptionBootstrapVideos();
+                if (bootstrap.length > 0)
+                    replaceGroupCarousels(buildGroupCarousels(subGroups, bootstrap));
 
-        // Phase 2: load group feeds without forcing a network refresh so rows appear quickly.
-        // The regular page refresh action can still request a complete network update.
-        if (subGroups.length > 0) {
-            for (const group of subGroups) {
+                // Phase 2: load group feeds without forcing a network refresh so rows improve in the background.
+                if (subGroups.length > 0) {
+                    for (const group of subGroups) {
                 SubscriptionsBackend.subscriptionGroupCacheLoad(group.id)
                     .then(cached => {
                         if (groupsAborted) return;
                         upsertGroupCarousel(group.name, cached.results as IPlatformVideo[]);
                     })
                     .catch(() => {});
+                    }
+                    return;
+                }
 
-                SubscriptionsBackend.subscriptionGroupLoad(group.id, false)
+                SubscriptionsBackend.subscriptionsLoad(false)
                     .then(fresh => {
                         if (groupsAborted) return;
-                        upsertGroupCarousel(group.name, fresh.results as IPlatformVideo[]);
+                        replaceGroupCarousels(buildGroupCarousels(subGroups, fresh.results as IPlatformVideo[]));
                     })
                     .catch(() => {});
-            }
-            return;
-        }
+            })
+            .catch(e => console.warn('Subscription groups failed, falling back to global subscriptions', e));
 
-        SubscriptionsBackend.subscriptionsLoad(false)
+        // Phase 3: the existing cache pager remains authoritative once it is reconstructed.
+        SubscriptionsBackend.subscriptionsCacheLoad()
             .then(fresh => {
                 if (groupsAborted) return;
-                replaceGroupCarousels(buildGroupCarousels(subGroups, fresh.results as IPlatformVideo[]));
+                replaceGroupCarousels(buildGroupCarousels(subscriptionGroups$(), fresh.results as IPlatformVideo[]));
             })
-            .catch(() => {});
+            .catch(e => console.warn('Subscription cache failed, continuing with group feeds', e));
     });
 
     function openVideo(v: IPlatformVideo) {
@@ -1007,9 +1004,10 @@ const HomePage: Component = () => {
             dVideos.has(v.url ?? '') || dChannels.has(v.author?.url ?? '') ||
             hasWatchedUrl(v.url) || !(v.thumbnails?.sources?.some(s => s?.url));
 
-        // Subs: flatten groupCarousels (already loaded, no extra request)
-        const subs = groupCarousels()
+        // Subs: group rows when ready, otherwise the durable bootstrap.
+        const groupedSubscriptions = groupCarousels()
             .flatMap(g => g.videos)
+        const subs = (groupedSubscriptions.length > 0 ? groupedSubscriptions : subscriptionBootstrapVideos())
             .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
             .filter(v => !exclude(v));
 

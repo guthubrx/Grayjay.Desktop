@@ -1,5 +1,7 @@
-﻿using Grayjay.ClientServer.Database;
+﻿using Grayjay.ClientServer.Constants;
+using Grayjay.ClientServer.Database;
 using Grayjay.ClientServer.Database.Indexes;
+using Grayjay.ClientServer.Models.Subscriptions;
 using Grayjay.ClientServer.Store;
 using Grayjay.Desktop.POC;
 using Grayjay.Desktop.POC.Port.States;
@@ -18,10 +20,16 @@ namespace Grayjay.ClientServer.States
         private static readonly ManagedDBStore<DBSubscriptionCacheIndex, PlatformContent> _subscriptionCache =
             new ManagedDBStore<DBSubscriptionCacheIndex, PlatformContent>(DBSubscriptionCacheIndex.TABLE_NAME)
             .Load();
+        private static readonly SubscriptionFeedSnapshotStore _subscriptionFeedSnapshot =
+            new SubscriptionFeedSnapshotStore(Path.Combine(Directories.Base, "subscription-feed-bootstrap.json"));
+        private static readonly object _subscriptionFeedSnapshotLock = new object();
+        private static readonly Debouncer _subscriptionFeedSnapshotDebouncer =
+            new Debouncer(TimeSpan.FromSeconds(2), WriteSubscriptionFeedSnapshot);
 
         public static void Clear()
         {
             _subscriptionCache.DeleteAll();
+            _subscriptionFeedSnapshot.Clear();
         }
 
         public static void ClearToday()
@@ -31,6 +39,19 @@ namespace Grayjay.ClientServer.States
             {
                 _subscriptionCache.Delete(content);
             }
+            ScheduleSubscriptionFeedSnapshot();
+        }
+
+        public static List<PlatformVideo> GetSubscriptionFeedSnapshot()
+        {
+            var activeChannelUrls = StateSubscriptions.GetSubscriptions()
+                .Select(subscription => subscription.Channel.Url)
+                .Where(StatePlatform.HasChannelClientFor)
+                .ToArray();
+            var videos = _subscriptionFeedSnapshot.Read(activeChannelUrls);
+            if (videos.Count == 0)
+                ScheduleSubscriptionFeedSnapshot();
+            return videos;
         }
 
         public static IPager<PlatformContent> GetChannelCachePager(string channelUrl)
@@ -186,7 +207,44 @@ namespace Grayjay.ClientServer.States
 
         public static List<PlatformContent> CacheContents(IEnumerable<PlatformContent> contents, bool doUpdate = false)
         {
-            return contents.Where(content => CacheContent(content, doUpdate)).ToList();
+            var materialized = contents.ToArray();
+            var cached = materialized.Where(content => CacheContent(content, doUpdate)).ToList();
+            if (materialized.Length > 0)
+                ScheduleSubscriptionFeedSnapshot();
+            return cached;
+        }
+
+        private static void ScheduleSubscriptionFeedSnapshot()
+        {
+            lock (_subscriptionFeedSnapshotLock)
+            {
+                _subscriptionFeedSnapshotDebouncer.Call();
+            }
+        }
+
+        private static void WriteSubscriptionFeedSnapshot()
+        {
+            try
+            {
+                var pager = GetSubscriptionCachePager();
+                var videos = new List<PlatformVideo>();
+
+                do
+                {
+                    videos.AddRange(pager.GetResults().OfType<PlatformVideo>());
+                    if (videos.Count >= SubscriptionFeedSnapshotStore.DefaultMaxVideos || !pager.HasMorePages())
+                        break;
+                    pager.NextPage();
+                }
+                while (true);
+
+                _subscriptionFeedSnapshot.Write(videos);
+                Logger.i(TAG, $"Subscriptions bootstrap snapshot wrote {videos.Count} videos");
+            }
+            catch (Exception ex)
+            {
+                Logger.w(TAG, $"Failed to write subscriptions bootstrap snapshot: {ex.Message}");
+            }
         }
 
         public static bool CacheContent(PlatformContent content, bool doUpdate = false)
