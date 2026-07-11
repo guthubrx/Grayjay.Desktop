@@ -105,6 +105,16 @@ namespace Grayjay.ClientServer.Controllers
         }
 
         [HttpGet]
+        public PagerResult<PlatformVideo> SubscriptionsBootstrapLoad()
+        {
+            return new PagerResult<PlatformVideo>()
+            {
+                Results = StateCache.GetSubscriptionFeedSnapshot().ToArray(),
+                HasMore = false
+            };
+        }
+
+        [HttpGet]
         public async Task<PagerResult<PlatformVideo>> SubscriptionsCacheLoad()
         {
             try

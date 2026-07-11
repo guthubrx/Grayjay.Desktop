@@ -34,6 +34,7 @@ import EmptyContentView from '../../components/EmptyContentView';
 import { DialogButton, DialogDescriptor, IDialogOutput } from '../../overlays/OverlayDialog';
 import { SettingsBackend } from '../../backend/SettingsBackend';
 import { focusable } from '../../focusable'; void focusable;
+import { selectSubscriptionPager } from '../../utils/subscriptionBootstrap';
 
 //const subs = await SubscriptionsBackend.subscriptions();
 //const subPager = await SubscriptionsBackend.subscriptionPager();
@@ -113,6 +114,10 @@ const SubscriptionsPage: Component = () => {
       saveStoredArray(STORAGE_SUBSCRIPTION_CACHE, pager.data, SUBSCRIPTION_CACHE_SIZE);
     return pager;
   }, { initialValue: storedSubscriptionCache.length > 0 ? createStaticPager(storedSubscriptionCache) : undefined });
+  const bootstrapPager$ = createMemo(() => {
+    const bootstrap = StateGlobal.subscriptionBootstrap$();
+    return bootstrap?.results?.length ? createStaticPager(bootstrap.results) : undefined;
+  });
   const [subPager$, subPagerResource] = createResourceDefault(async () => {
     const shouldUpdate = doUpdate;
     doUpdate = false;
@@ -148,9 +153,14 @@ const SubscriptionsPage: Component = () => {
       const livePager = subPager$();
       const cachePager = subCachePager$();
       const cacheUsable = !!cachePager && !cachePager.error && cachePager.data.length > 0;
-      if(subPager$.state == "ready" && livePager && (!cacheUsable || livePager.hadInitialUpdate$() || livePager.data.length > 0))
-        return livePager;
-      return cachePager;
+      const bootstrapPager = bootstrapPager$();
+      const selected = selectSubscriptionPager<Pager<IPlatformContent>>({
+        bootstrap: bootstrapPager ? { itemCount: bootstrapPager.data.length, value: bootstrapPager } : undefined,
+        cache: cacheUsable ? { itemCount: cachePager.data.length, value: cachePager } : undefined,
+        live: livePager ? { itemCount: livePager.data.length, value: livePager } : undefined,
+        liveReady: subPager$.state == "ready" && (!!livePager?.hadInitialUpdate$() || !cacheUsable)
+      });
+      return selected?.value;
     }
     else
       return subGroupPager$();

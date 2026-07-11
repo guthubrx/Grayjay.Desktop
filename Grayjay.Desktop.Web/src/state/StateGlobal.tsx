@@ -18,6 +18,7 @@ import Globals from "../globals";
 import { WindowBackend } from "../backend/WindowBackend";
 import { LocalBackend } from "../backend/LocalBackend";
 import { ToastDescriptor } from "../overlays/OverlayRoot";
+import { SubscriptionsBackend } from "../backend/SubscriptionsBackend";
 
 export interface StateGlobal {
     settings$: Resource<any>,
@@ -26,6 +27,7 @@ export interface StateGlobal {
     sourceStates$: Resource<ISourceConfigState[]>,
     lastHomeTime$: Accessor<DateTime|undefined>,
     home$: Resource<Pager<IPlatformVideo>>,
+    subscriptionBootstrap$: Resource<PagerResult<IPlatformVideo>>,
     didPurchase$: Resource<boolean>,
     isDeveloper$: Resource<boolean>,
     onGlobalClick: Event1<MouseEvent>,
@@ -55,6 +57,9 @@ function createState() {
         const update = doHomeUpdate;
         doHomeUpdate = false;
         return update ? await HomeBackend.homePager() : await HomeBackend.homePagerLazy();
+    });
+    const [subscriptionBootstrap$] = createResourceDefault(async () => {
+        return await SubscriptionsBackend.subscriptionsBootstrapLoad();
     });
     const [didPurchase$, didPurchaseResource] = createResourceDefault(async () => {
         return await BuyBackend.didPurchase();
@@ -159,6 +164,7 @@ function createState() {
 
         lastHomeTime$: lastHomeTime$,
         home$: home$,
+        subscriptionBootstrap$: subscriptionBootstrap$,
         didPurchase$: didPurchase$,
         
         onGlobalClick: new Event1<MouseEvent>(),
