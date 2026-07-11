@@ -1,12 +1,12 @@
 > ## A personal fork — with the deepest respect for [Grayjay](https://grayjay.app/) and [FUTO](https://futo.org/)
 >
-> This repository is a personal fork of [`futo-org/Grayjay.Desktop`](https://github.com/futo-org/Grayjay.Desktop). I'm not affiliated with FUTO in any way — just a heavy daily user who happens to keep a couple of small local tweaks.
+> This repository is a personal fork of [`futo-org/Grayjay.Desktop`](https://github.com/futo-org/Grayjay.Desktop). I'm not affiliated with FUTO in any way — just a heavy daily user who maintains a set of optional, local workflows on top of it.
 >
 > Grayjay is, very plainly, the application I use the most after my terminal. The team has built something genuinely useful — and they did it the hard way: open code, plugin architecture, no telemetry, no dark patterns, real respect for users. That deserves to be said out loud, and to be supported.
 >
 > ### Why a fork, then?
 >
-> Honestly, just to scratch a few of my own itches without imposing them on anyone. The changes here are small quality-of-life tweaks (carousels under the player in theater mode, queue-consume on play, per-channel playback speed, hold-to-fast-forward, a `?` shortcuts overlay…). Nothing groundbreaking, nothing replacing what FUTO does — just personal stuff for my own usage.
+> Honestly, just to scratch a few of my own itches without imposing them on anyone. The changes here range from small quality-of-life tweaks (carousels under the player in theater mode, queue-consume on play, per-channel playback speed, hold-to-fast-forward, a `?` shortcuts overlay…) to optional local Smart Analysis workflows. Nothing replaces what FUTO does: these are personal additions for my own usage.
 >
 > ### Why no flood of PRs to upstream?
 >
@@ -137,8 +137,13 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 ### Home
 
 - **Highlights home page** — a hero banner mixing your subscription videos with platform recommendations, plus content carousels. Switch between *Highlights* and the classic layout in *Settings → Home*.
+- **Cached subscription-group rows** — group carousels render from the last known local data first, then refresh independently in the background. This keeps the Highlights page useful while subscription feeds are still loading.
+- **Watch now** — unwatched subscription videos with Smart Analysis are ranked from their chapter-interest signal, alongside the normal recommendations.
+- **Smart TV** — start a fixed, resumable session made from the strongest Smart Chapters across a pool of videos. A global mix and contextual tiles can appear before relevant rows; each session preserves its remaining chapters rather than rebuilding on every click.
+- **Smart TV context** — when a session moves to another video, the player can show its title, channel and summary. Duration, video/section limits, score threshold, repeat-video penalty, tile artwork and intro behaviour are configurable in *Settings → Smart Analysis → Smart TV*.
 - **Smarter Continue Watching** — finished videos (watched ≥ 90 %) and dismissed items are excluded from the carousel.
 - **Mark Continue Watching items as watched** — mark as watched or remove from history straight from the Continue Watching carousel.
+- **Targeted refresh** — the reload control distinguishes a quick local-cache reload from a complete source update.
 
 ### Player
 
@@ -158,10 +163,21 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 ### Smart Chapters (X-Ray)
 
 - **AI-generated smart chapters** — an external command you configure (an LLM running on your own machine) analyses a video's transcript and produces titled, summarized chapters, each scored by how interesting it is. Trigger it from the video context menu.
+- **Subtitle-first analysis, Whisper fallback** — when BlueJay already has subtitles, it passes them directly to the generator. Otherwise the generator tries available subtitles and can transcribe audio with Whisper. Transcript caching and coverage checks avoid repeating expensive work unnecessarily.
+- **Resilient generation pipeline** — sections and theses scale with the duration, malformed model JSON is retried, very long catch-all sections are split again, and boundaries are snapped back to spoken-sentence starts.
 - **Interest heatmap on the seekbar** — every chapter is colored on a continuous cold→hot scale (green = lighter, red = highly interesting), so the video's high points stand out at a glance.
+- **Persistent Smart seekbar** — optionally keep the seekbar and heatmap visible after player controls fade, with adjustable drop and opacity.
 - **X-Ray side panel** — the video's theses/topics, a global summary and per-chapter summaries, with adjustable font size, opacity and width.
 - **Filter levels** — a vertical "thermometer" menu to jump through only the *Top*, *Strong*, *Good*, *Smart* or *All* moments.
 - **Output language** — choose the language of the generated titles/summaries in *Settings → Smart Analysis*.
+- **Interest signal across Highlights** — the global summary, chapter density and score profile are reused to surface an interest label/stars where relevant, rather than maintaining unrelated ratings.
+
+For setup, scheduling and the exact Smart TV controls, see the [Smart Analysis guide](docs/bluejay-smart-analysis.en.md).
+
+### Smart Block (experimental branch)
+
+- **Promotion segments alongside SponsorBlock** — `pr/smart-block-promotions` adds optional, locally detected sponsor/self-promotion segments to the Smart Analysis output. They can be shown as a grey hatched overlay aligned with the Smart Chapters heatmap and skipped automatically when *Smart Block* is enabled.
+- **Graceful fallback** — without a Smart Analysis file or Smart Block enabled, player behaviour stays unchanged; SponsorBlock remains independent.
 
 ![Smart Chapters](imgs/smart-chapters-xray.png)
 
@@ -197,8 +213,13 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 ### Accueil
 
 - **Page d'accueil Highlights** — une bannière héro mêlant les vidéos de vos abonnements et les recommandations des plateformes, plus des carrousels de contenu. Bascule entre *Highlights* et la disposition classique dans *Paramètres → Accueil*.
+- **Lignes de groupes d'abonnements mises en cache** — les carrousels de groupes s'affichent d'abord depuis les dernières données locales, puis se rafraîchissent indépendamment en arrière-plan. La page Highlights reste ainsi exploitable pendant le chargement des flux.
+- **Watch now** — les vidéos non vues de vos abonnements déjà analysées sont classées à partir du signal d'intérêt de leurs chapitres, à côté des recommandations habituelles.
+- **Smart TV** — lancez une session fixe et reprenable composée des meilleurs Smart Chapters d'un ensemble de vidéos. Un mix global et des tuiles contextuelles peuvent apparaître au début des lignes ; une session conserve les chapitres restants au lieu d'être reconstruite à chaque clic.
+- **Contexte Smart TV** — au passage à une autre vidéo, le lecteur peut afficher son titre, sa chaîne et son résumé. La durée, les limites de vidéos/chapitres, le score minimal, la pénalité de répétition, les miniatures et le comportement de l'introduction se règlent dans *Paramètres → Smart Analysis → Smart TV*.
 - **Continue Watching amélioré** — les vidéos terminées (vues ≥ 90 %) et les éléments masqués sont exclus du carrousel.
 - **Marquer les éléments Continue Watching comme vus** — marquer comme vu ou retirer de l'historique directement depuis le carrousel Continue Watching.
+- **Rafraîchissement ciblé** — le contrôle de rechargement distingue un rechargement rapide depuis le cache local d'une mise à jour complète des sources.
 
 ### Lecteur
 
@@ -216,10 +237,21 @@ Below a NixOS configuration in case you like to use Grayjay on NixOS.
 ### Smart Chapters (X-Ray)
 
 - **Chapitres intelligents générés par IA** — une commande externe que vous configurez (un LLM tournant sur votre propre machine) analyse la transcription d'une vidéo et produit des chapitres titrés et résumés, chacun noté selon son intérêt. Déclenchez-la depuis le menu contextuel de la vidéo.
+- **Analyse sous-titres d'abord, Whisper en repli** — quand BlueJay possède déjà les sous-titres, il les transmet directement au générateur. Sinon, le générateur essaie les sous-titres disponibles puis peut transcrire l'audio avec Whisper. Le cache et le contrôle de couverture de transcription évitent de refaire inutilement les traitements coûteux.
+- **Pipeline de génération robuste** — le nombre de sections et de thèses suit la durée, les JSON malformés du modèle sont réessayés, les longues sections fourre-tout sont redécoupées et les bornes sont recalées sur les débuts de phrases prononcées.
 - **Carte de chaleur d'intérêt sur la barre** — chaque chapitre est coloré sur une échelle continue froid→chaud (vert = léger, rouge = très intéressant), pour repérer les temps forts d'un coup d'œil.
+- **Barre Smart persistante** — possibilité de conserver la barre de progression et sa heatmap après la disparition des contrôles, avec décalage et opacité réglables.
 - **Panneau latéral X-Ray** — les thèses/sujets de la vidéo, un résumé global et des résumés par chapitre, avec taille de police, opacité et largeur ajustables.
 - **Niveaux de filtre** — un menu « thermomètre » vertical pour ne parcourir que les moments *Top*, *Strong*, *Good*, *Smart* ou *All*.
 - **Langue de sortie** — choisissez la langue des titres/résumés générés dans *Paramètres → Smart Analysis*.
+- **Signal d'intérêt réutilisé dans Highlights** — le résumé global, la densité de chapitres et leurs scores servent à afficher un niveau d'intérêt cohérent, plutôt que de maintenir plusieurs notations indépendantes.
+
+Pour l'installation, la planification et le détail des contrôles Smart TV, consultez le [guide Smart Analysis](docs/bluejay-smart-analysis.fr.md).
+
+### Smart Block (branche expérimentale)
+
+- **Segments promotionnels en complément de SponsorBlock** — `pr/smart-block-promotions` ajoute au résultat Smart Analysis des segments locaux de sponsor/autopromotion. Ils peuvent apparaître en gris hachuré, alignés sur la heatmap Smart Chapters, puis être sautés automatiquement lorsque *Smart Block* est activé.
+- **Dégradation propre** — sans fichier Smart Analysis ou sans Smart Block activé, le comportement du lecteur ne change pas ; SponsorBlock reste indépendant.
 
 ![Smart Chapters](imgs/smart-chapters-xray.png)
 
