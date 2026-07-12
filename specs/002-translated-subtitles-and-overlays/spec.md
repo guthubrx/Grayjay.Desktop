@@ -51,6 +51,17 @@ Depuis une vidéo maximisée, une vue théâtre ou une vidéo normale, l'utilisa
 2. Le comportement fonctionne aussi si le navigateur place le lecteur dans un élément plein écran.
 3. La correction ne change pas l'ordre relatif voulu des menus contextuels et panneaux propres au lecteur.
 
+### US5 - Adapter l’apparence des sous-titres (P1)
+
+Un utilisateur règle l’apparence des sous-titres une fois dans les paramètres du lecteur. Les pistes source et les pistes traduites appliquent le même rendu pendant la lecture.
+
+**Critères d'acceptation**
+
+1. Les réglages proposent la taille, la police, la couleur du texte, le style et la couleur d’ombre, le fond du texte et la fenêtre de sous-titres.
+2. La fenêtre entoure les lignes de sous-titres actives, sans recouvrir toute la surface vidéo.
+3. Une configuration absente conserve le rendu historique des pistes source: Inter blanc 24 px, fond noir à 50 %, sans fenêtre.
+4. Les réglages sont persistés dans les paramètres de lecture et s’appliquent également aux Smart Subtitles.
+
 ## Exigences fonctionnelles
 
 - **FR-001**: L'application DOIT conserver ou réutiliser les cues horodatés utilisés pour les Smart Chapters afin de produire une piste traduite.
@@ -62,6 +73,7 @@ Depuis une vidéo maximisée, une vue théâtre ou une vidéo normale, l'utilisa
 - **FR-007**: Les données absentes, partielles ou anciennes DOIVENT se dégrader gracieusement vers les pistes et analyses déjà disponibles.
 - **FR-008**: Le conteneur de modales globales DOIT être au-dessus de toutes les couches de l'application et être rendu dans le contexte plein écran approprié lorsqu'il existe.
 - **FR-009**: La correction d'empilement DOIT couvrir Partager et les autres dialogues qui passent par le gestionnaire global existant.
+- **FR-010**: Les réglages d’apparence des sous-titres DOIVENT être communs aux pistes source et traduites, persistés dans les réglages de lecture et compatibles avec une configuration existante.
 
 ## Entités clés
 

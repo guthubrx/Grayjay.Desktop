@@ -161,6 +161,39 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Prefetch next video", SettingsField.TOGGLE, "Prepare the next queued video, its source, and a bounded startup buffer before playback starts", 13)]
             public bool PrefetchNextVideo { get; set; } = true;
 
+            [SettingsField("Subtitle appearance", SettingsField.GROUP, "Customize the appearance of source and translated subtitles", 14)]
+            public SubtitleAppearanceSettings SubtitleAppearance { get; set; } = new SubtitleAppearanceSettings();
+            public class SubtitleAppearanceSettings
+            {
+                [SettingsField("Text size", SettingsField.DROPDOWN, "Size of subtitles in the player", 0)]
+                [SettingsDropdownOptions("Small", "Medium", "Large", "Extra large")]
+                public int TextSize { get; set; } = 1;
+
+                [SettingsField("Font", SettingsField.DROPDOWN, "Typeface used for subtitles", 1)]
+                [SettingsDropdownOptions("Sans serif", "Serif", "Monospace")]
+                public int Font { get; set; } = 0;
+
+                [SettingsField("Text color", SettingsField.DROPDOWN, "Color of subtitle text", 2)]
+                [SettingsDropdownOptions("White", "Yellow", "Cyan", "Green")]
+                public int TextColor { get; set; } = 0;
+
+                [SettingsField("Text shadow", SettingsField.DROPDOWN, "Contrast effect behind subtitle text", 3)]
+                [SettingsDropdownOptions("None", "Outline", "Drop shadow")]
+                public int TextShadow { get; set; } = 0;
+
+                [SettingsField("Shadow color", SettingsField.DROPDOWN, "Color used by the subtitle shadow", 4)]
+                [SettingsDropdownOptions("Black", "White")]
+                public int ShadowColor { get; set; } = 0;
+
+                [SettingsField("Text background", SettingsField.DROPDOWN, "Background directly behind each subtitle line", 5)]
+                [SettingsDropdownOptions("Transparent", "Black 50%", "Black 80%", "White 70%")]
+                public int TextBackground { get; set; } = 1;
+
+                [SettingsField("Caption window", SettingsField.DROPDOWN, "Frame around the active subtitle lines", 6)]
+                [SettingsDropdownOptions("Transparent", "Black 35%", "Black 65%", "White 45%")]
+                public int CaptionWindow { get; set; } = 0;
+            }
+
             public float GetDefaultPlaybackSpeed()
             {
                 return DefaultPlaybackSpeed switch

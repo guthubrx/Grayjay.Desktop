@@ -15,6 +15,7 @@
 4. Aligner la langue de génération Smart et les scripts LaunchAgent pour les nouveaux calculs et les régénérations explicites.
 5. Établir une couche globale de modales au-dessus du lecteur, y compris son contexte plein écran, puis vérifier Partager et les dialogues voisins.
 6. Compiler frontend/backend, exécuter les tests ciblés et valider manuellement la vidéo japonaise fournie.
+7. Ajouter une apparence de sous-titres persistée dans les réglages Player et l’appliquer aux cues source et traduits via le même cadre de légende.
 
 ## Constitution check
 
