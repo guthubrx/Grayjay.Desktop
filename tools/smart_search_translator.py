@@ -37,6 +37,25 @@ def headers() -> dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {os.environ.get('ROUTR_API_KEY', 'routr-local')}", **{k: v for k, v in values.items() if v}}
 
 
+def parse_completion_content(content: object) -> dict:
+    if not isinstance(content, str):
+        fail("Smart Search translator returned no completion content.")
+
+    text = content.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 2 and lines[-1].strip().startswith("```"):
+            text = "\n".join(lines[1:-1]).strip()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        fail(f"Smart Search translator returned invalid JSON: {exc.msg}")
+    if not isinstance(parsed, dict):
+        fail("Smart Search translator returned a non-object JSON response.")
+    return parsed
+
+
 def call_model(prompt: str) -> dict:
     payload = {
         "model": os.environ.get("ROUTR_MODEL", "balanced-cheap"),
@@ -53,7 +72,7 @@ def call_model(prompt: str) -> dict:
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             raw = json.loads(response.read().decode("utf-8"))
-        return json.loads(raw["choices"][0]["message"]["content"])
+        return parse_completion_content(raw["choices"][0]["message"]["content"])
     except (urllib.error.URLError, urllib.error.HTTPError, KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
         fail(f"Smart Search translator failed: {exc}")
 
