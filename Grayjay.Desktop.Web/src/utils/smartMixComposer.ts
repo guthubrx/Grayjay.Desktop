@@ -43,9 +43,16 @@ export interface SmartMixEntry {
 }
 
 interface SmartMixProfile {
-    topics: Set<string>;
-    relatedTopics: Set<string>;
-    angleLabels: Set<string>;
+    topics: SmartMixLabel[];
+    relatedTopics: SmartMixLabel[];
+    angleLabels: SmartMixLabel[];
+    topicWords: Set<string>;
+    isCanonical: boolean;
+}
+
+interface SmartMixLabel {
+    normalized: string;
+    tokens: Set<string>;
 }
 
 interface RankedCandidate {
@@ -65,8 +72,27 @@ const CATEGORY_REASONS: Record<SmartMixCategory, SmartMixEntry["reason"]> = {
     newAngle: "New angle",
 };
 const DEFAULT_DISTRIBUTION: SmartMixDistribution = { close: 60, related: 25, newAngle: 15 };
-const CLOSE_THRESHOLD = 0.3;
-const RELATED_THRESHOLD = 0.2;
+const CLOSE_THRESHOLD = 0.8;
+const RELATED_THRESHOLD = 0.5;
+const LEGACY_CLOSE_THRESHOLD = 0.3;
+const LOW_SIGNAL_TOKEN_WEIGHTS: Record<string, number> = {
+    ai: 0.1,
+    ia: 0.1,
+    artificial: 0.1,
+    intelligence: 0.1,
+    language: 0.25,
+    large: 0.2,
+    model: 0.25,
+    new: 0.1,
+    open: 0.2,
+    real: 0.25,
+    source: 0.2,
+    system: 0.25,
+    tech: 0.35,
+    technology: 0.35,
+    time: 0.25,
+    video: 0.1,
+};
 
 function tokenize(value?: string): Set<string> {
     const tokens = (value ?? "")
@@ -77,12 +103,34 @@ function tokenize(value?: string): Set<string> {
     return new Set(tokens.filter(token => token.length >= 3));
 }
 
-function wordsFromLabels(labels?: string[]): Set<string> {
-    const words = new Set<string>();
-    for (const label of labels ?? []) {
-        for (const token of tokenize(label)) words.add(token);
+function normalizeLabelToken(token: string): string {
+    if (token.length > 4 && token.endsWith("ies")) return `${token.slice(0, -3)}y`;
+    if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) return token.slice(0, -1);
+    return token;
+}
+
+function labelFrom(value: string): SmartMixLabel | undefined {
+    const tokens = (value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .match(/[a-z0-9]+/g)
+        ?.map(normalizeLabelToken) ?? [];
+    if (tokens.length === 0) return undefined;
+    return { normalized: tokens.join(" "), tokens: new Set(tokens) };
+}
+
+function labelsFrom(values?: string[]): SmartMixLabel[] {
+    const labels = new Map<string, SmartMixLabel>();
+    for (const value of values ?? []) {
+        const label = labelFrom(value);
+        if (label) labels.set(label.normalized, label);
     }
-    return words;
+    return [...labels.values()];
+}
+
+function wordsFromLabels(labels: readonly SmartMixLabel[]): Set<string> {
+    return mergeWords(...labels.map(label => label.tokens));
 }
 
 function mergeWords(...sets: ReadonlySet<string>[]): Set<string> {
@@ -102,6 +150,34 @@ function similarity(first: ReadonlySet<string>, second: ReadonlySet<string>): nu
     return intersection / (first.size + second.size - intersection);
 }
 
+function tokenWeight(token: string): number {
+    return LOW_SIGNAL_TOKEN_WEIGHTS[token] ?? 1;
+}
+
+function labelSimilarity(first: SmartMixLabel, second: SmartMixLabel): number {
+    if (first.normalized === second.normalized) return 1;
+    let intersection = 0;
+    let union = 0;
+    const tokens = new Set([...first.tokens, ...second.tokens]);
+    for (const token of tokens) {
+        const weight = tokenWeight(token);
+        if (first.tokens.has(token) && second.tokens.has(token)) intersection += weight;
+        union += weight;
+    }
+    return union > 0 ? intersection / union : 0;
+}
+
+function labelSetSimilarity(first: readonly SmartMixLabel[], second: readonly SmartMixLabel[]): number {
+    if (first.length === 0 || second.length === 0) return 0;
+    const scores = first
+        .map(label => Math.max(...second.map(candidate => labelSimilarity(label, candidate))))
+        .filter(score => score > 0)
+        .sort((a, b) => b - a);
+    if (scores[0] === undefined) return 0;
+    if (scores[0] === 1) return 1;
+    return Math.min(1, scores[0] * 0.8 + (scores[1] ?? 0) * 0.15 + (scores[2] ?? 0) * 0.05);
+}
+
 function fallbackWords(candidate: SmartMixCandidate): Set<string> {
     const parts = [
         candidate.globalSummary,
@@ -112,26 +188,39 @@ function fallbackWords(candidate: SmartMixCandidate): Set<string> {
 }
 
 function profileFor(candidate: SmartMixCandidate): SmartMixProfile {
-    const topics = wordsFromLabels(candidate.mixProfile?.topics);
+    const topics = labelsFrom(candidate.mixProfile?.topics);
+    const relatedTopics = labelsFrom(candidate.mixProfile?.relatedTopics);
+    const angleLabels = labelsFrom(candidate.mixProfile?.angleLabels);
+    const isCanonical = topics.length > 0;
+    const topicWords = isCanonical ? wordsFromLabels(topics) : fallbackWords(candidate);
     return {
-        topics: topics.size > 0 ? topics : fallbackWords(candidate),
-        relatedTopics: wordsFromLabels(candidate.mixProfile?.relatedTopics),
-        angleLabels: wordsFromLabels(candidate.mixProfile?.angleLabels),
+        topics,
+        relatedTopics,
+        angleLabels,
+        topicWords,
+        isCanonical,
     };
 }
 
 function classifyCandidate(source: SmartMixProfile, candidate: SmartMixProfile): SmartMixCategory | undefined {
-    const topicSimilarity = similarity(source.topics, candidate.topics);
+    if (!source.isCanonical || !candidate.isCanonical) {
+        const topicSimilarity = similarity(source.topicWords, candidate.topicWords);
+        if (topicSimilarity >= LEGACY_CLOSE_THRESHOLD) return "close";
+        return undefined;
+    }
+
+    const topicSimilarity = labelSetSimilarity(source.topics, candidate.topics);
     const relatedSimilarity = Math.max(
-        similarity(source.relatedTopics, candidate.topics),
-        similarity(source.topics, candidate.relatedTopics),
-        similarity(source.relatedTopics, candidate.relatedTopics),
+        topicSimilarity,
+        labelSetSimilarity(source.relatedTopics, candidate.topics),
+        labelSetSimilarity(source.topics, candidate.relatedTopics),
+        labelSetSimilarity(source.relatedTopics, candidate.relatedTopics),
     );
 
     if (topicSimilarity >= CLOSE_THRESHOLD) {
-        const hasDistinctAngle = source.angleLabels.size > 0
-            && candidate.angleLabels.size > 0
-            && similarity(source.angleLabels, candidate.angleLabels) < CLOSE_THRESHOLD;
+        const hasDistinctAngle = source.angleLabels.length > 0
+            && candidate.angleLabels.length > 0
+            && labelSetSimilarity(source.angleLabels, candidate.angleLabels) < CLOSE_THRESHOLD;
         return hasDistinctAngle ? "newAngle" : "close";
     }
     return relatedSimilarity >= RELATED_THRESHOLD ? "related" : undefined;
@@ -165,7 +254,7 @@ function relevantSegment(source: SmartMixProfile, candidate: SmartMixCandidate):
         .filter(segment => segment.end > segment.start)
         .map(segment => {
             const subject = mergeWords(tokenize(segment.title), tokenize(segment.summary));
-            const rank = (segment.score ?? interestScore(candidate)) + similarity(source.topics, subject) * 0.2;
+            const rank = (segment.score ?? interestScore(candidate)) + similarity(source.topicWords, subject) * 0.2;
             return { segment, rank };
         })
         .sort((first, second) => second.rank - first.rank || first.segment.start - second.segment.start || first.segment.title.localeCompare(second.segment.title));
@@ -286,7 +375,7 @@ export function composeSmartMix(
 ): SmartMixEntry[] {
     const sourceKey = normalizedVideoKey(sourceCandidate.videoUrl);
     const sourceProfile = profileFor(sourceCandidate);
-    if (sourceProfile.topics.size === 0) return [];
+    if (sourceProfile.topicWords.size === 0) return [];
 
     const deduped = new Map<string, SmartMixCandidate>();
     for (const candidate of candidates) {
