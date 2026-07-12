@@ -18,3 +18,9 @@
 
 - [ ] T009 Compiler le générateur, le frontend et le backend; vérifier les tests ciblés.
 - [ ] T010 Vérifier manuellement la vidéo `https://www.youtube.com/watch?v=WpZj1kF1nHc` avec une piste française et les trois modes du lecteur.
+
+## P1 - Apparence des sous-titres
+
+- [ ] T011 Ajouter les réglages persistés de taille, police, couleur, ombre, fond et fenêtre dans `Playback.SubtitleAppearance`.
+- [ ] T012 Rendre les cues source et traduits dans un cadre commun et appliquer les réglages sans couvrir la vidéo entière.
+- [ ] T013 Compiler frontend/backend et vérifier manuellement une piste source et une piste traduite avec une configuration non par défaut.

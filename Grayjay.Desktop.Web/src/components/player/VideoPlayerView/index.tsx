@@ -27,6 +27,7 @@ import { decode } from 'html-entities';
 import { IVideoHighlightSegment } from '../../../backend/models/highlights/IVideoHighlightSegment';
 import { IVideoHighlightSet } from '../../../backend/models/highlights/IVideoHighlightSet';
 import SmartXRayPanel from '../SmartXRayPanel';
+import { subtitleAppearance } from './subtitleAppearance';
 
 interface VideoProps {
     onVideoDimensionsChanged: (width: number, height: number) => void;
@@ -96,6 +97,7 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const casting = useCasting()!;
     
     let videoCaptionsRef: HTMLDivElement | undefined;
+    let captionWindowRef: HTMLDivElement | undefined;
     let videoElement: HTMLVideoElement | undefined;
     let containerRef: HTMLDivElement | undefined;
     let dashPlayer: dashjs.MediaPlayerClass | undefined;
@@ -105,8 +107,8 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     let volumeBeforeMute: number | undefined = undefined;
     let transitionVolumeChange = false;
     let currentContentUrl: string | undefined;
-    let subtitleMap: Map<string, HTMLParagraphElement> = new Map<string, HTMLParagraphElement>();
-    let translatedSubtitleElement: HTMLParagraphElement | undefined;
+    let subtitleMap: Map<string, HTMLDivElement> = new Map<string, HTMLDivElement>();
+    let translatedSubtitleElement: HTMLDivElement | undefined;
     const [areControlsVisible, setAreControlsVisible] = createSignal(false);
     const [duration, setDuration] = createSignal(Duration.fromMillis(0));
     const [videoDimensions, setVideoDimensions] = createSignal({ width: 1920, height: 1080 });
@@ -115,6 +117,20 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
     const [isScrubbing, setIsScrubbing] = createSignal(false);
     const [position, setPosition] = createSignal(Duration.fromMillis(0));
     let switchPosition = Duration.fromMillis(0);
+    const captionAppearance$ = createMemo(() => subtitleAppearance(StateGlobal.settings$()?.object?.playback));
+
+    function applyCaptionCueAppearance(cue: HTMLDivElement) {
+        const appearance = captionAppearance$();
+        cue.style.backgroundColor = appearance.textBackground;
+        cue.style.padding = "4px";
+    }
+
+    createEffect(() => {
+        captionAppearance$();
+        for (const cue of captionWindowRef?.children ?? []) {
+            applyCaptionCueAppearance(cue as HTMLDivElement);
+        }
+    });
 
     createEffect(() => {
         const translated = props.translatedSubtitleEnabled ? props.smartChapterHighlights?.translatedSubtitles : undefined;
@@ -128,8 +144,10 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
         }
 
         if (!translatedSubtitleElement) {
-            translatedSubtitleElement = document.createElement("p");
-            videoCaptionsRef?.appendChild(translatedSubtitleElement);
+            translatedSubtitleElement = document.createElement("div");
+            translatedSubtitleElement.className = styles.captionCue;
+            applyCaptionCueAppearance(translatedSubtitleElement);
+            captionWindowRef?.appendChild(translatedSubtitleElement);
         }
         translatedSubtitleElement.textContent = cue.text;
     });
@@ -1185,10 +1203,12 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                 });
 
                 dashPlayer.on(dashjs.MediaPlayer.events.CUE_ENTER, (e: any) => {
-                    const subtitle = document.createElement("div")
+                    const subtitle = document.createElement("div");
+                    subtitle.className = styles.captionCue;
                     subtitle.textContent = decode(e.text);
+                    applyCaptionCueAppearance(subtitle);
                     subtitleMap.set(e.cueID, subtitle);
-                    videoCaptionsRef?.appendChild(subtitle);
+                    captionWindowRef?.appendChild(subtitle);
                 });
     
                 dashPlayer.on(dashjs.MediaPlayer.events.CUE_EXIT, (e: any) => {
@@ -1937,7 +1957,26 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                 onSeek={(secs) => void fadeSeek(Duration.fromMillis(secs * 1000))}
             />
 
-            <div ref={videoCaptionsRef} class={styles.captionsContainer} style={{"bottom": controlsVisible$() ? "100px" : "18px"}}></div>
+            <div
+                ref={videoCaptionsRef}
+                class={styles.captionsContainer}
+                style={{
+                    "bottom": controlsVisible$() ? "100px" : "18px",
+                    "font-family": captionAppearance$().fontFamily,
+                    "font-size": captionAppearance$().fontSize,
+                    color: captionAppearance$().textColor,
+                    "text-shadow": captionAppearance$().textShadow,
+                }}
+            >
+                <div
+                    ref={captionWindowRef}
+                    class={styles.captionWindow}
+                    style={{
+                        "background-color": captionAppearance$().windowBackground,
+                        padding: captionAppearance$().windowPadding,
+                    }}
+                ></div>
+            </div>
 
             <Show when={isLoading() && !isCasting()}>
                 <div class={styles.loader}>
