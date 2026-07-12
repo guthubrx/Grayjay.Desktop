@@ -23,11 +23,24 @@ import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from "../../focusable"; void focusable;
 import { createResourceDefault } from '../../utility';
 import { IPlatformContent } from '../../backend/models/content/IPlatformContent';
-import { SmartSearchBackend, ISmartSearchSession } from '../../backend/SmartSearchBackend';
-import { hasTranslatorCommand, setTranslatorCommand, translatorCommand$ } from '../../state/StateSmartSearch';
+import { SmartSearchBackend } from '../../backend/SmartSearchBackend';
+import {
+  beginSmartSearch,
+  clearSmartSearch,
+  hasTranslatorCommand,
+  hideSmartSearch,
+  isSmartSearchForQuery,
+  setSmartSearchLoading,
+  setSmartSearchSession,
+  setTranslatorCommand,
+  showSmartSearch,
+  smartSearchLoading$,
+  smartSearchSession$,
+  smartSearchVisible$,
+  translatorCommand$
+} from '../../state/StateSmartSearch';
 import UIOverlay from '../../state/UIOverlay';
-import VideoThumbnailView from '../../components/content/VideoThumbnailView';
-import { useVideo } from '../../contexts/VideoProvider';
+import SmartSearchResults from '../../components/search/SmartSearchResults';
 
 type SortEntry = { field: string; dir: 'asc' | 'desc' };
 
@@ -56,7 +69,6 @@ const BASE_COMPARATORS: Record<string, (a: IPlatformContent, b: IPlatformContent
 
 const SearchPage: Component = () => {
   const navigate = useNavigate();
-  const video = useVideo();
   const [params] = useSearchParams();
   const [filtersDialogVisible$, setFiltersDialogVisible] = createSignal(false);
   const [query$, setQuery] = createSignal(params.q);
@@ -65,21 +77,24 @@ const SearchPage: Component = () => {
   const [sortBy$, setSortBy] = createSignal(params.sortBy);
   const [clientSort$, setClientSort] = createSignal<SortEntry[]>([]);
   const [enabledSources$, setEnabledSources] = createSignal<string[]>(params.clientIds ? JSON.parse(params.clientIds) : (StateGlobal.sourceStates$() ?? []).map(v => v.config.id));
-  const [smartSession$, setSmartSession] = createSignal<ISmartSearchSession>();
-  const [smartLoading$, setSmartLoading] = createSignal(false);
   const [smartLanguages$, setSmartLanguages] = createSignal(["ja", "zh-Hans", "ar", "ru"]);
   const disabledSources$ = createMemo<string[]>(()=>((StateGlobal.sourceStates$() ?? []).filter(x=>enabledSources$().indexOf(x.config.id) < 0).map(v => v.config.id)));
   let filtersChanged = false;
 
   createEffect(() => {
     console.log("query changed", params.q);
+    if (params.q !== query$())
+      clearSmartSearch();
     setQuery(params.q);
     searchPagerActions.refetch();
   });
 
   createEffect(() => {
     console.log("type changed", params.type);
-    setSearchType(params.type ? parseInt(params.type) as ContentType : ContentType.MEDIA);
+    const nextType = params.type ? parseInt(params.type) as ContentType : ContentType.MEDIA;
+    if (nextType !== searchType$())
+      clearSmartSearch();
+    setSearchType(nextType);
     searchPagerActions.refetch();
   });
 
@@ -99,12 +114,16 @@ const SearchPage: Component = () => {
     console.log("navigating to", newNavigationUri);
     navigate(newNavigationUri);
     searchPagerActions.refetch();
-    setSmartSession(undefined);
+    clearSmartSearch();
   };
 
   const startSmartSearch = async () => {
     const query = query$();
-    if (!query || smartLoading$()) return;
+    if (!query || smartSearchLoading$()) return;
+    if (isSmartSearchForQuery(query) && smartSearchSession$()) {
+      showSmartSearch();
+      return;
+    }
     if (!hasTranslatorCommand()) {
       UIOverlay.overlayTextPrompt(
         "Configure Smart Search translator",
@@ -118,7 +137,7 @@ const SearchPage: Component = () => {
       );
       return;
     }
-    setSmartLoading(true);
+    beginSmartSearch(query);
     const sessionId = "smart-" + Date.now().toString(36);
     try {
       const session = await SmartSearchBackend.load({
@@ -131,23 +150,37 @@ const SearchPage: Component = () => {
         filters: untrack(filterValues$),
         excludePlugins: untrack(disabledSources$)
       });
-      setSmartSession(session);
+      setSmartSearchSession(session);
       window.setTimeout(async () => {
         try {
           const refreshed = await SmartSearchBackend.get(sessionId);
-          if (smartSession$()?.sessionId === sessionId) {
+          if (smartSearchSession$()?.sessionId === sessionId) {
             const translated = await SmartSearchBackend.translateTitles(sessionId, translatorCommand$());
-            if (smartSession$()?.sessionId === sessionId) setSmartSession(translated.variants.some(x => x.results.length) ? translated : refreshed);
+            if (smartSearchSession$()?.sessionId === sessionId) setSmartSearchSession(translated.variants.some(x => x.results.length) ? translated : refreshed);
           }
         } finally {
-          if (smartSession$()?.sessionId === sessionId) setSmartLoading(false);
+          if (smartSearchSession$()?.sessionId === sessionId) setSmartSearchLoading(false);
         }
       }, 900);
     } catch (error) {
-      setSmartSession({ sessionId, error: error instanceof Error ? error.message : "Smart Search failed.", variants: [] });
-      setSmartLoading(false);
+      setSmartSearchSession({ sessionId, error: error instanceof Error ? error.message : "Smart Search failed.", variants: [] });
+      setSmartSearchLoading(false);
     }
   };
+
+  const toggleSmartSearch = () => {
+    if (smartSearchVisible$()) {
+      hideSmartSearch();
+      return;
+    }
+    void startSmartSearch();
+  };
+
+  const smartSearchButtonText$ = createMemo(() => {
+    if (smartSearchVisible$()) return "Standard results";
+    if (smartSearchLoading$()) return "Smart Search...";
+    return isSmartSearchForQuery(query$()) && smartSearchSession$() ? "Smart results" : "Smart Search";
+  });
 
   let filtersScrollContainerRef: HTMLDivElement | undefined;
 
@@ -294,31 +327,14 @@ const SearchPage: Component = () => {
               <CustomButton text='Filters' icon={iconFilters} border='1px solid #2E2E2E' style={{"height": "44px" }} onClick={() => setFiltersDialogVisible(true)} focusableOpts={{
                 onPress: () => setFiltersDialogVisible(true)
               }} />
-              <CustomButton text={smartLoading$() ? 'Smart Search…' : 'Smart Search'} border='1px solid #796126' style={{"height": "44px" }} onClick={startSmartSearch} />
+              <CustomButton text={smartSearchButtonText$()} border='1px solid #796126' style={{"height": "44px" }} onClick={toggleSmartSearch} />
             </Show>
           </div>
           <Show when={searchPager.state == 'ready'}>
             <ScrollContainer ref={scrollContainerRef}>
-              <ContentGrid pager={searchPager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />
-              <Show when={smartSession$()?.error}>
-                <div class={styles.smartSearchError}>{smartSession$()!.error}</div>
+              <Show when={smartSearchVisible$()} fallback={<ContentGrid pager={searchPager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />}>
+                <SmartSearchResults loading={smartSearchLoading$()} session={smartSearchSession$()} />
               </Show>
-              <For each={smartSession$()?.variants}>{(variant) => (
-                <div class={styles.smartSearchSection}>
-                  <div class={styles.smartSearchHeading}>{variant.language}</div>
-                  <div class={styles.smartSearchQuery}>{variant.query}</div>
-                  <Show when={variant.error}><div class={styles.smartSearchError}>{variant.error}</div></Show>
-                  <div class={styles.smartSearchGrid}>
-                    <For each={variant.results}>{(result) => (
-                      <div class={styles.smartSearchCard}>
-                        <VideoThumbnailView video={result.content} onClick={() => video?.actions.openVideo(result.content)} />
-                        <Show when={result.translatedTitle}><div class={styles.smartSearchTranslation}>{result.translatedTitle}</div></Show>
-                        <div class={styles.smartSearchLanguages}>{result.languages.join(" · ")}</div>
-                      </div>
-                    )}</For>
-                  </div>
-                </div>
-              )}</For>
             </ScrollContainer>
           </Show>
       </div>
