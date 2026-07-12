@@ -213,6 +213,7 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--translate-subtitles-from", default="", help="Comma-separated transcript language codes eligible for subtitle translation. Empty keeps explicit --translate-subtitles backward-compatible for every language.")
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
+    generation.add_argument("--analysis-only", action="store_true", help="Refresh only summary, theses, and mix profile in existing highlights; preserves chapters and subtitles.")
     generation.add_argument("--no-sponsorblock", action="store_true", help="Do not fetch SponsorBlock promotion segments.")
     generation.add_argument("--promotion-categories", default=DEFAULT_PROMOTION_CATEGORIES, help="Comma-separated promotion categories imported from SponsorBlock and requested from analysis.")
     generation.add_argument("--routr-client", default=os.environ.get("ROUTR_CLIENT", DEFAULT_ROUTR_CLIENT), help="X-Routr-Client metadata header for Routr.")
@@ -231,6 +232,7 @@ def parse_args() -> argparse.Namespace:
     fallback.add_argument("--transcript-cache-dir", help="Directory to cache transcripts. Defaults to <grayjay-dir>/transcripts_cache.")
     fallback.add_argument("--no-transcript-cache", action="store_true", help="Do not read or write the transcript cache.")
     fallback.add_argument("--refresh-transcript", action="store_true", help="Ignore any cached transcript and fetch it again.")
+    fallback.add_argument("--cached-transcript-only", action="store_true", help="Use only an existing transcript cache; never fetch subtitles or invoke Whisper.")
     fallback.add_argument("--skip-youtube-transcript", action="store_true", help="Skip yt-dlp subtitles and use Whisper fallback.")
     fallback.add_argument("--no-whisper", action="store_true", help="Do not use Whisper fallback.")
     fallback.add_argument("--whisper-script", default=None, help="Optional custom transcription script (overrides the built-in whisper.cpp path when present).")
@@ -836,6 +838,11 @@ def load_cached_transcript(task: VideoTask, args: argparse.Namespace) -> list[Tr
         if start is None or end is None or not isinstance(text, str):
             continue
         cues.append(TranscriptCue(start=start, end=end, text=text))
+    title = data.get("title")
+    if not task.title and isinstance(title, str) and title.strip():
+        task.title = title.strip()
+    if task.duration is None and cues:
+        task.duration = cues[-1].end
     return cues or None
 
 
@@ -932,6 +939,9 @@ def get_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> 
     if cached:
         log(f"  transcript: cached ({len(cached)} cues)")
         return cached
+
+    if args.cached_transcript_only:
+        raise RuntimeError("No cached transcript found and --cached-transcript-only is set.")
 
     if not args.skip_youtube_transcript and extract_youtube_id(task.url):
         cues = get_youtube_subtitle_transcript(task.url, args, workdir)
@@ -1944,10 +1954,42 @@ def highlights_path(video_url: str, output_dir: Path) -> Path:
     return output_dir / f"{digest}.json"
 
 
+def highlights_output_dir(args: argparse.Namespace) -> Path:
+    return Path(args.output_dir).expanduser() if args.output_dir else Path(args.grayjay_dir).expanduser() / "highlights"
+
+
+def update_highlights_analysis(task: VideoTask, analysis: dict[str, Any], args: argparse.Namespace) -> Path:
+    output_dir = highlights_output_dir(args)
+    path = highlights_path(task.url, output_dir)
+    existing = load_json(path)
+    if not isinstance(existing, dict):
+        raise FileNotFoundError(f"No existing highlights found for analysis-only update: {path}")
+    if not analysis.get("mixProfile"):
+        raise RuntimeError("Analysis-only update requires a valid mixProfile.")
+
+    now = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    payload = dict(existing)
+    payload.update({
+        "schemaVersion": 6,
+        "videoUrl": task.url,
+        "transcriptLanguage": analysis.get("transcriptLanguage") or existing.get("transcriptLanguage") or "und",
+        "updatedAt": now,
+        "globalSummary": analysis.get("globalSummary"),
+        "theses": analysis.get("theses"),
+        "mixProfile": analysis["mixProfile"],
+    })
+
+    if task.video and not isinstance(payload.get("video"), dict):
+        payload["video"] = task.video
+    if not args.dry_run:
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_segments: list[dict[str, Any]],
                      analysis: dict[str, Any], args: argparse.Namespace,
                      translated: dict[str, Any] | None = None) -> Path:
-    output_dir = Path(args.output_dir).expanduser() if args.output_dir else Path(args.grayjay_dir).expanduser() / "highlights"
+    output_dir = highlights_output_dir(args)
     output_dir.mkdir(parents=True, exist_ok=True)
     path = highlights_path(task.url, output_dir)
     if path.exists() and not args.overwrite:
@@ -2088,7 +2130,8 @@ def resplit_long_segments(task: VideoTask, cues: list[TranscriptCue], segments: 
 
 
 def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
-    task = fetch_video_metadata(task, args)
+    if not args.cached_transcript_only:
+        task = fetch_video_metadata(task, args)
     title = task.title or task.url
     log(f"\n==> {title}")
     log(f"  url: {task.url}")
@@ -2115,6 +2158,14 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
         log(f"  targets: {args.max_theses} theses/topics, ~{args.max_segments} sections")
 
         analysis = run_analysis(task, llm_cues, args)
+        if args.analysis_only:
+            path = update_highlights_analysis(task, analysis, args)
+            if args.dry_run:
+                log(f"  analysis-only dry-run output: {path}")
+            else:
+                log(f"  analysis-only updated: {path}")
+            return path
+
         try:
             translated = translated_subtitles(task, cues, str(analysis.get("transcriptLanguage") or "und"), args)
         except Exception as exc:
