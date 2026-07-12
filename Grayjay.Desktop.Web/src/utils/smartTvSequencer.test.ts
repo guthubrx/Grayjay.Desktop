@@ -41,6 +41,17 @@ test('selects the highest-score eligible chapter as the anchor', () => {
     assert.equal(result[0]?.candidate.chapterKey, 'anchor:0-180');
 });
 
+test('uses video recommendation score only to break a close chapter score tie', () => {
+    const result = sequenceSmartTvCandidates([
+        candidate({ chapterKey: 'a-lower-video:0-180', score: 0.9, videoRecommendationScore: 0.2 }),
+        candidate({ chapterKey: 'z-higher-video:0-180', score: 0.9, videoRecommendationScore: 0.9 }),
+        candidate({ chapterKey: 'best-chapter:0-180', score: 0.96, videoRecommendationScore: 0.1 }),
+    ], new Set(), settings);
+
+    assert.equal(result[0]?.candidate.chapterKey, 'best-chapter:0-180');
+    assert.equal(result[1]?.candidate.chapterKey, 'z-higher-video:0-180');
+});
+
 test('excludes played chapters without excluding other chapters from the same video', () => {
     const result = sequenceSmartTvCandidates([
         candidate({ chapterKey: 'video-a:0-180', videoKey: 'video-a', score: 0.94 }),

@@ -1,7 +1,7 @@
-import { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
-import { IVideoHighlightSegment } from "../backend/models/highlights/IVideoHighlightSegment";
-import { IVideoHighlightSet } from "../backend/models/highlights/IVideoHighlightSet";
-import { IVideoHighlightSummary } from "../backend/models/highlights/IVideoHighlightSummary";
+import type { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
+import type { IVideoHighlightSegment } from "../backend/models/highlights/IVideoHighlightSegment";
+import type { IVideoHighlightSet } from "../backend/models/highlights/IVideoHighlightSet";
+import type { IVideoHighlightSummary } from "../backend/models/highlights/IVideoHighlightSummary";
 
 export const INTEREST_MIN_SCORE = 0.55;
 export const INTEREST_GOOD_SCORE = 0.72;
@@ -23,8 +23,6 @@ export interface VideoInterest {
 }
 
 interface InterestInput {
-    updatedAt?: string;
-    videoDateTime?: string;
     videoDuration?: number;
     segmentCount?: number;
     totalDuration?: number;
@@ -38,18 +36,6 @@ interface InterestInput {
 function clamp01(value: number): number {
     if (!Number.isFinite(value)) return 0;
     return Math.max(0, Math.min(1, value));
-}
-
-function millisFromDate(value?: string): number {
-    if (!value) return 0;
-    const parsed = new Date(value).getTime();
-    return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function freshnessScore(videoDateTime?: string, fallbackUpdatedAt?: string): number {
-    const newest = millisFromDate(videoDateTime) || millisFromDate(fallbackUpdatedAt);
-    const ageDays = newest > 0 ? Math.max(0, (Date.now() - newest) / 86400000) : 30;
-    return 1 / (1 + ageDays / 14);
 }
 
 function starsFromScore(score: number): number {
@@ -112,7 +98,6 @@ function computeInterest(input: InterestInput): VideoInterest | undefined {
         ? clamp01(interestingDuration / input.videoDuration)
         : undefined;
     const densitySignal = density != null ? clamp01(density / 0.28) : durationSignal;
-    const freshness = freshnessScore(input.videoDateTime, input.updatedAt);
     const usefulSignal = clamp01(usefulSegmentCount / 8);
 
     let score: number;
@@ -129,15 +114,13 @@ function computeInterest(input: InterestInput): VideoInterest | undefined {
             strongSignal * 0.20 +
             excellentSignal * 0.10 +
             durationSignal * 0.12 +
-            densitySignal * 0.10 +
-            freshness * 0.06
+            densitySignal * 0.16
         );
     } else {
         score = clamp01(
-            usefulSignal * 0.36 +
-            durationSignal * 0.26 +
-            densitySignal * 0.18 +
-            freshness * 0.20
+            usefulSignal * 0.45 +
+            durationSignal * 0.325 +
+            densitySignal * 0.225
         );
     }
 
@@ -161,8 +144,6 @@ export function interestFromSummary(summary?: IVideoHighlightSummary, video?: IP
     if (!summary) return undefined;
     const sourceVideo = video ?? summary.video;
     return computeInterest({
-        updatedAt: summary.updatedAt,
-        videoDateTime: sourceVideo?.dateTime,
         videoDuration: sourceVideo?.duration,
         segmentCount: summary.segmentCount,
         totalDuration: summary.totalDuration,
@@ -184,8 +165,6 @@ export function interestFromSet(set?: IVideoHighlightSet, video?: IPlatformVideo
         ? usefulSegments.reduce((total, segment) => total + Math.max(0, segment.end - segment.start), 0)
         : totalDuration;
     return computeInterest({
-        updatedAt: set.updatedAt,
-        videoDateTime: (video ?? set.video)?.dateTime,
         videoDuration: (video ?? set.video)?.duration,
         segmentCount: scored.length ? usefulSegments.length : segments.length,
         totalDuration,

@@ -4,6 +4,7 @@ export type SmartTvTransitionKind = 'same-topic' | 'discover' | 'new-angle' | 'b
 export interface SmartTvCandidate {
     chapterKey: string;
     score: number;
+    videoRecommendationScore?: number;
     durationSeconds: number;
     videoKey: string;
     creatorKey?: string;
@@ -46,6 +47,7 @@ interface RankedCandidate {
 
 const SAME_TOPIC_THRESHOLD = 0.25;
 const DISCOVERY_THRESHOLD = 0.15;
+const VIDEO_RECOMMENDATION_WEIGHT = 0.04;
 
 const TRANSITION_LABELS: Record<SmartTvTransitionKind, string> = {
     'same-topic': 'Same topic',
@@ -107,6 +109,12 @@ function freshnessBonus(candidate: SmartTvCandidate, oldestPublication: number, 
     const publishedAt = publishedMillis(candidate);
     if (!publishedAt || oldestPublication === newestPublication) return 0;
     return ((publishedAt - oldestPublication) / (newestPublication - oldestPublication)) * 0.02;
+}
+
+function videoRecommendationBonus(candidate: SmartTvCandidate): number {
+    const score = candidate.videoRecommendationScore;
+    if (score == null || !Number.isFinite(score)) return 0;
+    return Math.max(0, Math.min(1, score)) * VIDEO_RECOMMENDATION_WEIGHT;
 }
 
 function transitionFor(previous: SmartTvCandidate, candidate: SmartTvCandidate, mix: SmartTvEditorialMix): SmartTvTransition {
@@ -188,6 +196,7 @@ function candidateRank(
     const topicalPenalty = sameTopicCount > 1 ? (sameTopicCount - 1) * 0.045 : 0;
     const groupPenalty = repeatedGroupCount * settings.creatorVarietyPenalty * 0.35;
     const rank = candidate.score
+        + videoRecommendationBonus(candidate)
         + transitionBonus(transition, settings.editorialMix)
         + freshnessBonus(candidate, oldestPublication, newestPublication)
         - repeatedVideoPenalty
@@ -222,6 +231,8 @@ export function sequenceSmartTvCandidates(
         .sort((first, second) => {
             const scoreDelta = second.score - first.score;
             if (scoreDelta !== 0) return scoreDelta;
+            const recommendationDelta = videoRecommendationBonus(second) - videoRecommendationBonus(first);
+            if (recommendationDelta !== 0) return recommendationDelta;
             return first.chapterKey.localeCompare(second.chapterKey);
         });
     const publications = available.map(publishedMillis).filter(value => value > 0);
@@ -257,7 +268,7 @@ export function sequenceSmartTvCandidates(
             : accepted.map(candidate => ({
                 candidate,
                 transition: undefined,
-                rank: candidate.score + freshnessBonus(candidate, oldestPublication, newestPublication),
+                rank: candidate.score + videoRecommendationBonus(candidate) + freshnessBonus(candidate, oldestPublication, newestPublication),
             })).sort((first, second) => {
                 const rankDelta = second.rank - first.rank;
                 if (rankDelta !== 0) return rankDelta;
