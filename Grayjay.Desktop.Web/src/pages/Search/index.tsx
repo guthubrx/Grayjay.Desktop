@@ -23,7 +23,7 @@ import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from "../../focusable"; void focusable;
 import { createResourceDefault } from '../../utility';
 import { IPlatformContent } from '../../backend/models/content/IPlatformContent';
-import { SmartSearchBackend } from '../../backend/SmartSearchBackend';
+import { ISmartSearchSession, SmartSearchBackend } from '../../backend/SmartSearchBackend';
 import {
   beginSmartSearch,
   clearSmartSearch,
@@ -66,6 +66,13 @@ const BASE_COMPARATORS: Record<string, (a: IPlatformContent, b: IPlatformContent
   duration: (a, b) => numericCompare((a as any).duration, (b as any).duration),
   name:     (a, b) => a.name.localeCompare(b.name),
 };
+
+const SMART_SEARCH_POLL_INTERVAL_MS = 750;
+const SMART_SEARCH_POLL_ATTEMPTS = 16;
+
+const wait = (duration: number) => new Promise<void>(resolve => window.setTimeout(resolve, duration));
+
+const hasSmartSearchResults = (session: ISmartSearchSession) => session.variants.some(variant => variant.results.length > 0);
 
 const SearchPage: Component = () => {
   const navigate = useNavigate();
@@ -151,21 +158,54 @@ const SearchPage: Component = () => {
         excludePlugins: untrack(disabledSources$)
       });
       setSmartSearchSession(session);
-      window.setTimeout(async () => {
-        try {
-          const refreshed = await SmartSearchBackend.get(sessionId);
-          if (smartSearchSession$()?.sessionId === sessionId) {
-            const translated = await SmartSearchBackend.translateTitles(sessionId, translatorCommand$());
-            if (smartSearchSession$()?.sessionId === sessionId) setSmartSearchSession(translated.variants.some(x => x.results.length) ? translated : refreshed);
-          }
-        } finally {
-          if (smartSearchSession$()?.sessionId === sessionId) setSmartSearchLoading(false);
-        }
-      }, 900);
+      void refreshSmartSearchSession(sessionId);
     } catch (error) {
       setSmartSearchSession({ sessionId, error: error instanceof Error ? error.message : "Smart Search failed.", variants: [] });
       setSmartSearchLoading(false);
     }
+  };
+
+  const refreshSmartSearchSession = async (sessionId: string) => {
+    let latestSession: ISmartSearchSession | undefined;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < SMART_SEARCH_POLL_ATTEMPTS; attempt++) {
+      if (attempt > 0)
+        await wait(SMART_SEARCH_POLL_INTERVAL_MS);
+      if (smartSearchSession$()?.sessionId !== sessionId)
+        return;
+
+      try {
+        const refreshed = await SmartSearchBackend.get(sessionId);
+        latestSession = refreshed;
+        if (smartSearchSession$()?.sessionId === sessionId)
+          setSmartSearchSession(refreshed);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (smartSearchSession$()?.sessionId !== sessionId)
+      return;
+
+    if (latestSession && hasSmartSearchResults(latestSession)) {
+      try {
+        const translated = await SmartSearchBackend.translateTitles(sessionId, translatorCommand$());
+        if (smartSearchSession$()?.sessionId === sessionId)
+          setSmartSearchSession(translated);
+      } catch (error) {
+        console.warn("Smart Search title translation failed", error);
+      }
+    } else if (lastError && smartSearchSession$()?.sessionId === sessionId) {
+      setSmartSearchSession({
+        sessionId,
+        error: lastError instanceof Error ? lastError.message : "Smart Search results could not be refreshed.",
+        variants: latestSession?.variants ?? []
+      });
+    }
+
+    if (smartSearchSession$()?.sessionId === sessionId)
+      setSmartSearchLoading(false);
   };
 
   const toggleSmartSearch = () => {
