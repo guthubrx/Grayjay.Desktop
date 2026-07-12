@@ -1,5 +1,6 @@
 import { Backend } from "./Backend";
 import { IPlatformVideo } from "./models/content/IPlatformVideo";
+import { IVideoHighlightMixCandidate } from "./models/highlights/IVideoHighlightMixCandidate";
 import { IVideoHighlightSet } from "./models/highlights/IVideoHighlightSet";
 import { IVideoHighlightSummary } from "./models/highlights/IVideoHighlightSummary";
 
@@ -10,6 +11,10 @@ export abstract class HighlightsBackend {
 
     static async getAll(): Promise<IVideoHighlightSummary[]> {
         return await Backend.GET("/highlights/GetAll") as IVideoHighlightSummary[];
+    }
+
+    static async getMixCandidates(): Promise<IVideoHighlightMixCandidate[]> {
+        return await Backend.GET("/highlights/MixCandidates") as IVideoHighlightMixCandidate[];
     }
 
     static async import(highlightSet: IVideoHighlightSet): Promise<IVideoHighlightSet> {

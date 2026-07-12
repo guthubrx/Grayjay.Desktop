@@ -42,6 +42,12 @@ DEFAULT_ROUTR_PROMPT_VERSION = "smart-chapters-v1"
 DEFAULT_ROUTR_CALLER_ID = "bluejay-smart-chapters-precompute"
 DEFAULT_PROMOTION_CATEGORIES = "sponsor,selfpromo,interaction"
 SPONSORBLOCK_API_BASE = "https://sponsor.ajay.app"
+MIX_PROFILE_LIMITS = {
+    "topics": 6,
+    "relatedTopics": 6,
+    "angleLabels": 4,
+}
+MIX_PROFILE_MAX_LABEL_CHARS = 80
 
 LANGUAGE_ALIASES = {
     "arabic": "ar", "arabe": "ar", "ar": "ar",
@@ -869,6 +875,10 @@ def load_cached_analysis(task: VideoTask, args: argparse.Namespace) -> dict[str,
         return None
     if not isinstance(data.get("theses"), list) or not isinstance(data.get("globalSummary"), str):
         return None
+    mix_profile = validate_mix_profile(data.get("mixProfile"))
+    if not mix_profile:
+        return None
+    data["mixProfile"] = mix_profile
     return data
 
 
@@ -879,7 +889,7 @@ def save_cached_analysis(task: VideoTask, analysis: dict[str, Any], args: argpar
     path.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     payload = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "videoUrl": task.url,
         "updatedAt": now,
         **analysis,
@@ -1423,7 +1433,12 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
           "id": 1,
           "statement": "A main argument, claim, OR distinct topic the video covers, in one sentence."
         }}
-      ]
+      ],
+      "mixProfile": {{
+        "topics": ["2 to 6 concise canonical English labels for the main subjects"],
+        "relatedTopics": ["0 to 6 concise canonical English labels for adjacent subjects"],
+        "angleLabels": ["0 to 4 concise canonical English labels for framing, method, consequence, limit, or viewpoint"]
+      }}
     }}
 
     Rules:
@@ -1433,6 +1448,8 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
     - globalSummary is in {args.output_language or "the video's main language"}.
     - theses are in {args.output_language or "the video's main language"}.
     - transcriptLanguage identifies the language spoken in the transcript, not the language requested for the summary.
+    - mixProfile labels MUST be lowercase canonical English terms, even when the transcript or visible summary uses another language.
+    - mixProfile is internal metadata for matching related videos. Use short concepts such as "artificial intelligence agents", "developer productivity", or "risk assessment", not complete sentences or verdicts about whether a claim is true.
     - Be precise: prefer "X causes Y because Z" or "the guest explains how they run board meetings" over vague labels.
 
     Video title: {task.title or "(unknown)"}
@@ -1442,6 +1459,34 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
     Transcript:
     {transcript}
     """).strip()
+
+
+def validate_mix_profile(data: Any) -> dict[str, list[str]] | None:
+    if not isinstance(data, dict):
+        return None
+
+    profile: dict[str, list[str]] = {}
+    for key, limit in MIX_PROFILE_LIMITS.items():
+        raw_labels = data.get(key)
+        if not isinstance(raw_labels, list):
+            profile[key] = []
+            continue
+
+        labels: list[str] = []
+        seen: set[str] = set()
+        for raw_label in raw_labels:
+            if not isinstance(raw_label, str):
+                continue
+            label = re.sub(r"\s+", " ", raw_label).strip().lower()
+            if not label or len(label) > MIX_PROFILE_MAX_LABEL_CHARS or label in seen:
+                continue
+            seen.add(label)
+            labels.append(label)
+            if len(labels) >= limit:
+                break
+        profile[key] = labels
+
+    return profile if profile["topics"] else None
 
 
 def validate_analysis(data: dict[str, Any]) -> dict[str, Any]:
@@ -1462,22 +1507,24 @@ def validate_analysis(data: dict[str, Any]) -> dict[str, Any]:
         theses.append({"id": int(thesis_id) if thesis_id is not None else len(theses) + 1, "statement": statement})
     if not theses:
         raise RuntimeError("No valid theses in analysis JSON.")
-    return {
+    analysis = {
         "globalSummary": global_summary[:2000],
         "theses": theses,
         "transcriptLanguage": data.get("transcriptLanguage"),
     }
+    mix_profile = validate_mix_profile(data.get("mixProfile"))
+    if mix_profile:
+        analysis["mixProfile"] = mix_profile
+    return analysis
 
 
 def run_analysis(task: VideoTask, cues: list[TranscriptCue], args: argparse.Namespace) -> dict[str, Any]:
     cached = load_cached_analysis(task, args)
     if cached:
-        if "transcriptLanguage" in cached:
-            cached["transcriptLanguage"] = normalize_language_code(cached.get("transcriptLanguage"))
-            log(f"  analysis: cached ({len(cached['theses'])} thesis/theses, {cached['transcriptLanguage']})")
-            return cached
-        log("  analysis: cached result has no transcript language, refreshing once")
-    log(f"  analysis pass 1/{args.provider}: extracting theses + global summary")
+        cached["transcriptLanguage"] = normalize_language_code(cached.get("transcriptLanguage"))
+        log(f"  analysis: cached ({len(cached['theses'])} thesis/theses, {cached['transcriptLanguage']})")
+        return cached
+    log(f"  analysis pass 1/{args.provider}: extracting theses + global summary + mix profile")
     prompt = build_analysis_prompt(task, cues, args)
     raw = call_model(prompt, args)
     analysis = validate_analysis(raw)
@@ -1910,7 +1957,7 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
     existing = load_json(path) if path.exists() else None
     created_at = existing.get("createdAt") if isinstance(existing, dict) and existing.get("createdAt") else now
     payload: dict[str, Any] = {
-        "schemaVersion": 5,
+        "schemaVersion": 6,
         "videoUrl": task.url,
         "source": f"smart-chapters-generator+{args.provider}-{args.model}",
         "transcriptLanguage": analysis.get("transcriptLanguage") or "und",
@@ -1920,6 +1967,10 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
         "theses": analysis.get("theses"),
         "segments": segments,
     }
+    if analysis.get("mixProfile"):
+        payload["mixProfile"] = analysis["mixProfile"]
+    elif isinstance(existing, dict) and isinstance(existing.get("mixProfile"), dict):
+        payload["mixProfile"] = existing["mixProfile"]
     if promotion_segments:
         payload["promotionSegments"] = promotion_segments
     if translated:

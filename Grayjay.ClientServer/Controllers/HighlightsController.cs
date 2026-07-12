@@ -20,6 +20,12 @@ public class HighlightsController : ControllerBase
         return Ok(StateHighlights.GetSummaries());
     }
 
+    [HttpGet]
+    public ActionResult<List<VideoHighlightMixCandidate>> MixCandidates()
+    {
+        return Ok(StateHighlights.GetMixCandidates());
+    }
+
     [HttpPost]
     public ActionResult<VideoHighlightSet> Import([FromBody] VideoHighlightSet highlightSet)
     {
