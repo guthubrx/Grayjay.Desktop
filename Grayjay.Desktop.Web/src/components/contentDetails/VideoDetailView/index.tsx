@@ -84,7 +84,7 @@ import { Menus } from '../../../Menus';
 import { HistoryBackend } from "../../../backend/HistoryBackend";
 import { IHistoryVideo } from "../../../backend/models/content/IHistoryVideo";
 import StateGlobal from "../../../state/StateGlobal";
-import { smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$ } from "../../../state/StateSmartSearch";
+import { hasTranslatorCommand, setTranslatorCommand, smartSearchLanguages$, smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$, translatorCommand$ } from "../../../state/StateSmartSearch";
 import { getKeybinding } from "../../../state/StateKeybindings";
 import StateSync from "../../../state/StateSync";
 import { SyncDevice } from "../../../backend/models/sync/SyncDevice";
@@ -110,14 +110,15 @@ import history from '../../../assets/icons/icon_nav_history.svg';
 import iconHighlights from '../../../assets/icons/label_important_24dp_FFFFFF_FILL1_wght300_GRAD0_opsz24.svg';
 import { Portal } from "solid-js/web";
 import { interestDetailText, interestFromSet, starsText } from "../../../utils/highlightInterest";
-import { composeSmartMix, type SmartMixEntry } from "../../../utils/smartMixComposer";
-import { smartMixDistribution$ } from "../../../state/StateSmartMix";
+import { SmartSearchBackend, type ISmartSearchSession } from "../../../backend/SmartSearchBackend";
+import { smartDiscoveryQuery, smartDiscoveryVideos } from "../../../utils/smartDiscovery";
 import { smartTvSettingsFromObject } from "../../../utils/smartTvSettings";
 
 const SCOPE_ID = "video-detail-view";
 const SMART_TV_INTRO_MODES = ['hidden', 'sticky', 'timed'] as const;
 const SMART_TV_INTRO_CLOSE_DELAYS_MS = [3000, 5000, 7000, 9000, 12000, 15000, 20000, 30000, 45000, 60000];
-const SMART_MIX_WATCHED_POSITION_SECONDS = 30;
+const SMART_DISCOVERY_POLL_INTERVAL_MS = 750;
+const SMART_DISCOVERY_POLL_ATTEMPTS = 16;
 
 type SmartTvIntroMode = typeof SMART_TV_INTRO_MODES[number];
 
@@ -1827,56 +1828,60 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     async function createSmartMix() {
         const highlights = videoHighlights$();
         const sourceVideo = currentVideo$();
-        if (!highlights?.segments?.length || !sourceVideo) {
+        const query = smartDiscoveryQuery(highlights?.mixProfile, highlights?.globalSummary);
+        if (!highlights?.segments?.length || !sourceVideo || !query) {
             UIOverlay.toast("Generate Smart Chapters before creating a Smart Mix");
             return;
         }
 
+        if (!hasTranslatorCommand()) {
+            UIOverlay.overlayTextPrompt(
+                "Configure Smart Search translator",
+                "Absolute path to a local executable. It receives JSON on standard input and keeps Routr credentials outside BlueJay.",
+                "/Users/moi/Nextcloud/10.Scripts/grayjay/smart-search.sh",
+                "Save and search",
+                async (command) => {
+                    await setTranslatorCommand(command);
+                    void createSmartMix();
+                }
+            );
+            return;
+        }
+
         try {
-            const [candidates, watchedUrls] = await Promise.all([
-                HighlightsBackend.getMixCandidates(),
-                HistoryBackend.getWatchedUrls(SMART_MIX_WATCHED_POSITION_SECONDS),
-            ]);
             const smartTvSettings = smartTvSettingsFromObject(StateGlobal.settings$()?.object);
-            const entries = composeSmartMix({
-                videoUrl: sourceVideo.url,
-                updatedAt: highlights.updatedAt,
-                video: sourceVideo,
-                mixProfile: highlights.mixProfile,
-                globalSummary: highlights.globalSummary,
-                theses: highlights.theses,
-                topScore: Math.max(...highlights.segments.map(segment => segment.score ?? 0)),
-                segments: highlights.segments,
-            }, candidates, {
-                maxVideos: smartTvSettings.maxVideos,
-                targetSeconds: smartTvSettings.targetSeconds,
-                creatorVariety: smartTvSettings.creatorVarietyPenalty > 0,
-                distribution: smartMixDistribution$(),
-                watchedUrls: new Set(watchedUrls),
+            UIOverlay.toast("Searching the web for related videos...");
+            const sessionId = `smart-mix-${Date.now().toString(36)}`;
+            let session = await SmartSearchBackend.load({
+                sessionId,
+                query,
+                languages: smartSearchLanguages$(),
+                translatorCommand: translatorCommand$(),
+                type: ContentType.MEDIA,
             });
-            const playableEntries = entries
-                .filter((entry): entry is SmartMixEntry & { candidate: SmartMixEntry["candidate"] & { video: IPlatformVideo } } => !!entry.candidate.video?.url);
-            if (playableEntries.length === 0) {
-                UIOverlay.toast("No related locally analysed videos are available yet");
+            for (let attempt = 0; attempt < SMART_DISCOVERY_POLL_ATTEMPTS; attempt++) {
+                await new Promise<void>(resolve => window.setTimeout(resolve, SMART_DISCOVERY_POLL_INTERVAL_MS));
+                session = await SmartSearchBackend.get(sessionId);
+            }
+            const videos = smartDiscoveryVideos(session as ISmartSearchSession, sourceVideo.url, smartTvSettings.maxVideos);
+            if (videos.length === 0) {
+                UIOverlay.toast("No related videos were found online");
                 return;
             }
 
-            const metadata: VideoQueueItemMeta[] = playableEntries.map(entry => ({
+            const metadata: VideoQueueItemMeta[] = videos.map(result => ({
                 source: 'smart-mix',
                 sessionTitle: 'Smart Mix',
-                title: entry.candidate.video.name,
-                summary: entry.relevantSegment
-                    ? [entry.relevantSegment.title, entry.relevantSegment.summary].filter(Boolean).join(" - ")
-                    : entry.candidate.globalSummary,
-                globalSummary: entry.candidate.globalSummary,
-                transitionKind: entry.category === 'close' ? 'same-topic' : entry.category === 'related' ? 'discover' : 'new-angle',
-                transitionLabel: entry.reason,
-                channelName: entry.candidate.video.author?.name,
-                channelThumbnail: entry.candidate.video.author?.thumbnail,
+                title: result.name,
+                summary: `Inspired by ${sourceVideo.name}`,
+                transitionKind: 'discover',
+                transitionLabel: 'Inspired discovery',
+                channelName: result.author?.name,
+                channelThumbnail: result.author?.thumbnail,
             }));
             video?.actions.setQueue(
                 0,
-                playableEntries.map(entry => entry.candidate.video),
+                videos,
                 false,
                 false,
                 VideoState.Maximized,
