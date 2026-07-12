@@ -40,7 +40,9 @@ import {
   smartSearchLoading$,
   smartSearchSession$,
   smartSearchSettingsReady$,
+  smartSearchTitleDisplay$,
   smartSearchTranslatingTitles$,
+  smartSearchTranslateCreatorNames$,
   smartSearchVisible$,
   translatorCommand$
 } from '../../state/StateSmartSearch';
@@ -109,6 +111,9 @@ const sameSmartSearchResult = (first: ISmartSearchResult, second: ISmartSearchRe
   first.key === second.key &&
   first.originalTitle === second.originalTitle &&
   first.translatedTitle === second.translatedTitle &&
+  first.creatorKey === second.creatorKey &&
+  first.originalCreatorName === second.originalCreatorName &&
+  first.translatedCreatorName === second.translatedCreatorName &&
   sameStringArray(first.languages, second.languages);
 
 const reconcileSmartSearchSession = (current: ISmartSearchSession | undefined, next: ISmartSearchSession) => {
@@ -255,23 +260,34 @@ const SearchPage: Component = () => {
     let lastError: unknown;
     let titleTranslationInFlight = false;
     let titleTranslationQueued = false;
-    const requestedTitleKeys = new Set<string>();
+    const requestedTranslationKeys = new Set<string>();
+
+    const translationKeys = (session: ISmartSearchSession | undefined) => {
+      const keys = new Set<string>();
+      for (const result of session?.variants.flatMap(variant => variant.results) ?? []) {
+        const titleKey = `title:${result.key}`;
+        if (!result.translatedTitle && !requestedTranslationKeys.has(titleKey))
+          keys.add(titleKey);
+
+        const creatorKey = result.creatorKey ? `creator:${result.creatorKey}` : undefined;
+        if (smartSearchTranslateCreatorNames$() && creatorKey && result.originalCreatorName && !result.translatedCreatorName && !requestedTranslationKeys.has(creatorKey))
+          keys.add(creatorKey);
+      }
+      return [...keys];
+    };
+
+    const hasPendingTitleTranslations = (session: ISmartSearchSession | undefined) => translationKeys(session).length > 0;
 
     const requestTitleTranslations = async () => {
       const activeSession = smartSearchSession$();
       if (!activeSession || activeSession.sessionId !== sessionId)
         return;
 
-      const keys = activeSession.variants
-        .flatMap(variant => variant.results)
-        .filter(result => !result.translatedTitle && !requestedTitleKeys.has(result.key))
-        .map(result => result.key)
-        .filter((key, index, allKeys) => allKeys.indexOf(key) === index)
-        .slice(0, SMART_SEARCH_TITLES_PER_REQUEST);
+      const keys = translationKeys(activeSession).slice(0, SMART_SEARCH_TITLES_PER_REQUEST);
       if (keys.length === 0)
         return;
 
-      keys.forEach(key => requestedTitleKeys.add(key));
+      keys.forEach(key => requestedTranslationKeys.add(key));
       titleTranslationInFlight = true;
       setSmartSearchTranslatingTitles(true);
       try {
@@ -285,12 +301,18 @@ const SearchPage: Component = () => {
         console.warn("Smart Search title translation failed", error);
       } finally {
         titleTranslationInFlight = false;
-        if (smartSearchSession$()?.sessionId === sessionId)
-          setSmartSearchTranslatingTitles(false);
-        if (titleTranslationQueued) {
-          titleTranslationQueued = false;
+        const activeSession = smartSearchSession$();
+        if (activeSession?.sessionId !== sessionId)
+          return;
+
+        const shouldContinue = titleTranslationQueued || hasPendingTitleTranslations(activeSession);
+        titleTranslationQueued = false;
+        if (shouldContinue) {
           void requestTitleTranslations();
+          return;
         }
+
+        setSmartSearchTranslatingTitles(false);
       }
     };
 
@@ -496,7 +518,13 @@ const SearchPage: Component = () => {
           <Show when={searchPager.state == 'ready'}>
             <ScrollContainer ref={scrollContainerRef}>
               <Show when={smartSearchVisible$()} fallback={<ContentGrid pager={searchPager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />}>
-                <SmartSearchResults loading={smartSearchLoading$()} translatingTitles={smartSearchTranslatingTitles$()} session={smartSessionForDisplay$()} />
+                <SmartSearchResults
+                  loading={smartSearchLoading$()}
+                  translatingTitles={smartSearchTranslatingTitles$()}
+                  titleDisplay={smartSearchTitleDisplay$()}
+                  translateCreatorNames={smartSearchTranslateCreatorNames$()}
+                  session={smartSessionForDisplay$()}
+                />
               </Show>
             </ScrollContainer>
           </Show>

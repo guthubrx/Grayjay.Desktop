@@ -111,14 +111,15 @@ def translate_titles(request: dict) -> dict:
     titles = request.get("titles")
     if not target or not isinstance(titles, list):
         fail("Invalid title translation request.")
-    valid = [{"key": item.get("key"), "text": non_empty_text(item.get("text"))} for item in titles if isinstance(item, dict)]
+    valid = [{"key": item.get("key"), "text": non_empty_text(item.get("text")), "kind": item.get("kind")} for item in titles if isinstance(item, dict)]
     valid = [item for item in valid if isinstance(item["key"], str) and item["text"]]
     if not valid:
         return {"version": 1, "translations": []}
     prompt = (
-        f"Translate these public video titles into {target}. Preserve names, acronyms and product names. "
-        "Return JSON only: {\"translations\":[{\"key\":\"input key\",\"text\":\"translated title\"}]}. "
-        f"Titles: {json.dumps(valid, ensure_ascii=False)}"
+        f"Translate these public display strings into {target}. Items can be video titles or channel names. "
+        "Preserve brand names, personal names, acronyms and product names. "
+        "Return JSON only: {\"translations\":[{\"key\":\"input key\",\"text\":\"translated text\"}]}. "
+        f"Strings: {json.dumps(valid, ensure_ascii=False)}"
     )
     response = call_model(prompt)
     entries = response.get("translations") if isinstance(response, dict) else None

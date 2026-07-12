@@ -3,23 +3,50 @@ import { Backend } from "../backend/Backend";
 import { SettingsBackend } from "../backend/SettingsBackend";
 import type { ISmartSearchSession } from "../backend/SmartSearchBackend";
 
+export type SmartSearchTitleDisplay = "both" | "translated";
+
 export const SMART_SEARCH_LANGUAGE_OPTIONS = [
-    { code: "ja", label: "Japonais" },
-    { code: "zh-Hans", label: "Chinois simplifie" },
+    { code: "de", label: "Allemand" },
+    { code: "en", label: "Anglais" },
     { code: "ar", label: "Arabe" },
-    { code: "ru", label: "Russe" },
-    { code: "uk", label: "Ukrainien" },
-    { code: "vi", label: "Vietnamien" },
+    { code: "bn", label: "Bengali" },
+    { code: "zh-Hans", label: "Chinois simplifie" },
+    { code: "zh-Hant", label: "Chinois traditionnel" },
+    { code: "ko", label: "Coreen" },
+    { code: "da", label: "Danois" },
+    { code: "es", label: "Espagnol" },
+    { code: "fi", label: "Finnois" },
+    { code: "el", label: "Grec" },
     { code: "he", label: "Hebreu" },
-    { code: "en", label: "Anglais" }
+    { code: "hi", label: "Hindi" },
+    { code: "hu", label: "Hongrois" },
+    { code: "id", label: "Indonesien" },
+    { code: "it", label: "Italien" },
+    { code: "ja", label: "Japonais" },
+    { code: "ms", label: "Malais" },
+    { code: "nl", label: "Neerlandais" },
+    { code: "nb", label: "Norvegien" },
+    { code: "fa", label: "Persan" },
+    { code: "pl", label: "Polonais" },
+    { code: "pt", label: "Portugais" },
+    { code: "ro", label: "Roumain" },
+    { code: "ru", label: "Russe" },
+    { code: "sv", label: "Suedois" },
+    { code: "cs", label: "Tcheque" },
+    { code: "th", label: "Thai" },
+    { code: "tr", label: "Turc" },
+    { code: "uk", label: "Ukrainien" },
+    { code: "vi", label: "Vietnamien" }
 ];
 
 const DEFAULT_SMART_SEARCH_LANGUAGES = ["ja", "zh-Hans", "ar", "ru"];
-const MAX_SMART_SEARCH_LANGUAGES = 4;
+const MAX_SMART_SEARCH_LANGUAGES = 6;
 
 const [translatorCommand$, setTranslatorCommandSignal] = createSignal("");
 const [smartSearchAutoStart$, setSmartSearchAutoStartSignal] = createSignal(false);
 const [smartSearchLanguages$, setSmartSearchLanguagesSignal] = createSignal(DEFAULT_SMART_SEARCH_LANGUAGES);
+const [smartSearchTitleDisplay$, setSmartSearchTitleDisplaySignal] = createSignal<SmartSearchTitleDisplay>("both");
+const [smartSearchTranslateCreatorNames$, setSmartSearchTranslateCreatorNamesSignal] = createSignal(false);
 const [smartSearchSettingsReady$, setSmartSearchSettingsReadySignal] = createSignal(false);
 const [smartSearchSession$, setSmartSearchSessionSignal] = createSignal<ISmartSearchSession>();
 const [smartSearchQuery$, setSmartSearchQuerySignal] = createSignal<string>();
@@ -44,6 +71,10 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
             if (languages.length > 0)
                 setSmartSearchLanguagesSignal(languages);
         }
+        if (settings?.titleDisplay === "translated")
+            setSmartSearchTitleDisplaySignal("translated");
+        if (typeof settings?.translateCreatorNames === "boolean")
+            setSmartSearchTranslateCreatorNamesSignal(settings.translateCreatorNames);
     } catch {
         // Smart Search remains optional until configured.
     } finally {
@@ -51,7 +82,7 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
     }
 })();
 
-export { smartSearchAutoStart$, smartSearchLanguages$, smartSearchLoading$, smartSearchQuery$, smartSearchSession$, smartSearchSettingsReady$, smartSearchTranslatingTitles$, smartSearchVisible$, translatorCommand$ };
+export { smartSearchAutoStart$, smartSearchLanguages$, smartSearchLoading$, smartSearchQuery$, smartSearchSession$, smartSearchSettingsReady$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
 
 function normalizeLanguages(languages: unknown[]) {
     const supported = new Set(SMART_SEARCH_LANGUAGE_OPTIONS.map(option => option.code));
@@ -64,7 +95,9 @@ function normalizeLanguages(languages: unknown[]) {
 async function persistSmartSearchSettings() {
     await SettingsBackend.persistSet("smartSearch.settings", {
         autoStart: smartSearchAutoStart$(),
-        languages: smartSearchLanguages$()
+        languages: smartSearchLanguages$(),
+        titleDisplay: smartSearchTitleDisplay$(),
+        translateCreatorNames: smartSearchTranslateCreatorNames$()
     });
 }
 
@@ -90,6 +123,16 @@ export async function setSmartSearchLanguages(languages: unknown[]) {
     setSmartSearchLanguagesSignal(normalized);
     await persistSmartSearchSettings();
     return true;
+}
+
+export async function setSmartSearchTitleDisplay(titleDisplay: SmartSearchTitleDisplay) {
+    setSmartSearchTitleDisplaySignal(titleDisplay);
+    await persistSmartSearchSettings();
+}
+
+export async function setSmartSearchTranslateCreatorNames(translateCreatorNames: boolean) {
+    setSmartSearchTranslateCreatorNamesSignal(translateCreatorNames);
+    await persistSmartSearchSettings();
 }
 
 export function beginSmartSearch(query: string, visible = true) {

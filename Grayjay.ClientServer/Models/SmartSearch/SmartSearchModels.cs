@@ -31,6 +31,9 @@ public class SmartSearchResult
     public required string OriginalTitle { get; set; }
     public List<string> Languages { get; set; } = [];
     public string? TranslatedTitle { get; set; }
+    public string? CreatorKey { get; set; }
+    public string? OriginalCreatorName { get; set; }
+    public string? TranslatedCreatorName { get; set; }
 }
 
 public class SmartSearchSession

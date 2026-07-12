@@ -1,15 +1,20 @@
 import { Component, For, createEffect, createSignal } from "solid-js";
 
 import Button from "../../buttons/Button";
+import Dropdown from "../../basics/inputs/Dropdown";
 import InputText from "../../basics/inputs/InputText";
 import Toggle from "../../basics/inputs/Toggle";
 import {
     SMART_SEARCH_LANGUAGE_OPTIONS,
     setSmartSearchAutoStart,
     setSmartSearchLanguages,
+    setSmartSearchTitleDisplay,
+    setSmartSearchTranslateCreatorNames,
     setTranslatorCommand,
     smartSearchAutoStart$,
     smartSearchLanguages$,
+    smartSearchTitleDisplay$,
+    smartSearchTranslateCreatorNames$,
     translatorCommand$
 } from "../../../state/StateSmartSearch";
 import styles from "./index.module.css";
@@ -19,12 +24,23 @@ const SmartSearchSettings: Component = () => {
 
     createEffect(() => setCommand(translatorCommand$()));
 
-    const toggleLanguage = (language: string) => {
+    const updateLanguage = (slot: number, language: string) => {
         const selected = smartSearchLanguages$();
-        const next = selected.includes(language)
-            ? selected.filter(value => value !== language)
-            : [...selected, language];
+        const next = selected
+            .filter((_, index) => index !== slot)
+            .filter(value => value !== language);
+        if (language)
+            next.splice(slot, 0, language);
         void setSmartSearchLanguages(next);
+    };
+
+    const languageOptions = (slot: number) => {
+        const selected = smartSearchLanguages$();
+        const selectedLanguage = selected[slot];
+        return [
+            { code: "", label: "No language" },
+            ...SMART_SEARCH_LANGUAGE_OPTIONS.filter(option => option.code === selectedLanguage || !selected.includes(option.code))
+        ];
     };
 
     return (
@@ -34,21 +50,33 @@ const SmartSearchSettings: Component = () => {
                 <div class={styles.label}>Start automatically</div>
                 <Toggle value={smartSearchAutoStart$()} onToggle={value => void setSmartSearchAutoStart(value)} />
             </div>
+            <div class={styles.settingRow}>
+                <div class={styles.label}>Title display</div>
+                <Dropdown
+                    options={["Original + translation", "Translated title only"]}
+                    value={smartSearchTitleDisplay$() === "translated" ? 1 : 0}
+                    onSelectedChanged={index => void setSmartSearchTitleDisplay(index === 1 ? "translated" : "both")}
+                    style={{ width: "260px" }}
+                />
+            </div>
+            <div class={styles.settingRow}>
+                <div class={styles.label}>Translate channel names</div>
+                <Toggle value={smartSearchTranslateCreatorNames$()} onToggle={value => void setSmartSearchTranslateCreatorNames(value)} />
+            </div>
             <div class={styles.field}>
                 <div class={styles.label}>Search languages</div>
-                <div class={styles.languageGrid}>
-                    <For each={SMART_SEARCH_LANGUAGE_OPTIONS}>{option => {
-                        const selected = () => smartSearchLanguages$().includes(option.code);
-                        const disabled = () => !selected() && smartSearchLanguages$().length >= 4;
+                <div class={styles.languageList}>
+                    <For each={[0, 1, 2, 3, 4, 5]}>{slot => {
+                        const options = () => languageOptions(slot);
+                        const selectedIndex = () => options().findIndex(option => option.code === smartSearchLanguages$()[slot]);
                         return (
-                            <button
-                                type="button"
-                                class={styles.languageButton}
-                                classList={{ [styles.selected]: selected(), [styles.disabled]: disabled() }}
-                                disabled={disabled()}
-                                onClick={() => toggleLanguage(option.code)}>
-                                {option.label}
-                            </button>
+                            <Dropdown
+                                label={`Language ${slot + 1}`}
+                                options={options().map(option => option.label)}
+                                value={Math.max(0, selectedIndex())}
+                                onSelectedChanged={index => updateLanguage(slot, options()[index]?.code ?? "")}
+                                style={{ width: "100%" }}
+                            />
                         );
                     }}</For>
                 </div>
