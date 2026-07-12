@@ -2,6 +2,11 @@ import { createSignal } from "solid-js";
 import { Backend } from "../backend/Backend";
 import { SettingsBackend } from "../backend/SettingsBackend";
 import type { ISmartSearchSession } from "../backend/SmartSearchBackend";
+import {
+    defaultSubtitleTranslationLanguages,
+    normalizeSmartSearchLanguages,
+    normalizeSubtitleTranslationLanguages
+} from "../utils/smartSearchLanguagePreferences";
 
 export type SmartSearchTitleDisplay = "both" | "translated";
 export type SmartSearchResultLayout = "grouped" | "mixed";
@@ -49,6 +54,7 @@ const [smartSearchLanguages$, setSmartSearchLanguagesSignal] = createSignal(DEFA
 const [smartSearchTitleDisplay$, setSmartSearchTitleDisplaySignal] = createSignal<SmartSearchTitleDisplay>("both");
 const [smartSearchTranslateCreatorNames$, setSmartSearchTranslateCreatorNamesSignal] = createSignal(false);
 const [smartSearchResultLayout$, setSmartSearchResultLayoutSignal] = createSignal<SmartSearchResultLayout>("grouped");
+const [smartSearchSubtitleTranslationLanguages$, setSmartSearchSubtitleTranslationLanguagesSignal] = createSignal<string[]>(defaultSubtitleTranslationLanguages(DEFAULT_SMART_SEARCH_LANGUAGES));
 const [smartSearchSettingsReady$, setSmartSearchSettingsReadySignal] = createSignal(false);
 const [smartSearchSession$, setSmartSearchSessionSignal] = createSignal<ISmartSearchSession>();
 const [smartSearchQuery$, setSmartSearchQuerySignal] = createSignal<string>();
@@ -68,11 +74,15 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
             setTranslatorCommandSignal(value.command);
         if (typeof settings?.autoStart === "boolean")
             setSmartSearchAutoStartSignal(settings.autoStart);
-        if (Array.isArray(settings?.languages)) {
-            const languages = normalizeLanguages(settings.languages);
-            if (languages.length > 0)
-                setSmartSearchLanguagesSignal(languages);
-        }
+        const languages = Array.isArray(settings?.languages)
+            ? normalizeLanguages(settings.languages)
+            : DEFAULT_SMART_SEARCH_LANGUAGES;
+        if (languages.length > 0)
+            setSmartSearchLanguagesSignal(languages);
+        const translationLanguages = Array.isArray(settings?.subtitleTranslationLanguages)
+            ? normalizeSubtitleTranslationLanguages(settings.subtitleTranslationLanguages, languages)
+            : defaultSubtitleTranslationLanguages(languages);
+        setSmartSearchSubtitleTranslationLanguagesSignal(translationLanguages);
         if (settings?.titleDisplay === "translated")
             setSmartSearchTitleDisplaySignal("translated");
         if (typeof settings?.translateCreatorNames === "boolean")
@@ -86,20 +96,18 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
     }
 })();
 
-export { smartSearchAutoStart$, smartSearchLanguages$, smartSearchLoading$, smartSearchQuery$, smartSearchResultLayout$, smartSearchSession$, smartSearchSettingsReady$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
+export { smartSearchAutoStart$, smartSearchLanguages$, smartSearchLoading$, smartSearchQuery$, smartSearchResultLayout$, smartSearchSession$, smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
 
 function normalizeLanguages(languages: unknown[]) {
     const supported = new Set(SMART_SEARCH_LANGUAGE_OPTIONS.map(option => option.code));
-    return languages
-        .filter((language): language is string => typeof language === "string" && supported.has(language))
-        .filter((language, index, selected) => selected.indexOf(language) === index)
-        .slice(0, MAX_SMART_SEARCH_LANGUAGES);
+    return normalizeSmartSearchLanguages(languages, supported, MAX_SMART_SEARCH_LANGUAGES);
 }
 
 async function persistSmartSearchSettings() {
     await SettingsBackend.persistSet("smartSearch.settings", {
         autoStart: smartSearchAutoStart$(),
         languages: smartSearchLanguages$(),
+        subtitleTranslationLanguages: smartSearchSubtitleTranslationLanguages$(),
         titleDisplay: smartSearchTitleDisplay$(),
         translateCreatorNames: smartSearchTranslateCreatorNames$(),
         resultLayout: smartSearchResultLayout$()
@@ -126,8 +134,21 @@ export async function setSmartSearchLanguages(languages: unknown[]) {
     if (normalized.length === 0)
         return false;
     setSmartSearchLanguagesSignal(normalized);
+    setSmartSearchSubtitleTranslationLanguagesSignal(normalizeSubtitleTranslationLanguages(smartSearchSubtitleTranslationLanguages$(), normalized));
     await persistSmartSearchSettings();
     return true;
+}
+
+export async function setSmartSearchSubtitleTranslationLanguage(language: string, enabled: boolean) {
+    if (!smartSearchLanguages$().includes(language))
+        return;
+
+    const current = smartSearchSubtitleTranslationLanguages$();
+    const next = enabled
+        ? [...current, language]
+        : current.filter(value => value !== language);
+    setSmartSearchSubtitleTranslationLanguagesSignal(normalizeSubtitleTranslationLanguages(next, smartSearchLanguages$()));
+    await persistSmartSearchSettings();
 }
 
 export async function setSmartSearchTitleDisplay(titleDisplay: SmartSearchTitleDisplay) {

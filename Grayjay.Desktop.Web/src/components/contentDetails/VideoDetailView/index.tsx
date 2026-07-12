@@ -84,6 +84,7 @@ import { Menus } from '../../../Menus';
 import { HistoryBackend } from "../../../backend/HistoryBackend";
 import { IHistoryVideo } from "../../../backend/models/content/IHistoryVideo";
 import StateGlobal from "../../../state/StateGlobal";
+import { smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$ } from "../../../state/StateSmartSearch";
 import { getKeybinding } from "../../../state/StateKeybindings";
 import StateSync from "../../../state/StateSync";
 import { SyncDevice } from "../../../backend/models/sync/SyncDevice";
@@ -392,13 +393,16 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     }, "videoDetailHighlights");
     let lastAutomaticIndexUrl: string | undefined;
     createEffect(() => {
+        if (!smartSearchSettingsReady$())
+            return;
         const video = videoLoaded$() ?? currentVideo$();
         const url = video?.url;
         if (!url || video?.isLive || videoLoaded$.loading || videoHighlightsResource.loading || lastAutomaticIndexUrl === url)
             return;
 
         lastAutomaticIndexUrl = url;
-        void ensureVideoIndexed(url).catch((error) => console.warn("Automatic Smart Chapters generation failed", error));
+        void ensureVideoIndexed(url, smartSearchSubtitleTranslationLanguages$())
+            .catch((error) => console.warn("Automatic Smart Chapters generation failed", error));
     });
     //const [liveChatWindow$] = createResource<ILiveChatWindowDescriptor | undefined>(() => videoLoaded$(), async (videoLoaded: any) => (!videoLoaded || !videoLoaded.isLive) ? undefined : await DetailsBackend.liveChatWindow());
     const [recomPager$] = createResource<Pager<IPlatformContent>>(() => videoLoaded$(), async (videoLoaded: any) => {
@@ -1796,7 +1800,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const url = currentVideo$()?.url;
         if (!url) return;
         const launch = () => {
-            indexVideo(url)
+            indexVideo(url, smartSearchSubtitleTranslationLanguages$())
                 .then(() => UIOverlay.toast("Smart chapters generation started…"))
                 .catch((e) => UIOverlay.toast("Generation failed: " + (e?.message ?? e)));
         };

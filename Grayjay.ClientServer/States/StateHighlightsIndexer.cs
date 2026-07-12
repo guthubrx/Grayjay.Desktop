@@ -26,8 +26,8 @@ public static class StateHighlightsIndexer
 
     private static readonly object _lock = new();
     private static readonly Dictionary<string, IndexJob> _jobs = new();
-    private static readonly Queue<(string Url, string Command)> _priorityQueue = new();
-    private static readonly Queue<(string Url, string Command)> _queue = new();
+    private static readonly Queue<(string Url, string Command, string[] TranslationSourceLanguages)> _priorityQueue = new();
+    private static readonly Queue<(string Url, string Command, string[] TranslationSourceLanguages)> _queue = new();
     private static int _activeWorkers = 0;
     private const int DefaultParallelism = 1;
     private const int MaxParallelism = 24;
@@ -36,6 +36,7 @@ public static class StateHighlightsIndexer
     // Garde-fou anti-injection : l'URL est interpolée dans une ligne shell,
     // on refuse tout métacaractère shell.
     private static readonly Regex _safeUrl = new(@"^https?://[^\s'""`;|&$<>(){}\\]+$", RegexOptions.Compiled);
+    private static readonly Regex _safeLanguageCode = new(@"^[a-z]{2,3}(?:-[a-z]{4})?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static List<IndexJob> GetJobs()
     {
@@ -43,19 +44,20 @@ public static class StateHighlightsIndexer
             return _jobs.Values.ToList();
     }
 
-    public static IndexJob Enqueue(string url, string command)
+    public static IndexJob Enqueue(string url, string command, IEnumerable<string>? translationSourceLanguages = null)
     {
         ValidateRequest(ref url, command);
-        return EnqueueValidated(url, command, priority: false);
+        return EnqueueValidated(url, command, NormalizeLanguageCodes(translationSourceLanguages), priority: false);
     }
 
-    public static IndexJob EnqueueIfNeeded(string url, string command)
+    public static IndexJob EnqueueIfNeeded(string url, string command, IEnumerable<string>? translationSourceLanguages = null)
     {
         ValidateRequest(ref url, command);
-        if (!GrayjaySettings.Instance.XrayPanel.AutoGenerateOnVideoOpen || HasRequiredOutput(StateHighlights.Get(url)))
+        var normalizedLanguages = NormalizeLanguageCodes(translationSourceLanguages);
+        if (!GrayjaySettings.Instance.XrayPanel.AutoGenerateOnVideoOpen || HasRequiredOutput(StateHighlights.Get(url), normalizedLanguages))
             return new IndexJob { Url = url, Status = "skipped" };
 
-        return EnqueueValidated(url, command, priority: true);
+        return EnqueueValidated(url, command, normalizedLanguages, priority: true);
     }
 
     private static void ValidateRequest(ref string url, string command)
@@ -70,7 +72,7 @@ public static class StateHighlightsIndexer
             throw new ArgumentException("Unsafe or invalid url");
     }
 
-    private static IndexJob EnqueueValidated(string url, string command, bool priority)
+    private static IndexJob EnqueueValidated(string url, string command, string[] translationSourceLanguages, bool priority)
     {
         lock (_lock)
         {
@@ -81,9 +83,9 @@ public static class StateHighlightsIndexer
             var job = new IndexJob { Url = url, Status = "queued" };
             _jobs[url] = job;
             if (priority)
-                _priorityQueue.Enqueue((url, command));
+                _priorityQueue.Enqueue((url, command, translationSourceLanguages));
             else
-                _queue.Enqueue((url, command));
+                _queue.Enqueue((url, command, translationSourceLanguages));
             StateWebsocket.HighlightsIndexChanged(job);
             EnsureWorkersLocked();
             return job;
@@ -139,7 +141,7 @@ public static class StateHighlightsIndexer
     {
         while (true)
         {
-            (string Url, string Command) item;
+            (string Url, string Command, string[] TranslationSourceLanguages) item;
             IndexJob job;
             lock (_lock)
             {
@@ -157,7 +159,7 @@ public static class StateHighlightsIndexer
 
             try
             {
-                await RunCommand(item.Command, item.Url);
+                await RunCommand(item.Command, item.Url, item.TranslationSourceLanguages);
                 lock (_lock)
                 {
                     job.Status = "done";
@@ -179,13 +181,69 @@ public static class StateHighlightsIndexer
         }
     }
 
-    private static bool HasRequiredOutput(VideoHighlightSet? highlights)
+    private static bool HasRequiredOutput(VideoHighlightSet? highlights, IReadOnlyCollection<string> translationSourceLanguages)
     {
         if ((highlights?.Segments.Count ?? 0) == 0)
             return false;
 
-        var language = GrayjaySettings.Instance.XrayPanel.GenerationLanguageName();
-        return language == null || string.Equals(highlights.TranslatedSubtitles?.Language, language, StringComparison.OrdinalIgnoreCase);
+        var outputLanguage = GrayjaySettings.Instance.XrayPanel.GenerationLanguageName();
+        if (outputLanguage == null || translationSourceLanguages.Count == 0)
+            return true;
+
+        var transcriptLanguage = NormalizeLanguageCode(highlights?.TranscriptLanguage);
+        if (transcriptLanguage == null)
+            return false;
+        if (transcriptLanguage == "und" || !translationSourceLanguages.Contains(transcriptLanguage, StringComparer.OrdinalIgnoreCase))
+            return true;
+
+        var outputLanguageCode = OutputLanguageCode(outputLanguage);
+        if (outputLanguageCode == transcriptLanguage)
+            return true;
+
+        return string.Equals(highlights?.TranslatedSubtitles?.Language, outputLanguage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string[] NormalizeLanguageCodes(IEnumerable<string>? languages)
+    {
+        return (languages ?? [])
+            .Select(NormalizeLanguageCode)
+            .Where(language => language != null && language != "und")
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? NormalizeLanguageCode(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+            return null;
+
+        var value = language.Trim().Replace('_', '-');
+        if (!_safeLanguageCode.IsMatch(value) && !string.Equals(value, "und", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var lower = value.ToLowerInvariant();
+        return lower switch
+        {
+            "zh-hans" => "zh-Hans",
+            "zh-hant" => "zh-Hant",
+            _ => lower
+        };
+    }
+
+    private static string? OutputLanguageCode(string? language)
+    {
+        return language?.ToLowerInvariant() switch
+        {
+            "french" => "fr",
+            "english" => "en",
+            "spanish" => "es",
+            "german" => "de",
+            "italian" => "it",
+            "portuguese" => "pt",
+            "dutch" => "nl",
+            _ => NormalizeLanguageCode(language)
+        };
     }
 
     private static string UserFacingError(string message)
@@ -245,7 +303,7 @@ public static class StateHighlightsIndexer
         }
     }
 
-    private static async Task RunCommand(string command, string url)
+    private static async Task RunCommand(string command, string url, IReadOnlyCollection<string> translationSourceLanguages)
     {
         // {url} est substitué si présent, sinon l'URL est ajoutée en dernier argument.
         var commandLine = command.Contains("{url}") ? command.Replace("{url}", url) : $"{command} {url}";
@@ -267,6 +325,11 @@ public static class StateHighlightsIndexer
             var lang = GrayjaySettings.Instance.XrayPanel.GenerationLanguageName();
             commandLine = commandLine.Replace("{language}",
                 lang != null ? $"--output-language \"{lang}\"" : "");
+        }
+
+        if (translationSourceLanguages.Count > 0 && GrayjaySettings.Instance.XrayPanel.GenerationLanguageName() != null)
+        {
+            commandLine += $" --translate-subtitles --translate-subtitles-from \"{string.Join(',', translationSourceLanguages)}\"";
         }
 
         var psi = new ProcessStartInfo
