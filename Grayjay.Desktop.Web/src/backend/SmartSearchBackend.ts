@@ -6,6 +6,9 @@ export interface ISmartSearchResult {
     content: any;
     originalTitle: string;
     translatedTitle?: string;
+    creatorKey?: string;
+    originalCreatorName?: string;
+    translatedCreatorName?: string;
     languages: string[];
 }
 

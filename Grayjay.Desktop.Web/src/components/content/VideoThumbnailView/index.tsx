@@ -22,6 +22,8 @@ interface VideoProps {
   onAddtoQueue?: (element: HTMLDivElement, content: IPlatformVideo) => void;
   style?: JSX.CSSProperties;
   imageStyle?: JSX.CSSProperties;
+  title?: string;
+  authorName?: string;
   useCache?: boolean;
   focusableOpts?: FocusableOptions;
   hideAddToQueue?: boolean;
@@ -106,7 +108,7 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
               </div>
             </div>
         </div>
-        <div class={styles.title} onClick={props.onClick} onDragStart={startDrag} draggable={true}>{props.video?.name}</div>
+        <div class={styles.title} onClick={props.onClick} onDragStart={startDrag} draggable={true}>{props.title ?? props.video?.name}</div>
         <div class={styles.bottomRow}>
             <Show when={showAuthorThumbnail$()}>
               <AnimatedImage src={props.video?.author.thumbnail} class={styles.authorThumbnail} alt="author thumbnail" onClick={onClickAuthor} referrerPolicy='no-referrer' />
@@ -114,7 +116,7 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
             <div class={styles.authorColumn} style={{
               "margin-left": showAuthorThumbnail$() ? "8px" : undefined
             }}>
-                <div class={styles.authorName} onClick={onClickAuthor}>{props.video?.author?.name ?? "Unknown"}</div>
+                <div class={styles.authorName} onClick={onClickAuthor}>{props.authorName ?? props.video?.author?.name ?? "Unknown"}</div>
                 <Show when={props.video}>
                     <div class={styles.metadata}><Show when={(props.video?.viewCount ?? 0) > 0}>{toHumanNumber(props.video?.viewCount)} views • </Show>{toHumanNowDiffString(props.video?.dateTime)}</div>
                 </Show>
