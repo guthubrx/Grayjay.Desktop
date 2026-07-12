@@ -38,9 +38,14 @@
 
 .translation {
     color: #D4D4D4;
+    display: -webkit-box;
     font-size: 14px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     line-height: 1.35;
     margin: 6px 10px 0;
+    max-height: 2.7em;
+    overflow: hidden;
 }
 
 .languages {

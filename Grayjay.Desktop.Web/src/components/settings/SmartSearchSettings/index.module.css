@@ -1,0 +1,70 @@
+.container {
+    box-sizing: border-box;
+    margin: 24px 30px 48px;
+    max-width: 720px;
+}
+
+.container h1 {
+    font-size: 24px;
+    margin: 0 0 32px;
+}
+
+.settingRow {
+    align-items: center;
+    border-bottom: 1px solid #343434;
+    display: flex;
+    justify-content: space-between;
+    min-height: 56px;
+}
+
+.field {
+    margin-top: 28px;
+}
+
+.label {
+    color: #D9D9D9;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.languageGrid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    margin-top: 12px;
+}
+
+.languageButton {
+    background: #202020;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #CFCFCF;
+    cursor: pointer;
+    font: inherit;
+    min-height: 42px;
+    padding: 0 14px;
+    text-align: left;
+}
+
+.languageButton.selected {
+    background: rgba(246, 200, 68, 0.14);
+    border-color: #A7882B;
+    color: #FFF;
+}
+
+.languageButton.disabled {
+    color: #707070;
+    cursor: default;
+}
+
+.commandRow {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.commandRow > :first-child {
+    flex: 1;
+    min-width: 0;
+}
