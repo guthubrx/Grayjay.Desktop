@@ -48,6 +48,10 @@ MIX_PROFILE_LIMITS = {
     "angleLabels": 4,
 }
 MIX_PROFILE_MAX_LABEL_CHARS = 80
+DISCOVERY_PROFILE_VERSION = 1
+DISCOVERY_AXIS_IDS = ("core", "context", "impact", "debate")
+DISCOVERY_AXIS_LABEL_MAX_CHARS = 100
+DISCOVERY_QUERY_MAX_CHARS = 180
 
 LANGUAGE_ALIASES = {
     "arabic": "ar", "arabe": "ar", "ar": "ar",
@@ -211,6 +215,7 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--output-language", default=None, help="Force the language of generated titles/summaries (e.g. French, English). Defaults to the video's own language.")
     generation.add_argument("--translate-subtitles", action="store_true", help="Generate timed translated subtitles in --output-language when it is set.")
     generation.add_argument("--translate-subtitles-from", default="", help="Comma-separated transcript language codes eligible for subtitle translation. Empty keeps explicit --translate-subtitles backward-compatible for every language.")
+    generation.add_argument("--discovery-languages", default=os.environ.get("GRAYJAY_DISCOVERY_LANGUAGES", "en"), help="Comma-separated languages for precomputed Smart Discovery queries. English is always retained as a fallback.")
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
     generation.add_argument("--analysis-only", action="store_true", help="Refresh only summary, theses, and mix profile in existing highlights; preserves chapters and subtitles.")
@@ -867,7 +872,8 @@ def save_cached_transcript(task: VideoTask, cues: list[TranscriptCue], source: s
 
 def analysis_cache_path(url: str, args: argparse.Namespace) -> Path:
     language = (args.output_language or "auto").strip().lower()
-    digest = hashlib.sha256(f"{url.strip()}\n{language}".encode("utf-8")).hexdigest()
+    discovery_signature = ",".join(discovery_languages(args))
+    digest = hashlib.sha256(f"{url.strip()}\n{language}\n{DISCOVERY_PROFILE_VERSION}\n{discovery_signature}".encode("utf-8")).hexdigest()
     base = Path(args.transcript_cache_dir).expanduser() if args.transcript_cache_dir else Path(args.grayjay_dir).expanduser() / "transcripts_cache"
     return base.parent / "analysis_cache" / f"{digest}.json"
 
@@ -883,9 +889,11 @@ def load_cached_analysis(task: VideoTask, args: argparse.Namespace) -> dict[str,
     if not isinstance(data.get("theses"), list) or not isinstance(data.get("globalSummary"), str):
         return None
     mix_profile = validate_mix_profile(data.get("mixProfile"))
-    if not mix_profile:
+    discovery_profile = validate_discovery_profile(data.get("discoveryProfile"), args)
+    if not mix_profile or not discovery_profile:
         return None
     data["mixProfile"] = mix_profile
+    data["discoveryProfile"] = discovery_profile
     return data
 
 
@@ -896,7 +904,7 @@ def save_cached_analysis(task: VideoTask, analysis: dict[str, Any], args: argpar
     path.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     payload = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "videoUrl": task.url,
         "updatedAt": now,
         **analysis,
@@ -1431,6 +1439,7 @@ def format_time(seconds: float) -> str:
 def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Namespace) -> str:
     transcript = cues_to_prompt_transcript(cues, args.max_transcript_chars)
     duration = task.duration or (cues[-1].end if cues else None)
+    requested_discovery_languages = discovery_languages(args)
     return textwrap.dedent(f"""
     You are an analyst summarizing a video.
 
@@ -1448,6 +1457,15 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
         "topics": ["2 to 6 concise canonical English labels for the main subjects"],
         "relatedTopics": ["0 to 6 concise canonical English labels for adjacent subjects"],
         "angleLabels": ["0 to 4 concise canonical English labels for framing, method, consequence, limit, or viewpoint"]
+      }},
+      "discoveryProfile": {{
+        "version": {DISCOVERY_PROFILE_VERSION},
+        "axes": [
+          {{"id": "core", "label": "short label", "queries": {{"en": "short video search query"}}}},
+          {{"id": "context", "label": "short label", "queries": {{"en": "short video search query"}}}},
+          {{"id": "impact", "label": "short label", "queries": {{"en": "short video search query"}}}},
+          {{"id": "debate", "label": "short label", "queries": {{"en": "short video search query"}}}}
+        ]
       }}
     }}
 
@@ -1461,6 +1479,10 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
     - mixProfile labels MUST be lowercase canonical English terms, even when the transcript or visible summary uses another language.
     - mixProfile is internal metadata for matching related videos. Use short concepts such as "artificial intelligence agents", "developer productivity", or "risk assessment", not complete sentences or verdicts about whether a claim is true.
     - Be precise: prefer "X causes Y because Z" or "the guest explains how they run board meetings" over vague labels.
+    - discoveryProfile is for finding other videos, not for summarizing this one. Produce exactly these four non-overlapping axes: core = how the main subject works, context = surrounding causes or systems, impact = consequences or practical effects, debate = limits, tradeoffs, policy or competing interpretations.
+    - Each axis must be grounded in the transcript. If a dimension is weak, formulate the nearest real expansion without inventing a claim.
+    - For EVERY requested discovery language, add one concise natural video-search query in `queries`, using the BCP-47 key exactly. Do not copy the globalSummary, do not add quotes, URLs, source names, commentary or Boolean operators.
+    - The requested discovery languages are: {json.dumps(requested_discovery_languages, ensure_ascii=False)}.
 
     Video title: {task.title or "(unknown)"}
     Video URL: {task.url}
@@ -1499,7 +1521,53 @@ def validate_mix_profile(data: Any) -> dict[str, list[str]] | None:
     return profile if profile["topics"] else None
 
 
-def validate_analysis(data: dict[str, Any]) -> dict[str, Any]:
+def discovery_languages(args: argparse.Namespace) -> list[str]:
+    values = str(getattr(args, "discovery_languages", "") or "").split(",")
+    normalized = [normalize_language_code(value) for value in values]
+    languages = [language for language in normalized if language != "und"]
+    if "en" not in languages:
+        languages.insert(0, "en")
+    return list(dict.fromkeys(languages))
+
+
+def validate_discovery_profile(data: Any, args: argparse.Namespace) -> dict[str, Any] | None:
+    if not isinstance(data, dict) or data.get("version") != DISCOVERY_PROFILE_VERSION:
+        return None
+    raw_axes = data.get("axes")
+    if not isinstance(raw_axes, list):
+        return None
+
+    expected_languages = discovery_languages(args)
+    axes: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    queries_by_language: dict[str, set[str]] = {language: set() for language in expected_languages}
+    for raw_axis in raw_axes:
+        if not isinstance(raw_axis, dict):
+            return None
+        axis_id = str(raw_axis.get("id") or "").strip().lower()
+        label = re.sub(r"\s+", " ", str(raw_axis.get("label") or "")).strip()
+        raw_queries = raw_axis.get("queries")
+        if axis_id not in DISCOVERY_AXIS_IDS or axis_id in seen_ids or not label or len(label) > DISCOVERY_AXIS_LABEL_MAX_CHARS or not isinstance(raw_queries, dict):
+            return None
+
+        queries: dict[str, str] = {}
+        for language in expected_languages:
+            query = raw_queries.get(language)
+            query = re.sub(r"\s+", " ", query).strip() if isinstance(query, str) else ""
+            if not query or len(query) > DISCOVERY_QUERY_MAX_CHARS or query.casefold() in queries_by_language[language]:
+                return None
+            queries_by_language[language].add(query.casefold())
+            queries[language] = query
+        axes.append({"id": axis_id, "label": label, "queries": queries})
+        seen_ids.add(axis_id)
+
+    if set(seen_ids) != set(DISCOVERY_AXIS_IDS):
+        return None
+    axes.sort(key=lambda axis: DISCOVERY_AXIS_IDS.index(axis["id"]))
+    return {"version": DISCOVERY_PROFILE_VERSION, "axes": axes}
+
+
+def validate_analysis(data: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     global_summary = str(data.get("globalSummary") or "").strip()
     if not global_summary:
         raise RuntimeError("Analysis JSON is missing globalSummary.")
@@ -1525,6 +1593,9 @@ def validate_analysis(data: dict[str, Any]) -> dict[str, Any]:
     mix_profile = validate_mix_profile(data.get("mixProfile"))
     if mix_profile:
         analysis["mixProfile"] = mix_profile
+    discovery_profile = validate_discovery_profile(data.get("discoveryProfile"), args)
+    if discovery_profile:
+        analysis["discoveryProfile"] = discovery_profile
     return analysis
 
 
@@ -1534,10 +1605,10 @@ def run_analysis(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
         cached["transcriptLanguage"] = normalize_language_code(cached.get("transcriptLanguage"))
         log(f"  analysis: cached ({len(cached['theses'])} thesis/theses, {cached['transcriptLanguage']})")
         return cached
-    log(f"  analysis pass 1/{args.provider}: extracting theses + global summary + mix profile")
+    log(f"  analysis pass 1/{args.provider}: extracting theses + global summary + discovery profile")
     prompt = build_analysis_prompt(task, cues, args)
     raw = call_model(prompt, args)
-    analysis = validate_analysis(raw)
+    analysis = validate_analysis(raw, args)
     analysis["transcriptLanguage"] = infer_transcript_language(cues, analysis.get("transcriptLanguage"))
     log(f"  analysis: {len(analysis['theses'])} thesis/theses extracted")
     save_cached_analysis(task, analysis, args)
@@ -1970,7 +2041,7 @@ def update_highlights_analysis(task: VideoTask, analysis: dict[str, Any], args: 
     now = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     payload = dict(existing)
     payload.update({
-        "schemaVersion": 6,
+        "schemaVersion": 7,
         "videoUrl": task.url,
         "transcriptLanguage": analysis.get("transcriptLanguage") or existing.get("transcriptLanguage") or "und",
         "updatedAt": now,
@@ -1978,6 +2049,10 @@ def update_highlights_analysis(task: VideoTask, analysis: dict[str, Any], args: 
         "theses": analysis.get("theses"),
         "mixProfile": analysis["mixProfile"],
     })
+    if analysis.get("discoveryProfile"):
+        payload["discoveryProfile"] = analysis["discoveryProfile"]
+    elif isinstance(existing.get("discoveryProfile"), dict):
+        payload["discoveryProfile"] = existing["discoveryProfile"]
 
     if task.video and not isinstance(payload.get("video"), dict):
         payload["video"] = task.video
@@ -1999,7 +2074,7 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
     existing = load_json(path) if path.exists() else None
     created_at = existing.get("createdAt") if isinstance(existing, dict) and existing.get("createdAt") else now
     payload: dict[str, Any] = {
-        "schemaVersion": 6,
+        "schemaVersion": 7,
         "videoUrl": task.url,
         "source": f"smart-chapters-generator+{args.provider}-{args.model}",
         "transcriptLanguage": analysis.get("transcriptLanguage") or "und",
@@ -2013,6 +2088,10 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
         payload["mixProfile"] = analysis["mixProfile"]
     elif isinstance(existing, dict) and isinstance(existing.get("mixProfile"), dict):
         payload["mixProfile"] = existing["mixProfile"]
+    if analysis.get("discoveryProfile"):
+        payload["discoveryProfile"] = analysis["discoveryProfile"]
+    elif isinstance(existing, dict) and isinstance(existing.get("discoveryProfile"), dict):
+        payload["discoveryProfile"] = existing["discoveryProfile"]
     if promotion_segments:
         payload["promotionSegments"] = promotion_segments
     if translated:
@@ -2199,6 +2278,7 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
                 "globalSummary": analysis.get("globalSummary"),
                 "theses": analysis.get("theses"),
                 "transcriptLanguage": analysis.get("transcriptLanguage"),
+                "discoveryProfile": analysis.get("discoveryProfile"),
                 "segments": segments,
                 "promotionSegments": promotion_segments,
                 "translatedSubtitles": translated,
