@@ -8,6 +8,7 @@ import styles from "./index.module.css";
 
 interface SmartSearchResultsProps {
     loading: boolean;
+    translatingTitles: boolean;
     session?: ISmartSearchSession;
 }
 
@@ -27,6 +28,9 @@ const SmartSearchResults: Component<SmartSearchResultsProps> = (props) => {
             </Show>
             <Show when={props.session?.error}>
                 <div class={styles.error}>{props.session!.error}</div>
+            </Show>
+            <Show when={props.translatingTitles}>
+                <div class={styles.status}>Translating titles...</div>
             </Show>
             <For each={props.session?.variants}>{(variant) => (
                 <section class={styles.section}>

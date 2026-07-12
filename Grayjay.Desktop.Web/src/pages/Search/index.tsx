@@ -32,10 +32,12 @@ import {
   isSmartSearchForQuery,
   setSmartSearchLoading,
   setSmartSearchSession,
+  setSmartSearchTranslatingTitles,
   setTranslatorCommand,
   showSmartSearch,
   smartSearchLoading$,
   smartSearchSession$,
+  smartSearchTranslatingTitles$,
   smartSearchVisible$,
   translatorCommand$
 } from '../../state/StateSmartSearch';
@@ -69,6 +71,7 @@ const BASE_COMPARATORS: Record<string, (a: IPlatformContent, b: IPlatformContent
 
 const SMART_SEARCH_POLL_INTERVAL_MS = 750;
 const SMART_SEARCH_POLL_ATTEMPTS = 16;
+const SMART_SEARCH_TITLES_PER_REQUEST = 6;
 
 const wait = (duration: number) => new Promise<void>(resolve => window.setTimeout(resolve, duration));
 
@@ -206,6 +209,54 @@ const SearchPage: Component = () => {
   const refreshSmartSearchSession = async (sessionId: string) => {
     let latestSession: ISmartSearchSession | undefined;
     let lastError: unknown;
+    let titleTranslationInFlight = false;
+    let titleTranslationQueued = false;
+    const requestedTitleKeys = new Set<string>();
+
+    const requestTitleTranslations = async () => {
+      const activeSession = smartSearchSession$();
+      if (!activeSession || activeSession.sessionId !== sessionId)
+        return;
+
+      const keys = activeSession.variants
+        .flatMap(variant => variant.results)
+        .filter(result => !result.translatedTitle && !requestedTitleKeys.has(result.key))
+        .map(result => result.key)
+        .filter((key, index, allKeys) => allKeys.indexOf(key) === index)
+        .slice(0, SMART_SEARCH_TITLES_PER_REQUEST);
+      if (keys.length === 0)
+        return;
+
+      keys.forEach(key => requestedTitleKeys.add(key));
+      titleTranslationInFlight = true;
+      setSmartSearchTranslatingTitles(true);
+      try {
+        const translated = await SmartSearchBackend.translateTitles(sessionId, translatorCommand$(), keys);
+        if (smartSearchSession$()?.sessionId === sessionId) {
+          const reconciled = reconcileSmartSearchSession(smartSearchSession$(), translated);
+          if (reconciled !== smartSearchSession$())
+            setSmartSearchSession(reconciled);
+        }
+      } catch (error) {
+        console.warn("Smart Search title translation failed", error);
+      } finally {
+        titleTranslationInFlight = false;
+        if (smartSearchSession$()?.sessionId === sessionId)
+          setSmartSearchTranslatingTitles(false);
+        if (titleTranslationQueued) {
+          titleTranslationQueued = false;
+          void requestTitleTranslations();
+        }
+      }
+    };
+
+    const queueTitleTranslations = () => {
+      if (titleTranslationInFlight) {
+        titleTranslationQueued = true;
+        return;
+      }
+      void requestTitleTranslations();
+    };
 
     for (let attempt = 0; attempt < SMART_SEARCH_POLL_ATTEMPTS; attempt++) {
       if (attempt > 0)
@@ -221,6 +272,8 @@ const SearchPage: Component = () => {
           if (reconciled !== smartSearchSession$())
             setSmartSearchSession(reconciled);
         }
+        if (hasSmartSearchResults(refreshed))
+          queueTitleTranslations();
       } catch (error) {
         lastError = error;
       }
@@ -229,18 +282,9 @@ const SearchPage: Component = () => {
     if (smartSearchSession$()?.sessionId !== sessionId)
       return;
 
-    if (latestSession && hasSmartSearchResults(latestSession)) {
-      try {
-        const translated = await SmartSearchBackend.translateTitles(sessionId, translatorCommand$());
-        if (smartSearchSession$()?.sessionId === sessionId) {
-          const reconciled = reconcileSmartSearchSession(smartSearchSession$(), translated);
-          if (reconciled !== smartSearchSession$())
-            setSmartSearchSession(reconciled);
-        }
-      } catch (error) {
-        console.warn("Smart Search title translation failed", error);
-      }
-    } else if (lastError && smartSearchSession$()?.sessionId === sessionId) {
+    if (latestSession && hasSmartSearchResults(latestSession))
+      queueTitleTranslations();
+    else if (lastError && smartSearchSession$()?.sessionId === sessionId) {
       setSmartSearchSession({
         sessionId,
         error: lastError instanceof Error ? lastError.message : "Smart Search results could not be refreshed.",
@@ -417,7 +461,7 @@ const SearchPage: Component = () => {
           <Show when={searchPager.state == 'ready'}>
             <ScrollContainer ref={scrollContainerRef}>
               <Show when={smartSearchVisible$()} fallback={<ContentGrid pager={searchPager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />}>
-                <SmartSearchResults loading={smartSearchLoading$()} session={smartSearchSession$()} />
+                <SmartSearchResults loading={smartSearchLoading$()} translatingTitles={smartSearchTranslatingTitles$()} session={smartSearchSession$()} />
               </Show>
             </ScrollContainer>
           </Show>

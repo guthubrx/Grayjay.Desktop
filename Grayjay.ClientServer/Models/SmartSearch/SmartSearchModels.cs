@@ -45,4 +45,5 @@ public class SmartSearchTitleRequest
     public required string SessionId { get; set; }
     public required string TranslatorCommand { get; set; }
     public string TargetLanguage { get; set; } = "fr";
+    public List<string>? Keys { get; set; }
 }

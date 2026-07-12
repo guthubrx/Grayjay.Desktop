@@ -11,6 +11,7 @@ namespace Grayjay.ClientServer.States;
 public static class StateSmartSearch
 {
     private const int MaxLanguages = 4;
+    private const int MaxTitleTranslationsPerRequest = 6;
     private static readonly HashSet<string> SupportedLanguages = ["ja", "zh-Hans", "ar", "ru", "uk", "vi", "he", "en"];
     private static readonly object Lock = new();
     private static readonly Dictionary<string, ActiveSession> Sessions = [];
@@ -115,7 +116,14 @@ public static class StateSmartSearch
     public static async Task<SmartSearchSession> TranslateTitles(SmartSearchTitleRequest request, CancellationToken cancellationToken)
     {
         var snapshot = Snapshot(request.SessionId);
-        var unique = snapshot.Variants.SelectMany(x => x.Results).GroupBy(x => x.Key).Select(x => x.First()).Take(24).ToList();
+        var requestedKeys = request.Keys?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var unique = snapshot.Variants
+            .SelectMany(x => x.Results)
+            .GroupBy(x => x.Key)
+            .Select(x => x.First())
+            .Where(item => requestedKeys == null || requestedKeys.Contains(item.Key))
+            .Take(MaxTitleTranslationsPerRequest)
+            .ToList();
         if (unique.Count == 0)
             return snapshot;
         var cached = unique

@@ -7,6 +7,7 @@ const [translatorCommand$, setTranslatorCommandSignal] = createSignal("");
 const [smartSearchSession$, setSmartSearchSessionSignal] = createSignal<ISmartSearchSession>();
 const [smartSearchQuery$, setSmartSearchQuerySignal] = createSignal<string>();
 const [smartSearchLoading$, setSmartSearchLoadingSignal] = createSignal(false);
+const [smartSearchTranslatingTitles$, setSmartSearchTranslatingTitlesSignal] = createSignal(false);
 const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
 
 (async () => {
@@ -20,7 +21,7 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
     }
 })();
 
-export { smartSearchLoading$, smartSearchQuery$, smartSearchSession$, smartSearchVisible$, translatorCommand$ };
+export { smartSearchLoading$, smartSearchQuery$, smartSearchSession$, smartSearchTranslatingTitles$, smartSearchVisible$, translatorCommand$ };
 
 export function hasTranslatorCommand() {
     return translatorCommand$().trim().length > 0;
@@ -36,6 +37,7 @@ export function beginSmartSearch(query: string) {
     setSmartSearchQuerySignal(query);
     setSmartSearchSessionSignal(undefined);
     setSmartSearchLoadingSignal(true);
+    setSmartSearchTranslatingTitlesSignal(false);
     setSmartSearchVisibleSignal(true);
 }
 
@@ -43,6 +45,7 @@ export function clearSmartSearch() {
     setSmartSearchQuerySignal(undefined);
     setSmartSearchSessionSignal(undefined);
     setSmartSearchLoadingSignal(false);
+    setSmartSearchTranslatingTitlesSignal(false);
     setSmartSearchVisibleSignal(false);
 }
 
@@ -56,6 +59,10 @@ export function isSmartSearchForQuery(query: string | undefined) {
 
 export function setSmartSearchLoading(loading: boolean) {
     setSmartSearchLoadingSignal(loading);
+}
+
+export function setSmartSearchTranslatingTitles(translating: boolean) {
+    setSmartSearchTranslatingTitlesSignal(translating);
 }
 
 export function setSmartSearchSession(session: ISmartSearchSession) {
