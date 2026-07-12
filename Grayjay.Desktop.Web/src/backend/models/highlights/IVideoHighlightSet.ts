@@ -8,6 +8,7 @@ export interface IVideoHighlightSet {
     schemaVersion: number;
     videoUrl: string;
     source?: string;
+    transcriptLanguage?: string;
     createdAt: string;
     updatedAt: string;
     globalSummary?: string;

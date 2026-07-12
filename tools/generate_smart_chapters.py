@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import unicodedata
 import time
 import urllib.error
 import urllib.parse
@@ -41,6 +42,41 @@ DEFAULT_ROUTR_PROMPT_VERSION = "smart-chapters-v1"
 DEFAULT_ROUTR_CALLER_ID = "bluejay-smart-chapters-precompute"
 DEFAULT_PROMOTION_CATEGORIES = "sponsor,selfpromo,interaction"
 SPONSORBLOCK_API_BASE = "https://sponsor.ajay.app"
+
+LANGUAGE_ALIASES = {
+    "arabic": "ar", "arabe": "ar", "ar": "ar",
+    "bengali": "bn", "bengali language": "bn", "bn": "bn",
+    "chinese": "zh-Hans", "chinese simplified": "zh-Hans", "simplified chinese": "zh-Hans", "zh hans": "zh-Hans",
+    "chinese traditional": "zh-Hant", "traditional chinese": "zh-Hant", "zh hant": "zh-Hant",
+    "czech": "cs", "tcheque": "cs", "cs": "cs",
+    "danish": "da", "danois": "da", "da": "da",
+    "dutch": "nl", "neerlandais": "nl", "nl": "nl",
+    "english": "en", "anglais": "en", "en": "en",
+    "finnish": "fi", "finnois": "fi", "fi": "fi",
+    "french": "fr", "francais": "fr", "fr": "fr",
+    "german": "de", "allemand": "de", "de": "de",
+    "greek": "el", "grec": "el", "el": "el",
+    "hebrew": "he", "hebreu": "he", "he": "he",
+    "hindi": "hi", "hi": "hi",
+    "hungarian": "hu", "hongrois": "hu", "hu": "hu",
+    "indonesian": "id", "indonesien": "id", "id": "id",
+    "italian": "it", "italien": "it", "it": "it",
+    "japanese": "ja", "japonais": "ja", "ja": "ja",
+    "korean": "ko", "coreen": "ko", "ko": "ko",
+    "malay": "ms", "malais": "ms", "ms": "ms",
+    "norwegian": "nb", "norvegien": "nb", "nb": "nb",
+    "persian": "fa", "farsi": "fa", "persan": "fa", "fa": "fa",
+    "polish": "pl", "polonais": "pl", "pl": "pl",
+    "portuguese": "pt", "portugais": "pt", "pt": "pt",
+    "romanian": "ro", "roumain": "ro", "ro": "ro",
+    "russian": "ru", "russe": "ru", "ru": "ru",
+    "spanish": "es", "espagnol": "es", "es": "es",
+    "swedish": "sv", "suedois": "sv", "sv": "sv",
+    "thai": "th", "th": "th",
+    "turkish": "tr", "turc": "tr", "tr": "tr",
+    "ukrainian": "uk", "ukrainien": "uk", "uk": "uk",
+    "vietnamese": "vi", "vietnamien": "vi", "vi": "vi",
+}
 
 
 @dataclass
@@ -168,6 +204,7 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--language", default="fr", help="Preferred transcript/Whisper language.")
     generation.add_argument("--output-language", default=None, help="Force the language of generated titles/summaries (e.g. French, English). Defaults to the video's own language.")
     generation.add_argument("--translate-subtitles", action="store_true", help="Generate timed translated subtitles in --output-language when it is set.")
+    generation.add_argument("--translate-subtitles-from", default="", help="Comma-separated transcript language codes eligible for subtitle translation. Empty keeps explicit --translate-subtitles backward-compatible for every language.")
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
     generation.add_argument("--no-sponsorblock", action="store_true", help="Do not fetch SponsorBlock promotion segments.")
@@ -1209,6 +1246,78 @@ def transcript_hash(cues: list[TranscriptCue]) -> str:
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
+def normalize_language_code(value: Any) -> str:
+    if not isinstance(value, str):
+        return "und"
+    trimmed = value.strip()
+    if not trimmed:
+        return "und"
+
+    lowered = trimmed.replace("_", "-").lower()
+    if lowered == "und":
+        return "und"
+    if lowered == "zh-hans":
+        return "zh-Hans"
+    if lowered == "zh-hant":
+        return "zh-Hant"
+    if re.fullmatch(r"[a-z]{2,3}(?:-[a-z]{2,4})?", lowered):
+        return lowered.split("-", 1)[0]
+
+    normalized = unicodedata.normalize("NFKD", lowered)
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = re.sub(r"\([^)]*\)", "", normalized)
+    normalized = re.sub(r"[^a-z]+", " ", normalized).strip()
+    return LANGUAGE_ALIASES.get(normalized, "und")
+
+
+def infer_transcript_language(cues: list[TranscriptCue], model_language: Any) -> str:
+    detected = normalize_language_code(model_language)
+    if detected != "und":
+        return detected
+
+    sample = " ".join(cue.text for cue in cues[:120])
+    if re.search(r"[\u3040-\u30ff]", sample):
+        return "ja"
+    if re.search(r"[\uac00-\ud7af]", sample):
+        return "ko"
+    if re.search(r"[\u0600-\u06ff]", sample):
+        return "ar"
+    if re.search(r"[\u0590-\u05ff]", sample):
+        return "he"
+    if re.search(r"[\u0e00-\u0e7f]", sample):
+        return "th"
+    if re.search(r"[\u0980-\u09ff]", sample):
+        return "bn"
+    if re.search(r"[\u0900-\u097f]", sample):
+        return "hi"
+    if re.search(r"[\u0370-\u03ff]", sample):
+        return "el"
+    if re.search(r"[\u4e00-\u9fff]", sample):
+        return "zh-Hans"
+    return "und"
+
+
+def requested_translation_languages(args: argparse.Namespace) -> set[str]:
+    return {
+        language
+        for value in str(args.translate_subtitles_from or "").split(",")
+        if (language := normalize_language_code(value)) != "und"
+    }
+
+
+def should_translate_subtitles(source_language: str, output_language: str | None, args: argparse.Namespace) -> bool:
+    if not args.translate_subtitles or not output_language:
+        return False
+
+    source = normalize_language_code(source_language)
+    target = normalize_language_code(output_language)
+    if source == "und" or target == "und" or source == target:
+        return False
+
+    requested = requested_translation_languages(args)
+    return not requested or source in requested
+
+
 def validate_translated_cues(raw: Any, source_cues: list[TranscriptCue]) -> list[TranscriptCue]:
     if not isinstance(raw, list) or len(raw) != len(source_cues):
         raise RuntimeError("Translated subtitle response does not match the source cue count.")
@@ -1273,9 +1382,10 @@ def existing_translated_subtitles(task: VideoTask, cues: list[TranscriptCue], la
     }
 
 
-def translated_subtitles(task: VideoTask, cues: list[TranscriptCue], args: argparse.Namespace) -> dict[str, Any] | None:
+def translated_subtitles(task: VideoTask, cues: list[TranscriptCue], source_language: str, args: argparse.Namespace) -> dict[str, Any] | None:
     language = (args.output_language or "").strip()
-    if not language or not (args.translate_subtitles or args.output_language):
+    if not should_translate_subtitles(source_language, language, args):
+        log(f"  translated subtitles: skipped (source={source_language}, policy={args.translate_subtitles_from or 'all'})")
         return None
     cached = existing_translated_subtitles(task, cues, language, args)
     if cached:
@@ -1306,6 +1416,7 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
 
     Return only valid JSON with this exact shape:
     {{
+      "transcriptLanguage": "BCP-47 language code for the predominant transcript language, for example ja, en, fr, zh-Hans, or und when unknown.",
       "globalSummary": "3 to 5 sentences covering the whole video: topic, approach, conclusion.",
       "theses": [
         {{
@@ -1321,6 +1432,7 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
     - Each item is a complete sentence stating an argument, or clearly naming a distinct topic covered.
     - globalSummary is in {args.output_language or "the video's main language"}.
     - theses are in {args.output_language or "the video's main language"}.
+    - transcriptLanguage identifies the language spoken in the transcript, not the language requested for the summary.
     - Be precise: prefer "X causes Y because Z" or "the guest explains how they run board meetings" over vague labels.
 
     Video title: {task.title or "(unknown)"}
@@ -1350,18 +1462,26 @@ def validate_analysis(data: dict[str, Any]) -> dict[str, Any]:
         theses.append({"id": int(thesis_id) if thesis_id is not None else len(theses) + 1, "statement": statement})
     if not theses:
         raise RuntimeError("No valid theses in analysis JSON.")
-    return {"globalSummary": global_summary[:2000], "theses": theses}
+    return {
+        "globalSummary": global_summary[:2000],
+        "theses": theses,
+        "transcriptLanguage": data.get("transcriptLanguage"),
+    }
 
 
 def run_analysis(task: VideoTask, cues: list[TranscriptCue], args: argparse.Namespace) -> dict[str, Any]:
     cached = load_cached_analysis(task, args)
     if cached:
-        log(f"  analysis: cached ({len(cached['theses'])} thesis/theses)")
-        return cached
+        if "transcriptLanguage" in cached:
+            cached["transcriptLanguage"] = normalize_language_code(cached.get("transcriptLanguage"))
+            log(f"  analysis: cached ({len(cached['theses'])} thesis/theses, {cached['transcriptLanguage']})")
+            return cached
+        log("  analysis: cached result has no transcript language, refreshing once")
     log(f"  analysis pass 1/{args.provider}: extracting theses + global summary")
     prompt = build_analysis_prompt(task, cues, args)
     raw = call_model(prompt, args)
     analysis = validate_analysis(raw)
+    analysis["transcriptLanguage"] = infer_transcript_language(cues, analysis.get("transcriptLanguage"))
     log(f"  analysis: {len(analysis['theses'])} thesis/theses extracted")
     save_cached_analysis(task, analysis, args)
     return analysis
@@ -1790,9 +1910,10 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
     existing = load_json(path) if path.exists() else None
     created_at = existing.get("createdAt") if isinstance(existing, dict) and existing.get("createdAt") else now
     payload: dict[str, Any] = {
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "videoUrl": task.url,
         "source": f"smart-chapters-generator+{args.provider}-{args.model}",
+        "transcriptLanguage": analysis.get("transcriptLanguage") or "und",
         "createdAt": created_at,
         "updatedAt": now,
         "globalSummary": analysis.get("globalSummary"),
@@ -1803,6 +1924,8 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
         payload["promotionSegments"] = promotion_segments
     if translated:
         payload["translatedSubtitles"] = translated
+    elif isinstance(existing, dict) and isinstance(existing.get("translatedSubtitles"), dict):
+        payload["translatedSubtitles"] = existing["translatedSubtitles"]
     if task.video:
         payload["video"] = task.video
 
@@ -1942,7 +2065,7 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
 
         analysis = run_analysis(task, llm_cues, args)
         try:
-            translated = translated_subtitles(task, cues, args)
+            translated = translated_subtitles(task, cues, str(analysis.get("transcriptLanguage") or "und"), args)
         except Exception as exc:
             # La traduction enrichit la lecture, mais ne doit jamais bloquer
             # l'analyse ou l'ecriture des Smart Chapters.
@@ -1973,6 +2096,7 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
                 "videoUrl": task.url,
                 "globalSummary": analysis.get("globalSummary"),
                 "theses": analysis.get("theses"),
+                "transcriptLanguage": analysis.get("transcriptLanguage"),
                 "segments": segments,
                 "promotionSegments": promotion_segments,
                 "translatedSubtitles": translated,
