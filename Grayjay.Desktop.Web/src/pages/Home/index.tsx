@@ -89,6 +89,9 @@ interface SmartTvEntry {
     creatorKey?: string;
     sourceGroup?: string;
     subjectText?: string;
+    profileTopics?: string[];
+    profileRelatedTopics?: string[];
+    profileAngleLabels?: string[];
     angleSignal?: boolean;
     transition?: SmartTvTransition;
 }
@@ -698,7 +701,10 @@ const HomePage: Component = () => {
                         creatorKey: smartTvCreatorKey(video),
                         sourceGroup: source.sourceGroup,
                         subjectText,
-                        angleSignal: hasSmartTvAngleSignal(subjectText),
+                        profileTopics: set.mixProfile?.topics,
+                        profileRelatedTopics: set.mixProfile?.relatedTopics,
+                        profileAngleLabels: set.mixProfile?.angleLabels,
+                        angleSignal: hasSmartTvAngleSignal([subjectText, ...(set.mixProfile?.angleLabels ?? [])].join(' ')),
                     }];
                 });
             } catch (e) {

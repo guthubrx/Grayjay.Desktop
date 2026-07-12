@@ -10,6 +10,9 @@ export interface SmartTvCandidate {
     sourceGroup?: string;
     publishedAt?: string;
     subjectText?: string;
+    profileTopics?: string[];
+    profileRelatedTopics?: string[];
+    profileAngleLabels?: string[];
     angleSignal?: boolean;
 }
 
@@ -73,6 +76,28 @@ function subjectSimilarity(first?: string, second?: string): number {
     return intersection / (firstTokens.size + secondTokens.size - intersection);
 }
 
+function profileLabels(candidate: SmartTvCandidate): Set<string> {
+    return new Set([
+        ...(candidate.profileTopics ?? []),
+        ...(candidate.profileRelatedTopics ?? []),
+        ...(candidate.profileAngleLabels ?? []),
+    ].map(label => label.trim().toLowerCase()).filter(Boolean));
+}
+
+function semanticSimilarity(first: SmartTvCandidate, second: SmartTvCandidate): number {
+    const firstLabels = profileLabels(first);
+    const secondLabels = profileLabels(second);
+    if (firstLabels.size > 0 && secondLabels.size > 0) {
+        let intersection = 0;
+        for (const label of firstLabels) {
+            if (secondLabels.has(label)) intersection++;
+        }
+        if (intersection > 0)
+            return intersection / (firstLabels.size + secondLabels.size - intersection);
+    }
+    return subjectSimilarity(first.subjectText, second.subjectText);
+}
+
 function publishedMillis(candidate: SmartTvCandidate): number {
     const timestamp = candidate.publishedAt ? Date.parse(candidate.publishedAt) : Number.NaN;
     return Number.isFinite(timestamp) ? timestamp : 0;
@@ -85,7 +110,7 @@ function freshnessBonus(candidate: SmartTvCandidate, oldestPublication: number, 
 }
 
 function transitionFor(previous: SmartTvCandidate, candidate: SmartTvCandidate, mix: SmartTvEditorialMix): SmartTvTransition {
-    const similarity = subjectSimilarity(previous.subjectText, candidate.subjectText);
+    const similarity = semanticSimilarity(previous, candidate);
     const differentCreator = Boolean(candidate.creatorKey && previous.creatorKey && candidate.creatorKey !== previous.creatorKey);
 
     let kind: SmartTvTransitionKind;
@@ -158,7 +183,7 @@ function candidateRank(
     const repeatedGroupCount = candidate.sourceGroup
         ? selected.filter(item => item.candidate.sourceGroup === candidate.sourceGroup).length
         : 0;
-    const sameTopicCount = selected.filter(item => subjectSimilarity(item.candidate.subjectText, candidate.subjectText) >= SAME_TOPIC_THRESHOLD).length;
+    const sameTopicCount = selected.filter(item => semanticSimilarity(item.candidate, candidate) >= SAME_TOPIC_THRESHOLD).length;
     const repeatedTransitionCount = selected.slice(-2).filter(item => item.transition?.kind === transition.kind).length;
     const topicalPenalty = sameTopicCount > 1 ? (sameTopicCount - 1) * 0.045 : 0;
     const groupPenalty = repeatedGroupCount * settings.creatorVarietyPenalty * 0.35;

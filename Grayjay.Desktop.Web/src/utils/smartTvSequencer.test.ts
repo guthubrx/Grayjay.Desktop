@@ -72,6 +72,17 @@ test('labels a related candidate as same topic when it deepens the anchor', () =
     assert.equal(result[1]?.transition?.kind, 'same-topic');
 });
 
+test('uses matching canonical profile labels when chapter text differs', () => {
+    const result = sequenceSmartTvCandidates([
+        candidate({ chapterKey: 'anchor:0-180', score: 0.96, subjectText: 'analyse francaise des outils', profileTopics: ['ai agents'] }),
+        candidate({ chapterKey: 'profile-match:0-180', score: 0.91, creatorKey: 'creator-b', subjectText: 'japanese product release', profileTopics: ['ai agents'] }),
+        candidate({ chapterKey: 'unrelated:0-180', score: 0.9, creatorKey: 'creator-c', subjectText: 'agriculture water policy', profileTopics: ['agriculture policy'] }),
+    ], new Set(), settings);
+
+    assert.equal(result[1]?.candidate.chapterKey, 'profile-match:0-180');
+    assert.equal(result[1]?.transition?.kind, 'same-topic');
+});
+
 test('prefers a related new creator in the explore profile', () => {
     const result = sequenceSmartTvCandidates([
         candidate({ chapterKey: 'anchor:0-180', score: 0.96, creatorKey: 'creator-a', subjectText: 'artificial intelligence agents workflow' }),
