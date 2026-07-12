@@ -26,6 +26,8 @@ def args_for(root: Path, **overrides):
         "transcript_cache_dir": None,
         "cached_transcript_only": True,
         "subtitle_file": None,
+        "output_language": None,
+        "discovery_languages": "en,fr,ja",
     }
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -78,17 +80,56 @@ class AnalysisOnlyTests(unittest.TestCase):
                 "globalSummary": "Updated summary",
                 "theses": [{"id": 1, "statement": "Updated thesis"}],
                 "mixProfile": {"topics": ["ai agents"], "relatedTopics": [], "angleLabels": []},
+                "discoveryProfile": {
+                    "version": 1,
+                    "axes": [
+                        {"id": axis, "label": axis, "queries": {"en": f"{axis} query"}}
+                        for axis in GENERATOR.DISCOVERY_AXIS_IDS
+                    ],
+                },
             }
 
             GENERATOR.update_highlights_analysis(task, analysis, args_for(root))
             updated = json.loads(highlight_path.read_text(encoding="utf-8"))
 
-            self.assertEqual(updated["schemaVersion"], 6)
+            self.assertEqual(updated["schemaVersion"], 7)
             self.assertEqual(updated["globalSummary"], "Updated summary")
             self.assertEqual(updated["mixProfile"], analysis["mixProfile"])
+            self.assertEqual(updated["discoveryProfile"], analysis["discoveryProfile"])
             self.assertEqual(updated["segments"], existing["segments"])
             self.assertEqual(updated["promotionSegments"], existing["promotionSegments"])
             self.assertEqual(updated["translatedSubtitles"], existing["translatedSubtitles"])
+
+    def test_discovery_profile_requires_all_axes_and_requested_queries(self):
+        args = args_for(Path(tempfile.gettempdir()), discovery_languages="fr,ja")
+        valid = {
+            "version": 1,
+            "axes": [
+                {"id": axis, "label": axis, "queries": {"en": f"{axis} english", "fr": f"{axis} francais", "ja": f"{axis} japanese"}}
+                for axis in GENERATOR.DISCOVERY_AXIS_IDS
+            ],
+        }
+        self.assertEqual(GENERATOR.validate_discovery_profile(valid, args), valid)
+
+        invalid = {**valid, "axes": valid["axes"][:-1]}
+        self.assertIsNone(GENERATOR.validate_discovery_profile(invalid, args))
+
+    def test_analysis_cache_path_changes_when_discovery_languages_change(self):
+        root = Path(tempfile.gettempdir())
+        first = GENERATOR.analysis_cache_path("https://www.youtube.com/watch?v=cache", args_for(root, discovery_languages="en,fr"))
+        second = GENERATOR.analysis_cache_path("https://www.youtube.com/watch?v=cache", args_for(root, discovery_languages="en,ja"))
+        self.assertNotEqual(first, second)
+
+    def test_analysis_omits_an_invalid_discovery_profile(self):
+        args = args_for(Path(tempfile.gettempdir()), discovery_languages="en")
+        analysis = {
+            "globalSummary": "A summary",
+            "theses": [{"id": 1, "statement": "A thesis"}],
+            "mixProfile": {"topics": ["ai agents"], "relatedTopics": [], "angleLabels": []},
+        }
+
+        parsed = GENERATOR.validate_analysis(analysis, args)
+        self.assertNotIn("discoveryProfile", parsed)
 
 
 if __name__ == "__main__":
