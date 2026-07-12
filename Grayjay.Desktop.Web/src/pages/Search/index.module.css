@@ -118,3 +118,49 @@
     font-weight: 600;
     line-height: 1;
 }
+
+.smartSearchSection {
+    margin: 48px 30px 0;
+}
+
+.smartSearchHeading {
+    color: #f6c844;
+    font-size: 16px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.smartSearchQuery {
+    color: #b0b0b0;
+    font-size: 14px;
+    margin-top: 6px;
+}
+
+.smartSearchGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 20px;
+}
+
+.smartSearchCard {
+    min-width: 0;
+}
+
+.smartSearchTranslation {
+    color: #d4d4d4;
+    font-size: 14px;
+    line-height: 1.35;
+    margin-top: 6px;
+}
+
+.smartSearchLanguages {
+    color: #8f8f8f;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.smartSearchError {
+    color: #f28b82;
+    font-size: 14px;
+    margin: 16px 30px;
+}

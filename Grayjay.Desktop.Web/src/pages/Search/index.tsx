@@ -23,6 +23,11 @@ import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from "../../focusable"; void focusable;
 import { createResourceDefault } from '../../utility';
 import { IPlatformContent } from '../../backend/models/content/IPlatformContent';
+import { SmartSearchBackend, ISmartSearchSession } from '../../backend/SmartSearchBackend';
+import { hasTranslatorCommand, setTranslatorCommand, translatorCommand$ } from '../../state/StateSmartSearch';
+import UIOverlay from '../../state/UIOverlay';
+import VideoThumbnailView from '../../components/content/VideoThumbnailView';
+import { useVideo } from '../../contexts/VideoProvider';
 
 type SortEntry = { field: string; dir: 'asc' | 'desc' };
 
@@ -51,6 +56,7 @@ const BASE_COMPARATORS: Record<string, (a: IPlatformContent, b: IPlatformContent
 
 const SearchPage: Component = () => {
   const navigate = useNavigate();
+  const video = useVideo();
   const [params] = useSearchParams();
   const [filtersDialogVisible$, setFiltersDialogVisible] = createSignal(false);
   const [query$, setQuery] = createSignal(params.q);
@@ -59,6 +65,9 @@ const SearchPage: Component = () => {
   const [sortBy$, setSortBy] = createSignal(params.sortBy);
   const [clientSort$, setClientSort] = createSignal<SortEntry[]>([]);
   const [enabledSources$, setEnabledSources] = createSignal<string[]>(params.clientIds ? JSON.parse(params.clientIds) : (StateGlobal.sourceStates$() ?? []).map(v => v.config.id));
+  const [smartSession$, setSmartSession] = createSignal<ISmartSearchSession>();
+  const [smartLoading$, setSmartLoading] = createSignal(false);
+  const [smartLanguages$, setSmartLanguages] = createSignal(["ja", "zh-Hans", "ar", "ru"]);
   const disabledSources$ = createMemo<string[]>(()=>((StateGlobal.sourceStates$() ?? []).filter(x=>enabledSources$().indexOf(x.config.id) < 0).map(v => v.config.id)));
   let filtersChanged = false;
 
@@ -90,6 +99,54 @@ const SearchPage: Component = () => {
     console.log("navigating to", newNavigationUri);
     navigate(newNavigationUri);
     searchPagerActions.refetch();
+    setSmartSession(undefined);
+  };
+
+  const startSmartSearch = async () => {
+    const query = query$();
+    if (!query || smartLoading$()) return;
+    if (!hasTranslatorCommand()) {
+      UIOverlay.overlayTextPrompt(
+        "Configure Smart Search translator",
+        "Absolute path to a local executable. It receives JSON on standard input and keeps Routr credentials outside BlueJay.",
+        "/Users/moi/Nextcloud/10.Scripts/grayjay/smart-search.sh",
+        "Save and search",
+        async (command) => {
+          await setTranslatorCommand(command);
+          void startSmartSearch();
+        }
+      );
+      return;
+    }
+    setSmartLoading(true);
+    const sessionId = "smart-" + Date.now().toString(36);
+    try {
+      const session = await SmartSearchBackend.load({
+        sessionId,
+        query,
+        languages: smartLanguages$(),
+        translatorCommand: translatorCommand$(),
+        type: untrack(searchType$),
+        order: untrack(sortBy$),
+        filters: untrack(filterValues$),
+        excludePlugins: untrack(disabledSources$)
+      });
+      setSmartSession(session);
+      window.setTimeout(async () => {
+        try {
+          const refreshed = await SmartSearchBackend.get(sessionId);
+          if (smartSession$()?.sessionId === sessionId) {
+            const translated = await SmartSearchBackend.translateTitles(sessionId, translatorCommand$());
+            if (smartSession$()?.sessionId === sessionId) setSmartSession(translated.variants.some(x => x.results.length) ? translated : refreshed);
+          }
+        } finally {
+          if (smartSession$()?.sessionId === sessionId) setSmartLoading(false);
+        }
+      }, 900);
+    } catch (error) {
+      setSmartSession({ sessionId, error: error instanceof Error ? error.message : "Smart Search failed.", variants: [] });
+      setSmartLoading(false);
+    }
   };
 
   let filtersScrollContainerRef: HTMLDivElement | undefined;
@@ -237,11 +294,31 @@ const SearchPage: Component = () => {
               <CustomButton text='Filters' icon={iconFilters} border='1px solid #2E2E2E' style={{"height": "44px" }} onClick={() => setFiltersDialogVisible(true)} focusableOpts={{
                 onPress: () => setFiltersDialogVisible(true)
               }} />
+              <CustomButton text={smartLoading$() ? 'Smart Search…' : 'Smart Search'} border='1px solid #796126' style={{"height": "44px" }} onClick={startSmartSearch} />
             </Show>
           </div>
           <Show when={searchPager.state == 'ready'}>
             <ScrollContainer ref={scrollContainerRef}>
               <ContentGrid pager={searchPager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />
+              <Show when={smartSession$()?.error}>
+                <div class={styles.smartSearchError}>{smartSession$()!.error}</div>
+              </Show>
+              <For each={smartSession$()?.variants}>{(variant) => (
+                <div class={styles.smartSearchSection}>
+                  <div class={styles.smartSearchHeading}>{variant.language}</div>
+                  <div class={styles.smartSearchQuery}>{variant.query}</div>
+                  <Show when={variant.error}><div class={styles.smartSearchError}>{variant.error}</div></Show>
+                  <div class={styles.smartSearchGrid}>
+                    <For each={variant.results}>{(result) => (
+                      <div class={styles.smartSearchCard}>
+                        <VideoThumbnailView video={result.content} onClick={() => video?.actions.openVideo(result.content)} />
+                        <Show when={result.translatedTitle}><div class={styles.smartSearchTranslation}>{result.translatedTitle}</div></Show>
+                        <div class={styles.smartSearchLanguages}>{result.languages.join(" · ")}</div>
+                      </div>
+                    )}</For>
+                  </div>
+                </div>
+              )}</For>
             </ScrollContainer>
           </Show>
       </div>
