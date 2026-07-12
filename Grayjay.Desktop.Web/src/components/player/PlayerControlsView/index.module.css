@@ -528,6 +528,16 @@
     padding: 0 8px;
 }
 
+.smartChapterFilterPending {
+    min-width: 78px;
+    cursor: progress;
+}
+
+.smartChapterFilterFailed {
+    min-width: 62px;
+    cursor: default;
+}
+
 .smartChapterNavButton:hover:not(:disabled),
 .smartChapterFilterButton:hover {
     background: rgba(255, 255, 255, 0.16);
@@ -538,6 +548,10 @@
     opacity: 0.34;
 }
 
+.smartChapterFilterButton:disabled {
+    opacity: 1;
+}
+
 .smartChapterFilterMark {
     flex-shrink: 0;
     width: 9px;
@@ -545,6 +559,22 @@
     border-radius: 2px;
     transform: rotate(45deg);
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.smartChapterFilterMarkPending {
+    animation: smartChapterAnalysisPulse 1.3s ease-in-out infinite;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 9px rgba(244, 184, 63, 0.72);
+}
+
+.smartChapterFilterMarkFailed {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 7px rgba(228, 91, 91, 0.48);
+}
+
+@keyframes smartChapterAnalysisPulse {
+    50% {
+        opacity: 0.42;
+        transform: rotate(45deg) scale(1.22);
+    }
 }
 
 /* Barre verticale d'une ligne : pleine hauteur, collée au bord gauche, pour que

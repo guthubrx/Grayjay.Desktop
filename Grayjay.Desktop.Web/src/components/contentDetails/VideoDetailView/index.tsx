@@ -371,6 +371,20 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }
         return undefined;
     });
+    const currentSmartChapterJob$ = createMemo(() => {
+        const jobs = videoHighlightUrls$()
+            .map(url => jobFor(url))
+            .filter((job): job is NonNullable<typeof job> => !!job && job.status !== "skipped");
+        return jobs.find(job => job.status === "queued" || job.status === "running" || job.status === "error") ?? jobs[0];
+    });
+    const smartChapterJobLabel$ = createMemo(() => {
+        const status = currentSmartChapterJob$()?.status;
+        if (status === "queued") return "Queued";
+        if (status === "running") return "Analyzing";
+        if (status === "done") return "Ready";
+        if (status === "error") return "Failed";
+        return undefined;
+    });
     const videoInterest$ = createMemo(() => interestFromSet(videoHighlights$(), videoLoaded$() ?? currentVideo$()));
     // Reload highlights when the indexer has generated new data.
     StateWebsocket.registerHandlerNew("HighlightsChanged", () => {
@@ -2193,6 +2207,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                             minimized={isMinimized()}
                             chapters={((!isMinimized()) ? videoChapters$() : undefined) ?? undefined}
                             smartChapterHighlights={videoHighlights$()}
+                            smartChapterIndexStatus={currentSmartChapterJob$()?.status}
+                            smartChapterIndexError={currentSmartChapterJob$()?.error}
                             translatedSubtitleEnabled={translatedSubtitleEnabled$()}
                             eventMoved={eventMoved}
                             eventRestart={eventRestart}
@@ -2623,11 +2639,20 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 </div>
                             </div>
 
-                            <Show when={videoHighlights$()?.globalSummary || videoInterest$() || (videoHighlights$()?.theses?.length ?? 0) > 0}>
+                            <Show when={videoHighlights$()?.globalSummary || videoInterest$() || (videoHighlights$()?.theses?.length ?? 0) > 0 || smartChapterJobLabel$()}>
                                 <div class={styles.smartAnalysis}>
                                     <div class={styles.smartAnalysisHeader}>
                                         <img src={iconHighlights} class={styles.smartAnalysisIcon} alt="" />
                                         <span>Smart Analysis</span>
+                                        <Show when={smartChapterJobLabel$()}>
+                                            <span
+                                                classList={{
+                                                    [styles.smartAnalysisStatus]: true,
+                                                    [styles.smartAnalysisStatusPending]: currentSmartChapterJob$()?.status === "queued" || currentSmartChapterJob$()?.status === "running",
+                                                    [styles.smartAnalysisStatusFailed]: currentSmartChapterJob$()?.status === "error"
+                                                }}
+                                            >{smartChapterJobLabel$()}</span>
+                                        </Show>
                                     </div>
                                     <Show when={videoInterest$()}>
                                         {(interest) => (
