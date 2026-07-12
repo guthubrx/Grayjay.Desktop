@@ -4,7 +4,16 @@ import type { IVideoHighlightMixProfile } from "../backend/models/highlights/IVi
 
 function firstUsefulLine(value?: string): string | undefined {
     const line = value?.split(/\r?\n/).map(part => part.trim()).find(Boolean);
-    return line ? line.slice(0, 180) : undefined;
+    if (!line) return undefined;
+    if (line.length <= 180) return line;
+
+    const shortened = line.slice(0, 180);
+    const clauseBreak = Math.max(shortened.lastIndexOf(','), shortened.lastIndexOf(';'), shortened.lastIndexOf(':'));
+    if (clauseBreak >= 60)
+        return shortened.slice(0, clauseBreak).trim();
+
+    const wordBreak = shortened.lastIndexOf(' ');
+    return shortened.slice(0, wordBreak > 0 ? wordBreak : shortened.length).trim();
 }
 
 function normalizedUrl(url?: string): string | undefined {
