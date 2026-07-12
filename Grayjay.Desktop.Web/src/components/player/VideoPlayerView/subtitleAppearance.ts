@@ -8,7 +8,7 @@ export interface SubtitleAppearance {
     windowPadding: string;
 }
 
-const textSizes = ["18px", "24px", "30px", "36px"];
+const textSizes = ["16px", "18px", "20px", "22px", "24px", "26px", "28px", "30px", "32px", "34px", "36px", "38px", "40px"];
 const fontFamilies = [
     "InterVariable, sans-serif",
     "Georgia, serif",
@@ -34,7 +34,7 @@ export function subtitleAppearance(playback: any): SubtitleAppearance {
     const windowBackground = valueAt(windowBackgrounds, settings?.captionWindow, windowBackgrounds[0]);
 
     return {
-        fontSize: valueAt(textSizes, settings?.textSize, textSizes[1]),
+        fontSize: valueAt(textSizes, settings?.textSize, textSizes[4]),
         fontFamily: valueAt(fontFamilies, settings?.font, fontFamilies[0]),
         textColor: valueAt(textColors, settings?.textColor, textColors[0]),
         textShadow,

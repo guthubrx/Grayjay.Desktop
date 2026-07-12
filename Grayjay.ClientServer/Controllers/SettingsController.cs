@@ -38,7 +38,11 @@ namespace Grayjay.ClientServer.Controllers
 
         //Global settingsS
         public SettingsObject<GrayjaySettings> Settings()
-            => GrayjaySettings.Instance.GetSettingsObject();
+        {
+            var settings = GrayjaySettings.Instance;
+            settings.MigrateSubtitleAppearanceTextSize();
+            return settings.GetSettingsObject();
+        }
         public bool SettingsSave([FromBody]GrayjaySettings settings)
         {
             if (settings == null)

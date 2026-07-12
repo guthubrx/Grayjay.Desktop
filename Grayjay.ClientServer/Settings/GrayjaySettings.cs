@@ -3,12 +3,43 @@ using Grayjay.Desktop.POC;
 using Grayjay.Engine;
 using Grayjay.Engine.Setting;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using System.Text.Json;
 
 namespace Grayjay.ClientServer.Settings
 {
     public class GrayjaySettings : SettingsInstanced<GrayjaySettings>
     {
         public override string FileName => "settings.json";
+
+        public void MigrateSubtitleAppearanceTextSize()
+        {
+            try
+            {
+                string json = StateApp.ReadTextFile(FileName);
+                using var document = JsonDocument.Parse(json);
+                if (!document.RootElement.TryGetProperty("Playback", out var playback)
+                    || !playback.TryGetProperty("SubtitleAppearance", out var appearance)
+                    || appearance.TryGetProperty("TextSizeScale", out _)
+                    || !appearance.TryGetProperty("TextSize", out var legacyTextSize))
+                    return;
+
+                Playback.SubtitleAppearance.TextSize = legacyTextSize.GetInt32() switch
+                {
+                    0 => 1,
+                    1 => 4,
+                    2 => 7,
+                    3 => 10,
+                    _ => 4,
+                };
+                Playback.SubtitleAppearance.TextSizeScale = 2;
+                Save();
+            }
+            catch
+            {
+                // L'absence ou un format de réglages antérieur ne doit jamais
+                // empêcher l'application de démarrer.
+            }
+        }
 
 
 
@@ -166,8 +197,9 @@ namespace Grayjay.ClientServer.Settings
             public class SubtitleAppearanceSettings
             {
                 [SettingsField("Text size", SettingsField.DROPDOWN, "Size of subtitles in the player", 0)]
-                [SettingsDropdownOptions("Small", "Medium", "Large", "Extra large")]
-                public int TextSize { get; set; } = 1;
+                [SettingsDropdownOptions("16px", "18px", "20px", "22px", "24px", "26px", "28px", "30px", "32px", "34px", "36px", "38px", "40px")]
+                public int TextSize { get; set; } = 4;
+                public int TextSizeScale { get; set; } = 2;
 
                 [SettingsField("Font", SettingsField.DROPDOWN, "Typeface used for subtitles", 1)]
                 [SettingsDropdownOptions("Sans serif", "Serif", "Monospace")]

@@ -24,3 +24,4 @@
 - [ ] T011 Ajouter les réglages persistés de taille, police, couleur, ombre, fond et fenêtre dans `Playback.SubtitleAppearance`.
 - [ ] T012 Rendre les cues source et traduits dans un cadre commun et appliquer les réglages sans couvrir la vidéo entière.
 - [ ] T013 Compiler frontend/backend et vérifier manuellement une piste source et une piste traduite avec une configuration non par défaut.
+- [ ] T014 Étendre la granularité de taille par pas de 2 px et migrer les préférences d’apparence existantes sans changement visuel.
