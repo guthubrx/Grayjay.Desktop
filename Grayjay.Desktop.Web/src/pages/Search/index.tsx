@@ -35,8 +35,11 @@ import {
   setSmartSearchTranslatingTitles,
   setTranslatorCommand,
   showSmartSearch,
+  smartSearchAutoStart$,
+  smartSearchLanguages$,
   smartSearchLoading$,
   smartSearchSession$,
+  smartSearchSettingsReady$,
   smartSearchTranslatingTitles$,
   smartSearchVisible$,
   translatorCommand$
@@ -69,6 +72,17 @@ const BASE_COMPARATORS: Record<string, (a: IPlatformContent, b: IPlatformContent
   name:     (a, b) => a.name.localeCompare(b.name),
 };
 
+const compareClientSort = (a: IPlatformContent, b: IPlatformContent, sort: SortEntry[]) => {
+  for (const { field, dir } of sort) {
+    const cmp = BASE_COMPARATORS[field](a, b);
+    if (cmp === 0) continue;
+    if (cmp === Number.POSITIVE_INFINITY) return 1;
+    if (cmp === Number.NEGATIVE_INFINITY) return -1;
+    return dir === 'asc' ? cmp : -cmp;
+  }
+  return 0;
+};
+
 const SMART_SEARCH_POLL_INTERVAL_MS = 750;
 const SMART_SEARCH_POLL_ATTEMPTS = 16;
 const SMART_SEARCH_TITLES_PER_REQUEST = 6;
@@ -76,6 +90,18 @@ const SMART_SEARCH_TITLES_PER_REQUEST = 6;
 const wait = (duration: number) => new Promise<void>(resolve => window.setTimeout(resolve, duration));
 
 const hasSmartSearchResults = (session: ISmartSearchSession) => session.variants.some(variant => variant.results.length > 0);
+
+const sortSmartSearchSession = (session: ISmartSearchSession | undefined, sort: SortEntry[]) => {
+  if (!session || sort.length === 0)
+    return session;
+  return {
+    ...session,
+    variants: session.variants.map(variant => ({
+      ...variant,
+      results: [...variant.results].sort((first, second) => compareClientSort(first.content as IPlatformContent, second.content as IPlatformContent, sort))
+    }))
+  };
+};
 
 const sameStringArray = (first: string[], second: string[]) => first.length === second.length && first.every((value, index) => value === second[index]);
 
@@ -125,14 +151,17 @@ const SearchPage: Component = () => {
   const [sortBy$, setSortBy] = createSignal(params.sortBy);
   const [clientSort$, setClientSort] = createSignal<SortEntry[]>([]);
   const [enabledSources$, setEnabledSources] = createSignal<string[]>(params.clientIds ? JSON.parse(params.clientIds) : (StateGlobal.sourceStates$() ?? []).map(v => v.config.id));
-  const [smartLanguages$, setSmartLanguages] = createSignal(["ja", "zh-Hans", "ar", "ru"]);
   const disabledSources$ = createMemo<string[]>(()=>((StateGlobal.sourceStates$() ?? []).filter(x=>enabledSources$().indexOf(x.config.id) < 0).map(v => v.config.id)));
+  const smartSessionForDisplay$ = createMemo(() => sortSmartSearchSession(smartSearchSession$(), clientSort$()));
   let filtersChanged = false;
+  let autoStartedQuery: string | undefined;
 
   createEffect(() => {
     console.log("query changed", params.q);
-    if (params.q !== query$())
+    if (params.q !== query$()) {
       clearSmartSearch();
+      autoStartedQuery = undefined;
+    }
     setQuery(params.q);
     searchPagerActions.refetch();
   });
@@ -140,8 +169,10 @@ const SearchPage: Component = () => {
   createEffect(() => {
     console.log("type changed", params.type);
     const nextType = params.type ? parseInt(params.type) as ContentType : ContentType.MEDIA;
-    if (nextType !== searchType$())
+    if (nextType !== searchType$()) {
       clearSmartSearch();
+      autoStartedQuery = undefined;
+    }
     setSearchType(nextType);
     searchPagerActions.refetch();
   });
@@ -163,16 +194,21 @@ const SearchPage: Component = () => {
     navigate(newNavigationUri);
     searchPagerActions.refetch();
     clearSmartSearch();
+    autoStartedQuery = undefined;
   };
 
-  const startSmartSearch = async () => {
+  const startSmartSearch = async (showResults = true, promptForCommand = true) => {
     const query = query$();
-    if (!query || smartSearchLoading$()) return;
-    if (isSmartSearchForQuery(query) && smartSearchSession$()) {
-      showSmartSearch();
+    if (!query) return;
+    if (isSmartSearchForQuery(query) && (smartSearchSession$() || smartSearchLoading$())) {
+      if (showResults)
+        showSmartSearch();
       return;
     }
+    if (smartSearchLoading$()) return;
     if (!hasTranslatorCommand()) {
+      if (!promptForCommand)
+        return;
       UIOverlay.overlayTextPrompt(
         "Configure Smart Search translator",
         "Absolute path to a local executable. It receives JSON on standard input and keeps Routr credentials outside BlueJay.",
@@ -180,18 +216,18 @@ const SearchPage: Component = () => {
         "Save and search",
         async (command) => {
           await setTranslatorCommand(command);
-          void startSmartSearch();
+          void startSmartSearch(showResults, true);
         }
       );
       return;
     }
-    beginSmartSearch(query);
+    beginSmartSearch(query, showResults);
     const sessionId = "smart-" + Date.now().toString(36);
     try {
       const session = await SmartSearchBackend.load({
         sessionId,
         query,
-        languages: smartLanguages$(),
+        languages: smartSearchLanguages$(),
         translatorCommand: translatorCommand$(),
         type: untrack(searchType$),
         order: untrack(sortBy$),
@@ -205,6 +241,14 @@ const SearchPage: Component = () => {
       setSmartSearchLoading(false);
     }
   };
+
+  createEffect(() => {
+    const query = query$();
+    if (!smartSearchSettingsReady$() || !smartSearchAutoStart$() || !hasTranslatorCommand() || !query || autoStartedQuery === query)
+      return;
+    autoStartedQuery = query;
+    void startSmartSearch(false, false);
+  });
 
   const refreshSmartSearchSession = async (sessionId: string) => {
     let latestSession: ISmartSearchSession | undefined;
@@ -296,19 +340,13 @@ const SearchPage: Component = () => {
       setSmartSearchLoading(false);
   };
 
-  const toggleSmartSearch = () => {
-    if (smartSearchVisible$()) {
+  const setSearchMode = (mode: "standard" | "smart") => {
+    if (mode === "standard") {
       hideSmartSearch();
       return;
     }
-    void startSmartSearch();
+    void startSmartSearch(true, true);
   };
-
-  const smartSearchButtonText$ = createMemo(() => {
-    if (smartSearchVisible$()) return "Standard results";
-    if (smartSearchLoading$()) return "Smart Search...";
-    return isSmartSearchForQuery(query$()) && smartSearchSession$() ? "Smart results" : "Smart Search";
-  });
 
   let filtersScrollContainerRef: HTMLDivElement | undefined;
 
@@ -402,16 +440,7 @@ const SearchPage: Component = () => {
       pager.setSortComparator(undefined);
       return;
     }
-    pager.setSortComparator((a, b) => {
-      for (const { field, dir } of sort) {
-        const cmp = BASE_COMPARATORS[field](a as IPlatformContent, b as IPlatformContent);
-        if (cmp === 0) continue;
-        if (cmp === Number.POSITIVE_INFINITY) return 1;
-        if (cmp === Number.NEGATIVE_INFINITY) return -1;
-        return dir === 'asc' ? cmp : -cmp;
-      }
-      return 0;
-    });
+    pager.setSortComparator((a, b) => compareClientSort(a as IPlatformContent, b as IPlatformContent, sort));
   });
 
   let scrollContainerRef: HTMLDivElement | undefined;
@@ -455,13 +484,19 @@ const SearchPage: Component = () => {
               <CustomButton text='Filters' icon={iconFilters} border='1px solid #2E2E2E' style={{"height": "44px" }} onClick={() => setFiltersDialogVisible(true)} focusableOpts={{
                 onPress: () => setFiltersDialogVisible(true)
               }} />
-              <CustomButton text={smartSearchButtonText$()} border='1px solid #796126' style={{"height": "44px" }} onClick={toggleSmartSearch} />
+              <div class={styles.searchModeToggle}>
+                <button type="button" class={styles.searchModeButton} classList={{ [styles.searchModeActive]: !smartSearchVisible$() }} onClick={() => setSearchMode("standard")}>Standard</button>
+                <button type="button" class={styles.searchModeButton} classList={{ [styles.searchModeActive]: smartSearchVisible$() }} onClick={() => setSearchMode("smart")}>
+                  Smart
+                  <Show when={smartSearchLoading$()}><span class={styles.searchModeLoading}></span></Show>
+                </button>
+              </div>
             </Show>
           </div>
           <Show when={searchPager.state == 'ready'}>
             <ScrollContainer ref={scrollContainerRef}>
               <Show when={smartSearchVisible$()} fallback={<ContentGrid pager={searchPager()} outerContainerRef={scrollContainerRef} openChannelButton={true} />}>
-                <SmartSearchResults loading={smartSearchLoading$()} translatingTitles={smartSearchTranslatingTitles$()} session={smartSearchSession$()} />
+                <SmartSearchResults loading={smartSearchLoading$()} translatingTitles={smartSearchTranslatingTitles$()} session={smartSessionForDisplay$()} />
               </Show>
             </ScrollContainer>
           </Show>
