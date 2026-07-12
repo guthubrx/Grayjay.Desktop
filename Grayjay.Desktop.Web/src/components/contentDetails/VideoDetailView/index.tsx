@@ -1497,33 +1497,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         ]
                     }
                 } as MenuItem : undefined,
-                {
-                    type: "seperator"
-                } as MenuItem,
-                videoHighlights$()?.translatedSubtitles ? {
-                    key: "Smart subtitles",
-                    value: translatedSubtitleEnabled$() ? `${videoHighlights$()!.translatedSubtitles!.language} translated` : "None",
-                    type: "group",
-                    subMenu: {
-                        title: "Smart subtitles",
-                        items: [
-                            {
-                                name: "None",
-                                value: "none",
-                                type: "option",
-                                onSelected: () => setTranslatedSubtitleEnabled(false),
-                                isSelected: !translatedSubtitleEnabled$()
-                            } as IMenuItemOption,
-                            {
-                                name: `${videoHighlights$()!.translatedSubtitles!.language} translated`,
-                                value: "translated",
-                                type: "option",
-                                onSelected: selectTranslatedSubtitle,
-                                isSelected: translatedSubtitleEnabled$()
-                            } as IMenuItemOption
-                        ]
-                    }
-                } as MenuItem : undefined,
                 (videoSources$() && videoSources$().length > 0 && videoSource$()) ? {
                     key: "Video Sources (" + (videoSources$().length) + ")",
                     value: (videoSource$() && !videoSource$()?.videoIsLocal) ? videoSources$()[videoSource$()!.video]?.name : undefined,
@@ -1633,9 +1606,13 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         })
                     }
                 } as MenuItem : undefined,
-                (subtitleSources$() && subtitleSources$().length > 0 && videoSource$()) ? {
-                    key: "Subtitle Sources (" + (subtitleSources$().length) + ")",
-                    value: (videoSource$() && !videoSource$()?.subtitleIsLocal && videoSource$()!.subtitle >= 0) ? subtitleSources$()[videoSource$()!.subtitle]?.name : "None",
+                ((subtitleSources$()?.length ?? 0) > 0 || videoHighlights$()?.translatedSubtitles) && videoSource$() ? {
+                    key: "Subtitle Sources (" + ((subtitleSources$()?.length ?? 0) + (videoHighlights$()?.translatedSubtitles ? 1 : 0)) + ")",
+                    value: translatedSubtitleEnabled$()
+                        ? `${videoHighlights$()!.translatedSubtitles!.language} translated`
+                        : (videoSource$() && !videoSource$()?.subtitleIsLocal && videoSource$()!.subtitle >= 0)
+                            ? subtitleSources$()?.[videoSource$()!.subtitle]?.name
+                            : "None",
                     type: "group",
                     subMenu: {
                         title: "Subtitle sources",
@@ -1645,6 +1622,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                 value: -1,
                                 type: "option",
                                 onSelected: (val: any) => {
+                                    setTranslatedSubtitleEnabled(false);
                                     const videoObj = videoLoaded$();
                                     const originalSource = videoSource$();
                                     setVideoSource({
@@ -1660,7 +1638,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                         shouldResume: true
                                     } as SourceSelected);
                                 },
-                                isSelected: videoSource$()?.subtitle == -1
+                                isSelected: videoSource$()?.subtitle == -1 && !translatedSubtitleEnabled$()
                             } as IMenuItemOption,
                             ... subtitleSources$().map(x => {
                                 return {
@@ -1668,6 +1646,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     value: x,
                                     type: "option",
                                     onSelected: (val: any) => {
+                                        setTranslatedSubtitleEnabled(false);
                                         const videoObj = videoLoaded$();
                                         const originalSource = videoSource$();
                                         setVideoSource({
@@ -1683,9 +1662,16 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                             shouldResume: true
                                         } as SourceSelected);
                                     },
-                                    isSelected: !videoSource$()?.subtitleIsLocal && subtitleSources$().indexOf(x) == videoSource$()?.subtitle
+                                    isSelected: !translatedSubtitleEnabled$() && !videoSource$()?.subtitleIsLocal && subtitleSources$().indexOf(x) == videoSource$()?.subtitle
                                 } as IMenuItemOption
-                            })
+                            }),
+                            ...(videoHighlights$()?.translatedSubtitles ? [{
+                                name: `${videoHighlights$()!.translatedSubtitles!.language} translated`,
+                                value: "translated",
+                                type: "option",
+                                onSelected: selectTranslatedSubtitle,
+                                isSelected: translatedSubtitleEnabled$()
+                            } as IMenuItemOption] : [])
                         ]
                     }
                 } as MenuItem : undefined,
