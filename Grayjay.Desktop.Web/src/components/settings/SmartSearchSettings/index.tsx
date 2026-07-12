@@ -7,6 +7,7 @@ import Toggle from "../../basics/inputs/Toggle";
 import {
     SMART_SEARCH_LANGUAGE_OPTIONS,
     setSmartSearchAutoStart,
+    setSmartSearchDiscoveryParallelism,
     setSmartSearchLanguages,
     setSmartSearchResultLayout,
     setSmartSearchSubtitleTranslationLanguage,
@@ -14,6 +15,7 @@ import {
     setSmartSearchTranslateCreatorNames,
     setTranslatorCommand,
     smartSearchAutoStart$,
+    smartSearchDiscoveryParallelism$,
     smartSearchLanguages$,
     smartSearchResultLayout$,
     smartSearchSubtitleTranslationLanguages$,
@@ -76,6 +78,18 @@ const SmartSearchSettings: Component = () => {
                     style={{ width: "260px" }}
                 />
             </div>
+            <label class={styles.settingRow}>
+                <span class={styles.label}>Smart Mix parallelism</span>
+                <input
+                    class={styles.parallelismInput}
+                    type="number"
+                    min="1"
+                    max="32"
+                    step="1"
+                    value={smartSearchDiscoveryParallelism$()}
+                    onChange={event => void setSmartSearchDiscoveryParallelism(event.currentTarget.value)}
+                />
+            </label>
             <div class={styles.field}>
                 <div class={styles.label}>Search languages</div>
                 <div class={styles.languageList}>

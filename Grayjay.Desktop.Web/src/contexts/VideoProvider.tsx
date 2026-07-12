@@ -11,6 +11,7 @@ import StateWebsocket from "../state/StateWebsocket";
 import { DetailsBackend } from "../backend/DetailsBackend";
 import { Pager } from "../backend/models/pagers/Pager";
 import { WindowBackend } from "../backend/WindowBackend";
+import { replaceUnplayedSmartMixTail } from "../utils/smartMixQueue";
 
 export enum VideoState {
     Closed = 0,
@@ -26,6 +27,7 @@ export enum VideoMode {
 
 export interface VideoQueueItemMeta {
     source?: string;
+    sessionId?: string;
     sessionTitle?: string;
     title?: string;
     summary?: string;
@@ -64,6 +66,7 @@ export interface VideoContextValue {
         openVideoByUrl: (url: string, time?: Duration, videoState?: VideoState) => void;
         setQueue: (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState, time?: Duration, startTimes?: (Duration | undefined)[], metadata?: (VideoQueueItemMeta | undefined)[]) => void;
         addToQueue: (v: IPlatformVideo) => void;
+        replaceUnplayedSmartMixTail: (sessionId: string, queue: IPlatformVideo[], metadata: (VideoQueueItemMeta | undefined)[]) => boolean;
         setIndex: (index: number) => void;
         consumeAndSetIndex: (index: number) => void;
         setRepeat: (value: boolean) => void;
@@ -181,6 +184,15 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             setQueueStartTimes(prev => prev ? [...prev, undefined] : undefined);
             setQueueMetadata(prev => prev ? [...prev, undefined] : undefined);
         });
+    };
+    const replaceSmartMixTail = (sessionId: string, nextQueue: IPlatformVideo[], nextMetadata: (VideoQueueItemMeta | undefined)[]) => {
+        const replacement = replaceUnplayedSmartMixTail(queue(), queueMetadata(), index(), sessionId, nextQueue, nextMetadata);
+        if (!replacement) return false;
+        batch(() => {
+            setQueue(replacement.queue);
+            setQueueMetadata(replacement.metadata);
+        });
+        return true;
     };
     const consumeAndSetIndex = (targetIndex: number) => {
         const currentIndex = index();
@@ -315,6 +327,7 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
             setQueue: sq,
             closeVideo,
             addToQueue,
+            replaceUnplayedSmartMixTail: replaceSmartMixTail,
             setState: (videoState: VideoState) => {
                 setState(videoState);
             },

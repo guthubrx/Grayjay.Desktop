@@ -19,6 +19,12 @@ public class SmartSearchController : ControllerBase
         return Ok(StateSmartSearch.Snapshot(sessionId));
     }
 
+    [HttpPost("[action]")]
+    public ActionResult<SmartSearchSession> StartNextDiscoveryStage([FromBody] SmartSearchSessionRequest request)
+    {
+        return Ok(StateSmartSearch.StartNextDiscoveryStage(request.SessionId));
+    }
+
     [HttpPost]
     public async Task<ActionResult<SmartSearchSession>> TranslateTitles([FromBody] SmartSearchTitleRequest request, CancellationToken cancellationToken)
     {

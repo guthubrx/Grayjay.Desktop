@@ -2,10 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { ISmartSearchSession } from '../backend/SmartSearchBackend';
-
-const { smartDiscoveryQuery, smartDiscoveryVideos } = await import(
-    new URL('./smartDiscovery.ts', import.meta.url).href
-) as typeof import('./smartDiscovery');
+import { smartDiscoveryPlan, smartDiscoveryQuery, smartDiscoveryUserLanguage, smartDiscoveryVideos } from './smartDiscovery';
 
 test('builds a French discovery query enriched with canonical profile labels', () => {
     assert.equal(smartDiscoveryQuery({
@@ -38,4 +35,34 @@ test('deduplicates search videos and excludes the source', () => {
         'https://www.youtube.com/watch?v=first',
         'https://www.youtube.com/watch?v=second',
     ]);
+});
+
+test('builds the four ordered discovery axes for the normalized user language', () => {
+    const plan = smartDiscoveryPlan({
+        version: 1,
+        axes: ["core", "context", "impact", "debate"].map(id => ({ id, label: id, queries: { en: `${id} English`, fr: `${id} Francais` } })),
+    }, 'fr-FR');
+
+    assert.equal(plan?.userLanguage, 'fr');
+    assert.deepEqual(plan?.axes.map(axis => axis.id), ['core', 'context', 'impact', 'debate']);
+});
+
+test('prefers a core result when metadata signals are otherwise equal', () => {
+    const session = {
+        sessionId: 'test',
+        variants: [
+            { id: '0:fr:debate', language: 'fr', axis: 'debate', stage: 0, query: 'debat', status: 'ready', results: [{ key: 'debate', content: { url: 'https://www.youtube.com/watch?v=debate', viewCount: 100, dateTime: '2026-07-01' } }] },
+            { id: '0:fr:core', language: 'fr', axis: 'core', stage: 0, query: 'core', status: 'ready', results: [{ key: 'core', content: { url: 'https://www.youtube.com/watch?v=core', viewCount: 100, dateTime: '2026-07-01' } }] },
+        ]
+    } as unknown as ISmartSearchSession;
+
+    assert.deepEqual(smartDiscoveryVideos(session, 'https://youtu.be/source', 2).map(video => video.url), [
+        'https://www.youtube.com/watch?v=core',
+        'https://www.youtube.com/watch?v=debate',
+    ]);
+});
+
+test('normalizes browser language tags used by discovery stages', () => {
+    assert.equal(smartDiscoveryUserLanguage('zh-TW'), 'zh-Hant');
+    assert.equal(smartDiscoveryUserLanguage('fr-FR'), 'fr');
 });

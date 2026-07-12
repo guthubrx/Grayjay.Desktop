@@ -17,6 +17,18 @@
     min-height: 56px;
 }
 
+.parallelismInput {
+    background: #242424;
+    border: 1px solid #494949;
+    border-radius: 4px;
+    color: #F2F2F2;
+    font-size: 14px;
+    min-height: 36px;
+    padding: 0 10px;
+    text-align: right;
+    width: 88px;
+}
+
 .field {
     margin-top: 28px;
 }
