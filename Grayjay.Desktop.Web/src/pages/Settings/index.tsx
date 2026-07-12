@@ -21,6 +21,7 @@ import Toggle from '../../components/basics/inputs/Toggle';
 import { applyHomeStyleFromSettings } from '../../state/HomeStyleState';
 import { applyXRayFromSettings } from '../../state/StateXRay';
 import SmartSearchSettings from '../../components/settings/SmartSearchSettings';
+import SmartMixSettings from '../../components/settings/SmartMixSettings';
 
 
 export interface SettingsPageProps {
@@ -32,6 +33,7 @@ export interface SettingsPageProps {
 const SettingsPage: Component<SettingsPageProps> = (props) => {
 
   const smartSearchGroup = "smart-search";
+  const smartMixGroup = "smart-mix";
 
   const [filterGroup$, setFilterGroup] = createSignal<string | undefined>();
   const [settings$] = createResourceDefault(async () => [], async () => await SettingsBackend.settings());
@@ -121,6 +123,16 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
               }}>
                 Smart Search
               </div>
+              <div classList={{[styles.settingsMenuItem]: true, [styles.active]: filterGroup$() === smartMixGroup}} onClick={()=>setFilterGroup(smartMixGroup)} use:focusable={{
+                onPress: () => setFilterGroup(smartMixGroup),
+                onBack: globalBack,
+                groupRememberLast: true,
+                groupType: 'vertical',
+                groupId: 'settings-filters',
+                groupIndices: [2]
+              }}>
+                Smart Mix
+              </div>
               <For each={settings$()?.fields?.filter(x=>x.type == 'group') ?? []}>{(item, i) => 
                 <div classList={{[styles.settingsMenuItem]: true, [styles.active]: item.property == filterGroup$()}} onClick={()=>setFilterGroup(item.property)} use:focusable={{
                   onPress: () => setFilterGroup(item.property),
@@ -128,7 +140,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
                   groupRememberLast: true,
                   groupType: 'vertical',
                   groupId: 'settings-filters',
-                  groupIndices: [2 + i()]
+                  groupIndices: [3 + i()]
                 }}>
                   {item.title}
                 </div>
@@ -164,7 +176,11 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       </div>
       <div class={styles.settingsContainer} style={props.settingsContainerStyle}>
         <ScrollContainer>
-          <Show when={filterGroup$() === smartSearchGroup} fallback={<SettingsContainer settings={settings$()} showAdvanced={showAdvanced$()} filterGroup={filterGroup$()} onFieldChanged={onFieldChanged} onBack={globalBack} />}>
+          <Show when={filterGroup$() === smartSearchGroup} fallback={
+            <Show when={filterGroup$() === smartMixGroup} fallback={<SettingsContainer settings={settings$()} showAdvanced={showAdvanced$()} filterGroup={filterGroup$()} onFieldChanged={onFieldChanged} onBack={globalBack} />}>
+              <SmartMixSettings />
+            </Show>
+          }>
             <SmartSearchSettings />
           </Show>
         </ScrollContainer>

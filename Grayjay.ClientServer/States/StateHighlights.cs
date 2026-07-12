@@ -97,6 +97,20 @@ public static class StateHighlights
             .ToList();
     }
 
+    public static List<VideoHighlightMixCandidate> GetMixCandidates()
+    {
+        var sets = GetAll();
+        var cachedVideos = StateCache.GetCachedVideos(sets
+            .Where(set => set.Video == null)
+            .Select(set => set.VideoUrl));
+
+        return sets
+            .Select(set => CreateMixCandidate(set, cachedVideos.GetValueOrDefault(set.VideoUrl)))
+            .OrderByDescending(candidate => candidate.UpdatedAt)
+            .ThenBy(candidate => candidate.VideoUrl, StringComparer.Ordinal)
+            .ToList();
+    }
+
     private static VideoHighlightSummary CreateSummary(VideoHighlightSet set, PlatformVideo? cachedVideo)
     {
         var segments = set.Segments ?? new List<VideoHighlightSegment>();
@@ -120,6 +134,24 @@ public static class StateHighlights
             ExcellentSegmentCount = scored.Count(s => ClampScore(s.Score!.Value) >= InterestExcellentScore),
             GlobalSummary = set.GlobalSummary,
             Video = video
+        };
+    }
+
+    private static VideoHighlightMixCandidate CreateMixCandidate(VideoHighlightSet set, PlatformVideo? cachedVideo)
+    {
+        var summary = CreateSummary(set, cachedVideo);
+        return new VideoHighlightMixCandidate
+        {
+            VideoUrl = set.VideoUrl,
+            UpdatedAt = set.UpdatedAt,
+            Video = summary.Video,
+            MixProfile = set.MixProfile,
+            GlobalSummary = set.GlobalSummary,
+            Theses = set.Theses,
+            AverageScore = summary.AverageScore,
+            TopScore = summary.TopScore,
+            InterestingDuration = summary.InterestingDuration,
+            Segments = set.Segments ?? new List<VideoHighlightSegment>()
         };
     }
 

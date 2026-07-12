@@ -110,10 +110,14 @@ import history from '../../../assets/icons/icon_nav_history.svg';
 import iconHighlights from '../../../assets/icons/label_important_24dp_FFFFFF_FILL1_wght300_GRAD0_opsz24.svg';
 import { Portal } from "solid-js/web";
 import { interestDetailText, interestFromSet, starsText } from "../../../utils/highlightInterest";
+import { composeSmartMix, type SmartMixEntry } from "../../../utils/smartMixComposer";
+import { smartMixDistribution$ } from "../../../state/StateSmartMix";
+import { smartTvSettingsFromObject } from "../../../utils/smartTvSettings";
 
 const SCOPE_ID = "video-detail-view";
 const SMART_TV_INTRO_MODES = ['hidden', 'sticky', 'timed'] as const;
 const SMART_TV_INTRO_CLOSE_DELAYS_MS = [3000, 5000, 7000, 9000, 12000, 15000, 20000, 30000, 45000, 60000];
+const SMART_MIX_WATCHED_POSITION_SECONDS = 30;
 
 type SmartTvIntroMode = typeof SMART_TV_INTRO_MODES[number];
 
@@ -283,7 +287,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const index = video?.index();
         if (index === undefined) return undefined;
         const meta = video?.queueMetadata()?.[index];
-        return meta?.source === 'smart-tv' ? meta : undefined;
+        return meta?.source === 'smart-tv' || meta?.source === 'smart-mix' ? meta : undefined;
     });
     const smartTvIntroSummary$ = createMemo(() => {
         const meta = currentSmartTvMeta$();
@@ -1820,6 +1824,72 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }
     }
 
+    async function createSmartMix() {
+        const highlights = videoHighlights$();
+        const sourceVideo = currentVideo$();
+        if (!highlights?.segments?.length || !sourceVideo) {
+            UIOverlay.toast("Generate Smart Chapters before creating a Smart Mix");
+            return;
+        }
+
+        try {
+            const [candidates, watchedUrls] = await Promise.all([
+                HighlightsBackend.getMixCandidates(),
+                HistoryBackend.getWatchedUrls(SMART_MIX_WATCHED_POSITION_SECONDS),
+            ]);
+            const smartTvSettings = smartTvSettingsFromObject(StateGlobal.settings$()?.object);
+            const entries = composeSmartMix({
+                videoUrl: sourceVideo.url,
+                updatedAt: highlights.updatedAt,
+                video: sourceVideo,
+                mixProfile: highlights.mixProfile,
+                globalSummary: highlights.globalSummary,
+                theses: highlights.theses,
+                topScore: Math.max(...highlights.segments.map(segment => segment.score ?? 0)),
+                segments: highlights.segments,
+            }, candidates, {
+                maxVideos: smartTvSettings.maxVideos,
+                targetSeconds: smartTvSettings.targetSeconds,
+                creatorVariety: smartTvSettings.creatorVarietyPenalty > 0,
+                distribution: smartMixDistribution$(),
+                watchedUrls: new Set(watchedUrls),
+            });
+            const playableEntries = entries
+                .filter((entry): entry is SmartMixEntry & { candidate: SmartMixEntry["candidate"] & { video: IPlatformVideo } } => !!entry.candidate.video?.url);
+            if (playableEntries.length === 0) {
+                UIOverlay.toast("No related locally analysed videos are available yet");
+                return;
+            }
+
+            const metadata: VideoQueueItemMeta[] = playableEntries.map(entry => ({
+                source: 'smart-mix',
+                sessionTitle: 'Smart Mix',
+                title: entry.candidate.video.name,
+                summary: entry.relevantSegment
+                    ? [entry.relevantSegment.title, entry.relevantSegment.summary].filter(Boolean).join(" - ")
+                    : entry.candidate.globalSummary,
+                globalSummary: entry.candidate.globalSummary,
+                transitionKind: entry.category === 'close' ? 'same-topic' : entry.category === 'related' ? 'discover' : 'new-angle',
+                transitionLabel: entry.reason,
+                channelName: entry.candidate.video.author?.name,
+                channelThumbnail: entry.candidate.video.author?.thumbnail,
+            }));
+            video?.actions.setQueue(
+                0,
+                playableEntries.map(entry => entry.candidate.video),
+                false,
+                false,
+                VideoState.Maximized,
+                undefined,
+                undefined,
+                metadata,
+            );
+        } catch (e: any) {
+            console.warn("Failed to create Smart Mix", e);
+            UIOverlay.toast("Smart Mix could not be created: " + (e?.message ?? "unknown error"));
+        }
+    }
+
     function playSmartChapters() {
         const highlights = videoHighlights$();
         if (!highlights?.segments?.length) return;
@@ -1840,9 +1910,10 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         ev.stopPropagation();
         setShowSettings(false);
         const menuWidth = 344;
+        const hasVideoActions = !videoLoaded$.loading && !(videoLoaded$()?.isLive === true);
         const itemCount = 2
             + ((StateSync.devicesOnline$()?.length ?? 0) > 0 ? 1 : 0)
-            + (!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? 1 : 0);
+            + (hasVideoActions ? 3 : 0);
         const menuHeight = 56 + (itemCount * 50);
         setVideoContextMenuPosition({
             x: Math.max(0, Math.min(ev.clientX, window.innerWidth - menuWidth)),
@@ -1863,6 +1934,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             ] : []),
             new MenuItemButton("Add to", add, undefined, addCurrentVideoToPlaylist),
             ...(!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? [
+                new MenuItemButton("Create Smart Mix", iconHighlights, undefined, createSmartMix),
                 new MenuItemButton("Generate smart chapters", ic_sync, undefined, indexCurrentVideo)
             ] : [])
         ]

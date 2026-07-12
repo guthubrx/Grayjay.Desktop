@@ -1,0 +1,87 @@
+.container {
+    box-sizing: border-box;
+    margin: 24px 30px 48px;
+    max-width: 720px;
+}
+
+.container h1 {
+    font-size: 24px;
+    margin: 0 0 32px;
+}
+
+.percentageList {
+    border-top: 1px solid #343434;
+}
+
+.percentageRow {
+    align-items: center;
+    border-bottom: 1px solid #343434;
+    color: #D9D9D9;
+    display: flex;
+    font-size: 15px;
+    font-weight: 500;
+    justify-content: space-between;
+    min-height: 58px;
+}
+
+.percentageField {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.percentageField input {
+    background: #1B1B1B;
+    border: 1px solid #2E2E2E;
+    border-radius: 6px;
+    box-sizing: border-box;
+    color: #F2F2F2;
+    font: inherit;
+    height: 40px;
+    padding: 0 10px;
+    text-align: right;
+    width: 82px;
+}
+
+.percentageField input:focus {
+    border-color: #2DBDFF;
+    outline: none;
+}
+
+.percentageField span {
+    color: #AFAFAF;
+    min-width: 12px;
+}
+
+.footer {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+}
+
+.footer span {
+    color: #B8B8B8;
+    font-size: 14px;
+}
+
+.footer span.invalid {
+    color: #F97066;
+}
+
+.footer button {
+    background: #F2F2F2;
+    border: 0;
+    border-radius: 6px;
+    color: #171717;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    min-height: 40px;
+    padding: 0 20px;
+}
+
+.footer button:disabled {
+    cursor: default;
+    opacity: 0.35;
+}
