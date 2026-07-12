@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Grayjay.ClientServer.Constants;
+using Grayjay.ClientServer.Models.Highlights;
 using Grayjay.ClientServer.Settings;
 using Grayjay.Desktop.POC;
 using Grayjay.Desktop.POC.Port.States;
@@ -19,12 +20,13 @@ public static class StateHighlightsIndexer
     public class IndexJob
     {
         public required string Url { get; set; }
-        public required string Status { get; set; } // queued | running | done | error
+        public required string Status { get; set; } // queued | running | done | error | skipped
         public string? Error { get; set; }
     }
 
     private static readonly object _lock = new();
     private static readonly Dictionary<string, IndexJob> _jobs = new();
+    private static readonly Queue<(string Url, string Command)> _priorityQueue = new();
     private static readonly Queue<(string Url, string Command)> _queue = new();
     private static int _activeWorkers = 0;
     private const int DefaultParallelism = 1;
@@ -41,7 +43,22 @@ public static class StateHighlightsIndexer
             return _jobs.Values.ToList();
     }
 
-    public static IndexJob Enqueue(string url, string command)
+    public static IndexJob Enqueue(string url, string command, bool priority = false)
+    {
+        ValidateRequest(ref url, command);
+        return EnqueueValidated(url, command, priority);
+    }
+
+    public static IndexJob EnqueueIfNeeded(string url, string command)
+    {
+        ValidateRequest(ref url, command);
+        if (!GrayjaySettings.Instance.XrayPanel.AutoGenerateOnVideoOpen || HasRequiredOutput(StateHighlights.Get(url)))
+            return new IndexJob { Url = url, Status = "skipped" };
+
+        return EnqueueValidated(url, command, priority: true);
+    }
+
+    private static void ValidateRequest(ref string url, string command)
     {
         if (string.IsNullOrWhiteSpace(url))
             throw new ArgumentException("Missing url");
@@ -51,7 +68,10 @@ public static class StateHighlightsIndexer
         url = url.Trim();
         if (!_safeUrl.IsMatch(url))
             throw new ArgumentException("Unsafe or invalid url");
+    }
 
+    private static IndexJob EnqueueValidated(string url, string command, bool priority)
+    {
         lock (_lock)
         {
             if (_jobs.TryGetValue(url, out var existing) &&
@@ -60,7 +80,10 @@ public static class StateHighlightsIndexer
 
             var job = new IndexJob { Url = url, Status = "queued" };
             _jobs[url] = job;
-            _queue.Enqueue((url, command));
+            if (priority)
+                _priorityQueue.Enqueue((url, command));
+            else
+                _queue.Enqueue((url, command));
             StateWebsocket.HighlightsIndexChanged(job);
             EnsureWorkersLocked();
             return job;
@@ -70,7 +93,7 @@ public static class StateHighlightsIndexer
     private static void EnsureWorkersLocked()
     {
         var desired = DesiredParallelism();
-        while (_queue.Count > 0 && _activeWorkers < desired)
+        while ((_priorityQueue.Count > 0 || _queue.Count > 0) && _activeWorkers < desired)
         {
             _activeWorkers++;
             _ = Task.Run(WorkerLoop);
@@ -120,12 +143,12 @@ public static class StateHighlightsIndexer
             IndexJob job;
             lock (_lock)
             {
-                if (_queue.Count == 0 || _activeWorkers > DesiredParallelism())
+                if ((_priorityQueue.Count == 0 && _queue.Count == 0) || _activeWorkers > DesiredParallelism())
                 {
                     _activeWorkers = Math.Max(0, _activeWorkers - 1);
                     return;
                 }
-                item = _queue.Dequeue();
+                item = _priorityQueue.Count > 0 ? _priorityQueue.Dequeue() : _queue.Dequeue();
                 job = _jobs[item.Url];
                 job.Status = "running";
                 job.Error = null;
@@ -154,6 +177,15 @@ public static class StateHighlightsIndexer
             }
             StateWebsocket.HighlightsIndexChanged(job);
         }
+    }
+
+    private static bool HasRequiredOutput(VideoHighlightSet? highlights)
+    {
+        if ((highlights?.Segments.Count ?? 0) == 0)
+            return false;
+
+        var language = GrayjaySettings.Instance.XrayPanel.GenerationLanguageName();
+        return language == null || string.Equals(highlights.TranslatedSubtitles?.Language, language, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string UserFacingError(string message)

@@ -45,7 +45,7 @@ import iconPinnedFill from '../../../assets/icons/pinned-fill.svg';
 import ExceptionModel from "../../../backend/exceptions/ExceptionModel";
 import UIOverlay from "../../../state/UIOverlay";
 import StateWebsocket from "../../../state/StateWebsocket";
-import { indexVideo, hasGeneratorCommand, setGeneratorCommand, jobFor } from "../../../state/StateHighlightsIndexer";
+import { ensureVideoIndexed, indexVideo, hasGeneratorCommand, setGeneratorCommand, jobFor } from "../../../state/StateHighlightsIndexer";
 import Loader from "../../basics/loaders/Loader";
 import Anchor, { AnchorStyle } from "../../../utility/Anchor";
 import DragArea from "../../basics/DragArea";
@@ -376,6 +376,16 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     StateWebsocket.registerHandlerNew("HighlightsChanged", () => {
         videoHighlightsResource.refetch();
     }, "videoDetailHighlights");
+    let lastAutomaticIndexUrl: string | undefined;
+    createEffect(() => {
+        const video = videoLoaded$() ?? currentVideo$();
+        const url = video?.url;
+        if (!url || video?.isLive || videoLoaded$.loading || videoHighlightsResource.loading || lastAutomaticIndexUrl === url)
+            return;
+
+        lastAutomaticIndexUrl = url;
+        void ensureVideoIndexed(url).catch((error) => console.warn("Automatic Smart Chapters generation failed", error));
+    });
     //const [liveChatWindow$] = createResource<ILiveChatWindowDescriptor | undefined>(() => videoLoaded$(), async (videoLoaded: any) => (!videoLoaded || !videoLoaded.isLive) ? undefined : await DetailsBackend.liveChatWindow());
     const [recomPager$] = createResource<Pager<IPlatformContent>>(() => videoLoaded$(), async (videoLoaded: any) => {
         if(!videoLoaded)

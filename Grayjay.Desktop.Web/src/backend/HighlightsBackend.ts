@@ -27,8 +27,12 @@ export abstract class HighlightsBackend {
         await Backend.DELETE("/highlights/Delete?url=" + encodeURIComponent(url));
     }
 
-    static async generate(url: string, command: string): Promise<IHighlightIndexJob> {
-        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command }), "application/json") as IHighlightIndexJob;
+    static async generate(url: string, command: string, priority = false): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command, priority }), "application/json") as IHighlightIndexJob;
+    }
+
+    static async generateIfNeeded(url: string, command: string): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/GenerateIfNeeded", JSON.stringify({ url, command }), "application/json") as IHighlightIndexJob;
     }
 
     static async queueStatus(): Promise<IHighlightIndexJob[]> {
@@ -38,6 +42,6 @@ export abstract class HighlightsBackend {
 
 export interface IHighlightIndexJob {
     url: string;
-    status: "queued" | "running" | "done" | "error";
+    status: "queued" | "running" | "done" | "error" | "skipped";
     error?: string;
 }
