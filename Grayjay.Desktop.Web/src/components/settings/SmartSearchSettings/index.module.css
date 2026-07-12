@@ -29,29 +29,31 @@
 
 .languageList {
     display: grid;
-    gap: 10px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
     margin-top: 12px;
 }
 
 .languageRow {
-    align-items: end;
+    align-items: center;
+    border-bottom: 1px solid #2D2D2D;
     display: grid;
-    gap: 10px;
-    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    grid-template-columns: minmax(220px, 1fr) max-content;
+    padding: 6px 0 10px;
 }
 
 .translationToggle {
     align-items: center;
     display: flex;
-    gap: 8px;
-    min-height: 48px;
+    gap: 10px;
+    min-height: 40px;
     white-space: nowrap;
 }
 
 .translationToggle span {
     color: #B8B8B8;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .translationToggleDisabled {
