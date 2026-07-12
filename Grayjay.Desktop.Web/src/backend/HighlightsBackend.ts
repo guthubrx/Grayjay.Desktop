@@ -27,8 +27,8 @@ export abstract class HighlightsBackend {
         await Backend.DELETE("/highlights/Delete?url=" + encodeURIComponent(url));
     }
 
-    static async generate(url: string, command: string, priority = false): Promise<IHighlightIndexJob> {
-        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command, priority }), "application/json") as IHighlightIndexJob;
+    static async generate(url: string, command: string): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command }), "application/json") as IHighlightIndexJob;
     }
 
     static async generateIfNeeded(url: string, command: string): Promise<IHighlightIndexJob> {

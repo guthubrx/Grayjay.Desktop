@@ -38,10 +38,10 @@ Videos that already have Smart Chapters and, when requested, a matching translat
 
 - **FR-001**: The system MUST start playback independently from automatic Smart Analysis work.
 - **FR-002**: The system MUST enqueue an opened eligible video only when Smart Chapters are missing, or when an explicit generation language lacks a matching translated subtitle track.
-- **FR-003**: The system MUST give an automatic job opened by the user priority over background precompute jobs while preserving the configured worker concurrency limit.
+- **FR-003**: The system MUST give an automatically opened job priority over background precompute jobs only when the user explicitly enabled auto-generation, while preserving the configured worker concurrency limit.
 - **FR-004**: The system MUST deduplicate jobs by canonical video URL across manual, automatic, and background callers.
 - **FR-005**: The system MUST use the existing Smart Analysis generation language for chapter text and translated subtitles. `Auto (video language)` MUST not require a translated track.
-- **FR-006**: The system MUST expose an `Auto-generate on video open` setting in Smart Analysis, enabled by default and safely inert when no generator is configured.
+- **FR-006**: The system MUST expose an `Auto-generate on video open` setting in Smart Analysis, disabled by default and safely inert when no generator is configured.
 - **FR-007**: The system MUST preserve the existing manual `Generate smart chapters` action as a forced generation path.
 - **FR-008**: The system MUST refresh the current video analysis and subtitle sources when a background job completes.
 - **FR-009**: The feature MUST degrade gracefully when the Smart Chapters feature or external generator is not configured.

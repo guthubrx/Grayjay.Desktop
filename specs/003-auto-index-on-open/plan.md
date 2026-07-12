@@ -14,7 +14,7 @@
 
 1. Keep manual generation as an unconditional enqueue.
 2. Add a conditional automatic enqueue endpoint. It checks the persisted highlight set before creating a job.
-3. Add a priority lane to the existing in-memory indexer queue. Manual and automatic playback requests use it; LaunchAgent precompute remains normal priority.
+3. Add a priority lane to the existing in-memory indexer queue. Only automatic playback requests explicitly enabled in settings use it; manual generation and LaunchAgent precompute remain normal priority.
 4. Add one Smart Analysis setting controlling automatic enqueue on video open.
 5. In the video detail view, wait for the highlight lookup to settle, then call the conditional endpoint without awaiting it for playback.
 6. Reuse the existing `HighlightsChanged` websocket refresh for newly generated chapters and subtitle sources.
