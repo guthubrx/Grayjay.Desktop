@@ -32,7 +32,7 @@ export abstract class SmartSearchBackend {
         return await Backend.GET("/smartsearch/Get?sessionId=" + encodeURIComponent(sessionId)) as ISmartSearchSession;
     }
 
-    static async translateTitles(sessionId: string, translatorCommand: string): Promise<ISmartSearchSession> {
-        return await Backend.POST("/smartsearch/TranslateTitles", JSON.stringify({ sessionId, translatorCommand, targetLanguage: "fr" }), "application/json") as ISmartSearchSession;
+    static async translateTitles(sessionId: string, translatorCommand: string, keys: string[]): Promise<ISmartSearchSession> {
+        return await Backend.POST("/smartsearch/TranslateTitles", JSON.stringify({ sessionId, translatorCommand, targetLanguage: "fr", keys }), "application/json") as ISmartSearchSession;
     }
 }
