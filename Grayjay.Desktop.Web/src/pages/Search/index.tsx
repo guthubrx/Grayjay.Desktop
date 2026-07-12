@@ -1,4 +1,4 @@
-import { createResource, type Component, Show, createEffect, createSignal, createMemo, For, untrack, batch, on } from 'solid-js';
+import { createResource, type Component, Show, createEffect, createSignal, createMemo, For, untrack, batch, on, onCleanup } from 'solid-js';
 
 import styles from './index.module.css';
 import ContentGrid from '../../components/containers/ContentGrid';
@@ -38,6 +38,7 @@ import {
   smartSearchAutoStart$,
   smartSearchLanguages$,
   smartSearchLoading$,
+  smartSearchResultLayout$,
   smartSearchSession$,
   smartSearchSettingsReady$,
   smartSearchTitleDisplay$,
@@ -155,6 +156,7 @@ const SearchPage: Component = () => {
   const [filterValues$, setFilterValues] = createSignal<Record<string, string[]> | undefined>(params.filters ? JSON.parse(params.filters) : undefined);
   const [sortBy$, setSortBy] = createSignal(params.sortBy);
   const [clientSort$, setClientSort] = createSignal<SortEntry[]>([]);
+  const [standardSearchResults$, setStandardSearchResults] = createSignal<IPlatformContent[]>([]);
   const [enabledSources$, setEnabledSources] = createSignal<string[]>(params.clientIds ? JSON.parse(params.clientIds) : (StateGlobal.sourceStates$() ?? []).map(v => v.config.id));
   const disabledSources$ = createMemo<string[]>(()=>((StateGlobal.sourceStates$() ?? []).filter(x=>enabledSources$().indexOf(x.config.id) < 0).map(v => v.config.id)));
   const smartSessionForDisplay$ = createMemo(() => sortSmartSearchSession(smartSearchSession$(), clientSort$()));
@@ -186,6 +188,23 @@ const SearchPage: Component = () => {
     console.log("retrieve new pager");
     const query = query$();
     return query ? await SearchBackend.searchPagerLazy(query, untrack(searchType$), untrack(sortBy$), untrack(filterValues$), untrack(disabledSources$)) : undefined;
+  });
+
+  const standardResultsListener = {};
+  createEffect(() => {
+    const pager = searchPager();
+    const refresh = () => setStandardSearchResults([...(pager?.dataFiltered ?? [])]);
+    refresh();
+    pager?.addedFilteredItemsEvent.register(refresh, standardResultsListener);
+    pager?.modifiedFilteredItemsEvent.register(refresh, standardResultsListener);
+    pager?.removedFilteredItemsEvent.register(refresh, standardResultsListener);
+    pager?.filterChangedEvent.register(refresh, standardResultsListener);
+    onCleanup(() => {
+      pager?.addedFilteredItemsEvent.unregister(standardResultsListener);
+      pager?.modifiedFilteredItemsEvent.unregister(standardResultsListener);
+      pager?.removedFilteredItemsEvent.unregister(standardResultsListener);
+      pager?.filterChangedEvent.unregister(standardResultsListener);
+    });
   });
 
   const performSearch = (type?: ContentType, sortBy?: string, filters?: Record<string, string[]>, clientIds?: string[]) => {
@@ -523,6 +542,9 @@ const SearchPage: Component = () => {
                   translatingTitles={smartSearchTranslatingTitles$()}
                   titleDisplay={smartSearchTitleDisplay$()}
                   translateCreatorNames={smartSearchTranslateCreatorNames$()}
+                  resultLayout={smartSearchResultLayout$()}
+                  standardResults={standardSearchResults$()}
+                  compareResults={clientSort$().length > 0 ? (first, second) => compareClientSort(first.content as IPlatformContent, second.content as IPlatformContent, clientSort$()) : undefined}
                   session={smartSessionForDisplay$()}
                 />
               </Show>

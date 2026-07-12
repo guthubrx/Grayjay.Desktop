@@ -4,6 +4,7 @@ import { SettingsBackend } from "../backend/SettingsBackend";
 import type { ISmartSearchSession } from "../backend/SmartSearchBackend";
 
 export type SmartSearchTitleDisplay = "both" | "translated";
+export type SmartSearchResultLayout = "grouped" | "mixed";
 
 export const SMART_SEARCH_LANGUAGE_OPTIONS = [
     { code: "de", label: "Allemand" },
@@ -47,6 +48,7 @@ const [smartSearchAutoStart$, setSmartSearchAutoStartSignal] = createSignal(fals
 const [smartSearchLanguages$, setSmartSearchLanguagesSignal] = createSignal(DEFAULT_SMART_SEARCH_LANGUAGES);
 const [smartSearchTitleDisplay$, setSmartSearchTitleDisplaySignal] = createSignal<SmartSearchTitleDisplay>("both");
 const [smartSearchTranslateCreatorNames$, setSmartSearchTranslateCreatorNamesSignal] = createSignal(false);
+const [smartSearchResultLayout$, setSmartSearchResultLayoutSignal] = createSignal<SmartSearchResultLayout>("grouped");
 const [smartSearchSettingsReady$, setSmartSearchSettingsReadySignal] = createSignal(false);
 const [smartSearchSession$, setSmartSearchSessionSignal] = createSignal<ISmartSearchSession>();
 const [smartSearchQuery$, setSmartSearchQuerySignal] = createSignal<string>();
@@ -75,6 +77,8 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
             setSmartSearchTitleDisplaySignal("translated");
         if (typeof settings?.translateCreatorNames === "boolean")
             setSmartSearchTranslateCreatorNamesSignal(settings.translateCreatorNames);
+        if (settings?.resultLayout === "mixed")
+            setSmartSearchResultLayoutSignal("mixed");
     } catch {
         // Smart Search remains optional until configured.
     } finally {
@@ -82,7 +86,7 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
     }
 })();
 
-export { smartSearchAutoStart$, smartSearchLanguages$, smartSearchLoading$, smartSearchQuery$, smartSearchSession$, smartSearchSettingsReady$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
+export { smartSearchAutoStart$, smartSearchLanguages$, smartSearchLoading$, smartSearchQuery$, smartSearchResultLayout$, smartSearchSession$, smartSearchSettingsReady$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
 
 function normalizeLanguages(languages: unknown[]) {
     const supported = new Set(SMART_SEARCH_LANGUAGE_OPTIONS.map(option => option.code));
@@ -97,7 +101,8 @@ async function persistSmartSearchSettings() {
         autoStart: smartSearchAutoStart$(),
         languages: smartSearchLanguages$(),
         titleDisplay: smartSearchTitleDisplay$(),
-        translateCreatorNames: smartSearchTranslateCreatorNames$()
+        translateCreatorNames: smartSearchTranslateCreatorNames$(),
+        resultLayout: smartSearchResultLayout$()
     });
 }
 
@@ -132,6 +137,11 @@ export async function setSmartSearchTitleDisplay(titleDisplay: SmartSearchTitleD
 
 export async function setSmartSearchTranslateCreatorNames(translateCreatorNames: boolean) {
     setSmartSearchTranslateCreatorNamesSignal(translateCreatorNames);
+    await persistSmartSearchSettings();
+}
+
+export async function setSmartSearchResultLayout(resultLayout: SmartSearchResultLayout) {
+    setSmartSearchResultLayoutSignal(resultLayout);
     await persistSmartSearchSettings();
 }
 
