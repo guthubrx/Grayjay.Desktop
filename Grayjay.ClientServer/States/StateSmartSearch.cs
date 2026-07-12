@@ -118,12 +118,26 @@ public static class StateSmartSearch
         var unique = snapshot.Variants.SelectMany(x => x.Results).GroupBy(x => x.Key).Select(x => x.First()).Take(24).ToList();
         if (unique.Count == 0)
             return snapshot;
+        var cached = unique
+            .Select(item => (Item: item, Translation: GetCached("title", request.TargetLanguage, item.Key)))
+            .Where(x => x.Translation != null)
+            .ToList();
+        lock (Lock)
+        {
+            if (!Sessions.TryGetValue(request.SessionId, out var active))
+                return snapshot;
+            foreach (var entry in cached)
+                active.TranslatedTitles[entry.Item.Key] = entry.Translation!;
+        }
+        var pending = unique.Where(item => cached.All(entry => entry.Item.Key != item.Key)).ToList();
+        if (pending.Count == 0)
+            return Snapshot(request.SessionId);
         var payload = JsonSerializer.Serialize(new
         {
             version = 1,
             operation = "translate-titles",
             targetLanguage = request.TargetLanguage,
-            titles = unique.Select(x => new { key = x.Key, text = x.OriginalTitle })
+            titles = pending.Select(x => new { key = x.Key, text = x.OriginalTitle })
         });
         var output = await StateSmartSearchCommand.Run(request.TranslatorCommand, payload, cancellationToken);
         var translations = ParseTranslations(output, "key");

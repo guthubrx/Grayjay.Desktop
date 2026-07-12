@@ -23,7 +23,7 @@ import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from "../../focusable"; void focusable;
 import { createResourceDefault } from '../../utility';
 import { IPlatformContent } from '../../backend/models/content/IPlatformContent';
-import { ISmartSearchSession, SmartSearchBackend } from '../../backend/SmartSearchBackend';
+import { ISmartSearchResult, ISmartSearchSession, SmartSearchBackend } from '../../backend/SmartSearchBackend';
 import {
   beginSmartSearch,
   clearSmartSearch,
@@ -73,6 +73,44 @@ const SMART_SEARCH_POLL_ATTEMPTS = 16;
 const wait = (duration: number) => new Promise<void>(resolve => window.setTimeout(resolve, duration));
 
 const hasSmartSearchResults = (session: ISmartSearchSession) => session.variants.some(variant => variant.results.length > 0);
+
+const sameStringArray = (first: string[], second: string[]) => first.length === second.length && first.every((value, index) => value === second[index]);
+
+const sameSmartSearchResult = (first: ISmartSearchResult, second: ISmartSearchResult) =>
+  first.key === second.key &&
+  first.originalTitle === second.originalTitle &&
+  first.translatedTitle === second.translatedTitle &&
+  sameStringArray(first.languages, second.languages);
+
+const reconcileSmartSearchSession = (current: ISmartSearchSession | undefined, next: ISmartSearchSession) => {
+  if (!current || current.sessionId !== next.sessionId)
+    return next;
+
+  let changed = current.error !== next.error || current.variants.length !== next.variants.length;
+  const variants = next.variants.map((variant, index) => {
+    const previous = current.variants[index];
+    if (!previous || previous.language !== variant.language || previous.query !== variant.query || previous.status !== variant.status || previous.error !== variant.error || previous.results.length !== variant.results.length) {
+      changed = true;
+      return variant;
+    }
+
+    let variantChanged = false;
+    const results = variant.results.map((result, resultIndex) => {
+      const previousResult = previous.results[resultIndex];
+      if (previousResult && sameSmartSearchResult(previousResult, result))
+        return previousResult;
+      variantChanged = true;
+      return result;
+    });
+    if (!variantChanged)
+      return previous;
+
+    changed = true;
+    return { ...variant, results };
+  });
+
+  return changed ? { ...next, variants } : current;
+};
 
 const SearchPage: Component = () => {
   const navigate = useNavigate();
@@ -178,8 +216,11 @@ const SearchPage: Component = () => {
       try {
         const refreshed = await SmartSearchBackend.get(sessionId);
         latestSession = refreshed;
-        if (smartSearchSession$()?.sessionId === sessionId)
-          setSmartSearchSession(refreshed);
+        if (smartSearchSession$()?.sessionId === sessionId) {
+          const reconciled = reconcileSmartSearchSession(smartSearchSession$(), refreshed);
+          if (reconciled !== smartSearchSession$())
+            setSmartSearchSession(reconciled);
+        }
       } catch (error) {
         lastError = error;
       }
@@ -191,8 +232,11 @@ const SearchPage: Component = () => {
     if (latestSession && hasSmartSearchResults(latestSession)) {
       try {
         const translated = await SmartSearchBackend.translateTitles(sessionId, translatorCommand$());
-        if (smartSearchSession$()?.sessionId === sessionId)
-          setSmartSearchSession(translated);
+        if (smartSearchSession$()?.sessionId === sessionId) {
+          const reconciled = reconcileSmartSearchSession(smartSearchSession$(), translated);
+          if (reconciled !== smartSearchSession$())
+            setSmartSearchSession(reconciled);
+        }
       } catch (error) {
         console.warn("Smart Search title translation failed", error);
       }
