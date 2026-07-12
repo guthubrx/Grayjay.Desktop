@@ -61,6 +61,7 @@ Un utilisateur règle l’apparence des sous-titres une fois dans les paramètre
 2. La fenêtre entoure les lignes de sous-titres actives, sans recouvrir toute la surface vidéo.
 3. Une configuration absente conserve le rendu historique des pistes source: Inter blanc 24 px, fond noir à 50 %, sans fenêtre.
 4. Les réglages sont persistés dans les paramètres de lecture et s’appliquent également aux Smart Subtitles.
+5. La taille propose une échelle de 16 à 40 px par pas de 2 px, sans modifier la taille visuelle des configurations existantes.
 
 ## Exigences fonctionnelles
 
