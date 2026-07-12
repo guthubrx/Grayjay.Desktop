@@ -11,9 +11,15 @@ namespace Grayjay.ClientServer.States;
 public static class StateSmartSearch
 {
     private const int MaxLanguages = 6;
+    private const int MaxDiscoveryLanguages = MaxLanguages + 2;
+    private const int MaxDiscoveryAxes = 4;
+    private const int MaxDiscoveryVariants = MaxDiscoveryLanguages * MaxDiscoveryAxes;
+    private const int DefaultDiscoveryParallelism = 3;
+    private const int MaxDiscoveryParallelism = 32;
     private const int MaxDisplayTranslationsPerRequest = 6;
     private const long CachePruneIntervalSeconds = 6 * 60 * 60;
-    private static readonly HashSet<string> SupportedLanguages = ["ar", "bn", "cs", "da", "de", "el", "en", "es", "fa", "fi", "he", "hi", "hu", "id", "it", "ja", "ko", "ms", "nb", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "zh-Hans", "zh-Hant"];
+    private static readonly HashSet<string> SupportedLanguages = ["ar", "bn", "cs", "da", "de", "el", "en", "es", "fa", "fi", "fr", "he", "hi", "hu", "id", "it", "ja", "ko", "ms", "nb", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "zh-Hans", "zh-Hant"];
+    private static readonly HashSet<string> DiscoveryAxisIds = ["core", "context", "impact", "debate"];
     private static readonly object Lock = new();
     private static readonly object CachePruneLock = new();
     private static readonly Dictionary<string, ActiveSession> Sessions = [];
@@ -40,6 +46,8 @@ public static class StateSmartSearch
     {
         public required SmartSearchSession Session { get; init; }
         public required Dictionary<string, IPager<PlatformContent>> Pagers { get; init; }
+        public required SmartSearchRequest Request { get; init; }
+        public SemaphoreSlim? SearchLimiter { get; init; }
         public Dictionary<string, string> TranslatedTitles { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> TranslatedCreatorNames { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
@@ -47,22 +55,67 @@ public static class StateSmartSearch
     public static async Task<SmartSearchSession> Load(SmartSearchRequest request, CancellationToken cancellationToken)
     {
         Validate(request);
-        var translated = await TranslateQueries(request, cancellationToken);
         var session = new SmartSearchSession { SessionId = request.SessionId };
-        var pagers = new Dictionary<string, IPager<PlatformContent>>();
-        foreach (var item in translated)
+        var variants = request.Discovery == null
+            ? (await TranslateQueries(request, cancellationToken))
+                .Select((item, index) => new SmartSearchVariant { Id = $"standard:{index}:{item.Language}", Language = item.Language, Query = item.Query })
+                .ToList()
+            : await PrepareDiscoveryVariants(request, cancellationToken);
+        session.Variants.AddRange(variants);
+        var active = new ActiveSession
         {
-            var variant = new SmartSearchVariant { Language = item.Language, Query = item.Query };
+            Session = session,
+            Pagers = [],
+            Request = request,
+            SearchLimiter = request.Discovery == null ? null : new SemaphoreSlim(request.MaxParallelism ?? DefaultDiscoveryParallelism, request.MaxParallelism ?? DefaultDiscoveryParallelism)
+        };
+        lock (Lock)
+            Sessions[session.SessionId] = active;
+
+        if (request.Discovery == null)
+            StartVariants(active, session.Variants, request);
+        else
+            StartNextDiscoveryStage(active);
+        return Snapshot(session.SessionId);
+    }
+
+    public static SmartSearchSession StartNextDiscoveryStage(string sessionId)
+    {
+        lock (Lock)
+        {
+            if (!Sessions.TryGetValue(sessionId, out var active))
+                throw new KeyNotFoundException("Smart Search session not found.");
+            StartNextDiscoveryStage(active);
+        }
+        return Snapshot(sessionId);
+    }
+
+    private static void StartNextDiscoveryStage(ActiveSession active)
+    {
+        var stage = active.Session.Variants
+            .Where(variant => variant.Status == "pending")
+            .Select(variant => (int?)variant.Stage)
+            .Min();
+        if (!stage.HasValue)
+            return;
+        StartVariants(active, active.Session.Variants.Where(variant => variant.Status == "pending" && variant.Stage == stage.Value), active.Request);
+    }
+
+    private static void StartVariants(ActiveSession active, IEnumerable<SmartSearchVariant> variants, SmartSearchRequest request)
+    {
+        foreach (var variant in variants)
+        {
+            variant.Status = "loading";
             try
             {
                 var pager = request.Type switch
                 {
-                    ContentType.CHANNEL => StatePlatform.SearchChannelsLazy(item.Query, request.ExcludePlugins),
-                    ContentType.PLAYLIST => StatePlatform.SearchPlaylistsLazy(item.Query, request.ExcludePlugins),
-                    _ => StatePlatform.SearchLazy(item.Query, null, request.Order, request.Filters, request.ExcludePlugins)
+                    ContentType.CHANNEL => StatePlatform.SearchChannelsLazy(variant.Query, request.ExcludePlugins),
+                    ContentType.PLAYLIST => StatePlatform.SearchPlaylistsLazy(variant.Query, request.ExcludePlugins),
+                    _ => StatePlatform.SearchLazy(variant.Query, null, request.Order, request.Filters, request.ExcludePlugins, active.SearchLimiter)
                 };
                 pager.NextPage();
-                pagers[item.Language] = pager;
+                active.Pagers[variant.Id] = pager;
                 variant.Status = "ready";
             }
             catch (Exception ex)
@@ -70,11 +123,7 @@ public static class StateSmartSearch
                 variant.Status = "error";
                 variant.Error = CleanError(ex.Message);
             }
-            session.Variants.Add(variant);
         }
-        lock (Lock)
-            Sessions[session.SessionId] = new ActiveSession { Session = session, Pagers = pagers };
-        return Snapshot(session.SessionId);
     }
 
     public static SmartSearchSession Snapshot(string sessionId)
@@ -92,7 +141,7 @@ public static class StateSmartSearch
         var firstLanguage = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var source in active.Session.Variants)
         {
-            if (active.Pagers.TryGetValue(source.Language, out var pager))
+            if (active.Pagers.TryGetValue(source.Id, out var pager))
             {
                 foreach (var content in pager.GetResults().Where(x => x is not PlatformContentPlaceholder))
                 {
@@ -101,7 +150,7 @@ public static class StateSmartSearch
                     {
                         contents[key] = content;
                         languages[key] = [];
-                        firstLanguage[key] = source.Language;
+                        firstLanguage[key] = source.Id;
                     }
                     if (!languages[key].Contains(source.Language))
                         languages[key].Add(source.Language);
@@ -110,8 +159,8 @@ public static class StateSmartSearch
         }
         foreach (var source in active.Session.Variants)
         {
-            var variant = new SmartSearchVariant { Language = source.Language, Query = source.Query, Status = source.Status, Error = source.Error };
-            foreach (var key in firstLanguage.Where(x => x.Value == source.Language).Select(x => x.Key))
+            var variant = new SmartSearchVariant { Id = source.Id, Language = source.Language, Query = source.Query, Axis = source.Axis, Stage = source.Stage, Status = source.Status, Error = source.Error };
+            foreach (var key in firstLanguage.Where(x => x.Value == source.Id).Select(x => x.Key))
                 variant.Results.Add(new SmartSearchResult
                 {
                     Key = key,
@@ -206,6 +255,114 @@ public static class StateSmartSearch
         return request.Languages.Where(cached.ContainsKey).Select(language => (language, cached[language])).ToList();
     }
 
+    private static async Task<List<SmartSearchVariant>> PrepareDiscoveryVariants(SmartSearchRequest request, CancellationToken cancellationToken)
+    {
+        var discovery = request.Discovery!;
+        var languages = DiscoveryLanguages(discovery.UserLanguage, request.Languages);
+        var queries = discovery.Axes.ToDictionary(axis => axis.Id, _ => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        var pending = new List<(SmartSearchDiscoveryAxis Axis, string Language, string SourceQuery)>();
+
+        foreach (var axis in discovery.Axes)
+        {
+            var sourceQuery = QueryForLanguage(axis, "en")!;
+            foreach (var language in languages)
+            {
+                var query = QueryForLanguage(axis, language) ?? GetCached("discovery-query", language, sourceQuery);
+                if (query != null)
+                    queries[axis.Id][language] = query;
+                else
+                    pending.Add((axis, language, sourceQuery));
+            }
+        }
+
+        if (pending.Count > 0 && CanRunTranslator(request.TranslatorCommand))
+        {
+            var targetLanguages = pending.Select(item => item.Language).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var payload = JsonSerializer.Serialize(new
+            {
+                version = 1,
+                operation = "translate-query-variants",
+                sourceLanguage = "en",
+                targetLanguages,
+                variants = discovery.Axes.Select(axis => new { key = axis.Id, text = QueryForLanguage(axis, "en") })
+            });
+            var output = await StateSmartSearchCommand.Run(request.TranslatorCommand, payload, cancellationToken);
+            var translated = ParseDiscoveryTranslations(output);
+            foreach (var item in pending)
+            {
+                if (!translated.TryGetValue((item.Axis.Id, item.Language), out var query))
+                    continue;
+                queries[item.Axis.Id][item.Language] = query;
+                Cache("discovery-query", item.Language, item.SourceQuery, query, TimeSpan.FromDays(1));
+            }
+        }
+
+        var variants = new List<SmartSearchVariant>();
+        foreach (var language in languages)
+        {
+            var stage = DiscoveryStage(language, discovery.UserLanguage);
+            foreach (var axis in discovery.Axes)
+            {
+                if (!queries[axis.Id].TryGetValue(language, out var query))
+                    continue;
+                variants.Add(new SmartSearchVariant
+                {
+                    Id = $"{stage}:{language}:{axis.Id}",
+                    Language = language,
+                    Query = query,
+                    Axis = axis.Id,
+                    Stage = stage
+                });
+            }
+        }
+        return variants;
+    }
+
+    private static List<string> DiscoveryLanguages(string userLanguage, IEnumerable<string> configuredLanguages)
+    {
+        return new[] { userLanguage, "en" }
+            .Concat(configuredLanguages)
+            .Where(language => !string.IsNullOrWhiteSpace(language))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static int DiscoveryStage(string language, string userLanguage)
+    {
+        if (language.Equals(userLanguage, StringComparison.OrdinalIgnoreCase))
+            return 0;
+        return language.Equals("en", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
+    }
+
+    private static string? QueryForLanguage(SmartSearchDiscoveryAxis axis, string language)
+    {
+        return axis.Queries?.FirstOrDefault(entry => entry.Key.Equals(language, StringComparison.OrdinalIgnoreCase)).Value?.Trim();
+    }
+
+    private static bool CanRunTranslator(string command)
+    {
+        return !string.IsNullOrWhiteSpace(command) && Path.IsPathFullyQualified(command) && File.Exists(command);
+    }
+
+    private static Dictionary<(string Axis, string Language), string> ParseDiscoveryTranslations(string output)
+    {
+        using var document = JsonDocument.Parse(output);
+        if (!document.RootElement.TryGetProperty("translations", out var values) || values.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("Smart Search translator returned an invalid discovery translations array.");
+        var result = new Dictionary<(string Axis, string Language), string>();
+        foreach (var value in values.EnumerateArray())
+        {
+            if (!value.TryGetProperty("key", out var key) || !value.TryGetProperty("language", out var language) || !value.TryGetProperty("text", out var text))
+                continue;
+            var normalizedKey = key.GetString()?.Trim();
+            var normalizedLanguage = language.GetString()?.Trim();
+            var normalizedText = text.GetString()?.Trim();
+            if (!string.IsNullOrWhiteSpace(normalizedKey) && !string.IsNullOrWhiteSpace(normalizedLanguage) && !string.IsNullOrWhiteSpace(normalizedText))
+                result[(normalizedKey, normalizedLanguage)] = normalizedText;
+        }
+        return result;
+    }
+
     private static Dictionary<string, string> ParseTranslations(string output, string keyProperty)
     {
         using var document = JsonDocument.Parse(output);
@@ -226,10 +383,19 @@ public static class StateSmartSearch
 
     private static void Validate(SmartSearchRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.SessionId) || string.IsNullOrWhiteSpace(request.Query) || request.Query.Length > 500)
+        if (string.IsNullOrWhiteSpace(request.SessionId) || (request.Discovery == null && (string.IsNullOrWhiteSpace(request.Query) || request.Query.Length > 500)))
             throw new ArgumentException("Invalid Smart Search query.");
         if (request.Languages.Count == 0 || request.Languages.Count > MaxLanguages || request.Languages.Distinct(StringComparer.OrdinalIgnoreCase).Count() != request.Languages.Count || request.Languages.Any(x => !SupportedLanguages.Contains(x)))
             throw new ArgumentException("Select between one and six supported Smart Search languages.");
+        if (request.Discovery == null)
+            return;
+        if (request.MaxParallelism is < 1 or > MaxDiscoveryParallelism)
+            throw new ArgumentException($"Select a Smart Mix parallelism between 1 and {MaxDiscoveryParallelism}.");
+        if (!SupportedLanguages.Contains(request.Discovery.UserLanguage) || request.Discovery.Axes.Count != MaxDiscoveryAxes || !request.Discovery.Axes.Select(axis => axis.Id).ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(DiscoveryAxisIds))
+            throw new ArgumentException("Smart Mix requires four distinct discovery axes in a supported user language.");
+        var discoveryLanguages = DiscoveryLanguages(request.Discovery.UserLanguage, request.Languages);
+        if (discoveryLanguages.Count > MaxDiscoveryLanguages || request.Discovery.Axes.Count * discoveryLanguages.Count > MaxDiscoveryVariants || request.Discovery.Axes.Any(axis => string.IsNullOrWhiteSpace(axis.Label) || axis.Label.Length > 100 || axis.Queries == null || string.IsNullOrWhiteSpace(QueryForLanguage(axis, "en")) || axis.Queries.Values.Any(query => string.IsNullOrWhiteSpace(query) || query.Length > 500)))
+            throw new ArgumentException("Smart Mix discovery axes must include concise English queries.");
     }
 
     private static string ContentKey(PlatformContent content)

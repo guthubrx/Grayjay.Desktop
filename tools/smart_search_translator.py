@@ -106,6 +106,49 @@ def translate_queries(request: dict) -> dict:
     return {"version": 1, "translations": result}
 
 
+def translate_query_variants(request: dict) -> dict:
+    languages = request.get("targetLanguages")
+    variants = request.get("variants")
+    if not isinstance(languages, list) or not languages or any(not isinstance(language, str) or not language.strip() for language in languages):
+        fail("Invalid discovery query translation languages.")
+    if not isinstance(variants, list):
+        fail("Invalid discovery query translation variants.")
+    valid = [{"key": item.get("key"), "text": non_empty_text(item.get("text"))} for item in variants if isinstance(item, dict)]
+    valid = [item for item in valid if isinstance(item["key"], str) and item["text"]]
+    if not valid:
+        fail("No discovery query variants to translate.")
+
+    prompt = (
+        "Translate every video-search query variant into every requested target language. "
+        "Keep each query concise and natural for a video platform. Preserve proper names, product names, acronyms and technical terms. "
+        "Return JSON only: {\"translations\":[{\"key\":\"input key\",\"language\":\"requested tag\",\"text\":\"query\"}]}. "
+        f"Target languages: {json.dumps(languages, ensure_ascii=False)}\n"
+        f"Variants: {json.dumps(valid, ensure_ascii=False)}"
+    )
+    response = call_model(prompt)
+    entries = response.get("translations") if isinstance(response, dict) else None
+    if not isinstance(entries, list):
+        fail("Translator response has no discovery translations array.")
+    keys = {item["key"] for item in valid}
+    expected_languages = set(languages)
+    seen: set[tuple[str, str]] = set()
+    result = []
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("key")
+        language = item.get("language")
+        text = non_empty_text(item.get("text"))
+        pair = (key, language)
+        if not isinstance(key, str) or not isinstance(language, str) or key not in keys or language not in expected_languages or not text or pair in seen:
+            continue
+        seen.add(pair)
+        result.append({"key": key, "language": language, "text": text})
+    if not result:
+        fail("Translator returned no usable discovery query translations.")
+    return {"version": 1, "translations": result}
+
+
 def translate_titles(request: dict) -> dict:
     target = non_empty_text(request.get("targetLanguage"))
     titles = request.get("titles")
@@ -134,6 +177,8 @@ def main() -> None:
     operation = request.get("operation")
     if operation == "translate-queries":
         result = translate_queries(request)
+    elif operation == "translate-query-variants":
+        result = translate_query_variants(request)
     elif operation == "translate-titles":
         result = translate_titles(request)
     else:

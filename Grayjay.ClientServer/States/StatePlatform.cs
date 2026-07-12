@@ -275,12 +275,13 @@ namespace Grayjay.Desktop.POC.Port.States
             return mappedFilters;
         }
 
-        public static IPager<PlatformContent> SearchLazy(string query, string? type = null, string? order = null, Dictionary<string, string[]>? filters = null, List<string>? excludeClientIds = null)
+        public static IPager<PlatformContent> SearchLazy(string query, string? type = null, string? order = null, Dictionary<string, string[]>? filters = null, List<string>? excludeClientIds = null, SemaphoreSlim? searchLimiter = null)
         {
             return CreateDistributedLazyPager(
                 (client) => (excludeClientIds != null ? !excludeClientIds.Contains(client.ID) : true) && (client.Descriptor?.AppSettings?.TabEnabled?.EnableSearch ?? false),
                 (client) => client.FromPool(_pagerClientPool).Search(query, type, order, GetClientSpecificFilters(PluginConfigState.FromClient(client).CapabilitiesSearch, filters)),
-                (client, task) => new PlatformContentPlaceholder(client.Config)
+                (client, task) => new PlatformContentPlaceholder(client.Config),
+                searchLimiter: searchLimiter
             );
         }
         public static IPager<PlatformContent> SearchChannelsLazy(string query, List<string>? excludeClientIds = null)
@@ -598,7 +599,7 @@ namespace Grayjay.Desktop.POC.Port.States
 
 
         //Standardization
-        private static MultiRefreshPager<T> CreateDistributedLazyPager<T>(Func<GrayjayPlugin, bool> clientCondition, Func<GrayjayPlugin, IPager<T>> action, Func<GrayjayPlugin, Task, T> placeholderCreator, int pageSize = 20)
+        private static MultiRefreshPager<T> CreateDistributedLazyPager<T>(Func<GrayjayPlugin, bool> clientCondition, Func<GrayjayPlugin, IPager<T>> action, Func<GrayjayPlugin, Task, T> placeholderCreator, int pageSize = 20, SemaphoreSlim? searchLimiter = null)
         {
             List<string> clientIdsOngoing = new List<string>();
             List<GrayjayPlugin> clients = GetEnabledClients().Where(x => clientCondition(x)).ToList();
@@ -610,7 +611,15 @@ namespace Grayjay.Desktop.POC.Port.States
                     {
                         lock (clientIdsOngoing)
                             clientIdsOngoing.Add(client.Config.ID);
-                        return action(client);
+                        searchLimiter?.Wait();
+                        try
+                        {
+                            return action(client);
+                        }
+                        finally
+                        {
+                            searchLimiter?.Release();
+                        }
                     }));
                 }).ToList();
 

@@ -47,6 +47,9 @@ export const SMART_SEARCH_LANGUAGE_OPTIONS = [
 
 const DEFAULT_SMART_SEARCH_LANGUAGES = ["ja", "zh-Hans", "ar", "ru"];
 const MAX_SMART_SEARCH_LANGUAGES = 6;
+const DEFAULT_DISCOVERY_PARALLELISM = 3;
+const MIN_DISCOVERY_PARALLELISM = 1;
+const MAX_DISCOVERY_PARALLELISM = 32;
 
 const [translatorCommand$, setTranslatorCommandSignal] = createSignal("");
 const [smartSearchAutoStart$, setSmartSearchAutoStartSignal] = createSignal(false);
@@ -54,6 +57,7 @@ const [smartSearchLanguages$, setSmartSearchLanguagesSignal] = createSignal(DEFA
 const [smartSearchTitleDisplay$, setSmartSearchTitleDisplaySignal] = createSignal<SmartSearchTitleDisplay>("both");
 const [smartSearchTranslateCreatorNames$, setSmartSearchTranslateCreatorNamesSignal] = createSignal(false);
 const [smartSearchResultLayout$, setSmartSearchResultLayoutSignal] = createSignal<SmartSearchResultLayout>("grouped");
+const [smartSearchDiscoveryParallelism$, setSmartSearchDiscoveryParallelismSignal] = createSignal(DEFAULT_DISCOVERY_PARALLELISM);
 const [smartSearchSubtitleTranslationLanguages$, setSmartSearchSubtitleTranslationLanguagesSignal] = createSignal<string[]>(defaultSubtitleTranslationLanguages(DEFAULT_SMART_SEARCH_LANGUAGES));
 const [smartSearchSettingsReady$, setSmartSearchSettingsReadySignal] = createSignal(false);
 const [smartSearchSession$, setSmartSearchSessionSignal] = createSignal<ISmartSearchSession>();
@@ -89,6 +93,7 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
             setSmartSearchTranslateCreatorNamesSignal(settings.translateCreatorNames);
         if (settings?.resultLayout === "mixed")
             setSmartSearchResultLayoutSignal("mixed");
+        setSmartSearchDiscoveryParallelismSignal(normalizeDiscoveryParallelism(settings?.discoveryParallelism));
     } catch {
         // Smart Search remains optional until configured.
     } finally {
@@ -96,11 +101,17 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
     }
 })();
 
-export { smartSearchAutoStart$, smartSearchLanguages$, smartSearchLoading$, smartSearchQuery$, smartSearchResultLayout$, smartSearchSession$, smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
+export { smartSearchAutoStart$, smartSearchDiscoveryParallelism$, smartSearchLanguages$, smartSearchLoading$, smartSearchQuery$, smartSearchResultLayout$, smartSearchSession$, smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
 
 function normalizeLanguages(languages: unknown[]) {
     const supported = new Set(SMART_SEARCH_LANGUAGE_OPTIONS.map(option => option.code));
     return normalizeSmartSearchLanguages(languages, supported, MAX_SMART_SEARCH_LANGUAGES);
+}
+
+function normalizeDiscoveryParallelism(value: unknown): number {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) return DEFAULT_DISCOVERY_PARALLELISM;
+    return Math.max(MIN_DISCOVERY_PARALLELISM, Math.min(MAX_DISCOVERY_PARALLELISM, parsed));
 }
 
 async function persistSmartSearchSettings() {
@@ -110,7 +121,8 @@ async function persistSmartSearchSettings() {
         subtitleTranslationLanguages: smartSearchSubtitleTranslationLanguages$(),
         titleDisplay: smartSearchTitleDisplay$(),
         translateCreatorNames: smartSearchTranslateCreatorNames$(),
-        resultLayout: smartSearchResultLayout$()
+        resultLayout: smartSearchResultLayout$(),
+        discoveryParallelism: smartSearchDiscoveryParallelism$()
     });
 }
 
@@ -163,6 +175,11 @@ export async function setSmartSearchTranslateCreatorNames(translateCreatorNames:
 
 export async function setSmartSearchResultLayout(resultLayout: SmartSearchResultLayout) {
     setSmartSearchResultLayoutSignal(resultLayout);
+    await persistSmartSearchSettings();
+}
+
+export async function setSmartSearchDiscoveryParallelism(value: unknown) {
+    setSmartSearchDiscoveryParallelismSignal(normalizeDiscoveryParallelism(value));
     await persistSmartSearchSettings();
 }
 

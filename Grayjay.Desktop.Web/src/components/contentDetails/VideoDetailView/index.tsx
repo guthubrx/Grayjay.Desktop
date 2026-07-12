@@ -84,7 +84,7 @@ import { Menus } from '../../../Menus';
 import { HistoryBackend } from "../../../backend/HistoryBackend";
 import { IHistoryVideo } from "../../../backend/models/content/IHistoryVideo";
 import StateGlobal from "../../../state/StateGlobal";
-import { hasTranslatorCommand, setTranslatorCommand, smartSearchLanguages$, smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$, translatorCommand$ } from "../../../state/StateSmartSearch";
+import { hasTranslatorCommand, setTranslatorCommand, smartSearchDiscoveryParallelism$, smartSearchLanguages$, smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$, translatorCommand$ } from "../../../state/StateSmartSearch";
 import { getKeybinding } from "../../../state/StateKeybindings";
 import StateSync from "../../../state/StateSync";
 import { SyncDevice } from "../../../backend/models/sync/SyncDevice";
@@ -111,14 +111,15 @@ import iconHighlights from '../../../assets/icons/label_important_24dp_FFFFFF_FI
 import { Portal } from "solid-js/web";
 import { interestDetailText, interestFromSet, starsText } from "../../../utils/highlightInterest";
 import { SmartSearchBackend, type ISmartSearchSession } from "../../../backend/SmartSearchBackend";
-import { smartDiscoveryQuery, smartDiscoveryVideos } from "../../../utils/smartDiscovery";
+import { smartDiscoveryPlan, smartDiscoveryQuery, smartDiscoveryVideos } from "../../../utils/smartDiscovery";
 import { smartTvSettingsFromObject } from "../../../utils/smartTvSettings";
 
 const SCOPE_ID = "video-detail-view";
 const SMART_TV_INTRO_MODES = ['hidden', 'sticky', 'timed'] as const;
 const SMART_TV_INTRO_CLOSE_DELAYS_MS = [3000, 5000, 7000, 9000, 12000, 15000, 20000, 30000, 45000, 60000];
-const SMART_DISCOVERY_POLL_INTERVAL_MS = 750;
-const SMART_DISCOVERY_POLL_ATTEMPTS = 16;
+const SMART_DISCOVERY_POLL_INTERVAL_MS = 500;
+const SMART_DISCOVERY_POLL_ATTEMPTS = 120;
+const SMART_DISCOVERY_STAGE_DELAY_MS = 1250;
 
 type SmartTvIntroMode = typeof SMART_TV_INTRO_MODES[number];
 
@@ -1828,13 +1829,14 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     async function createSmartMix() {
         const highlights = videoHighlights$();
         const sourceVideo = currentVideo$();
+        const discovery = smartDiscoveryPlan(highlights?.discoveryProfile);
         const query = smartDiscoveryQuery(highlights?.mixProfile, highlights?.globalSummary);
         if (!highlights?.segments?.length || !sourceVideo || !query) {
             UIOverlay.toast("Generate Smart Chapters before creating a Smart Mix");
             return;
         }
 
-        if (!hasTranslatorCommand()) {
+        if (!discovery && !hasTranslatorCommand()) {
             UIOverlay.overlayTextPrompt(
                 "Configure Smart Search translator",
                 "Absolute path to a local executable. It receives JSON on standard input and keeps Routr credentials outside BlueJay.",
@@ -1858,37 +1860,63 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                 languages: smartSearchLanguages$(),
                 translatorCommand: translatorCommand$(),
                 type: ContentType.MEDIA,
+                discovery,
+                maxParallelism: discovery ? smartSearchDiscoveryParallelism$() : undefined,
             });
+            let started = false;
+            let remainingStages = discovery ? 2 : 0;
+            let nextStageAt = Date.now() + SMART_DISCOVERY_STAGE_DELAY_MS;
+            const updateQueue = (nextSession: ISmartSearchSession): 'inactive' | 'none' | 'updated' => {
+                const videos = smartDiscoveryVideos(nextSession, sourceVideo.url, smartTvSettings.maxVideos);
+                if (videos.length === 0) return 'none';
+                const metadata: VideoQueueItemMeta[] = videos.map(result => ({
+                    source: 'smart-mix',
+                    sessionId,
+                    sessionTitle: 'Smart Mix',
+                    title: result.name,
+                    summary: `Inspired by ${sourceVideo.name}`,
+                    transitionKind: 'discover',
+                    transitionLabel: 'Inspired discovery',
+                    channelName: result.author?.name,
+                    channelThumbnail: result.author?.thumbnail,
+                }));
+                if (!started) {
+                    if (currentVideo$()?.url !== sourceVideo.url)
+                        return 'inactive';
+                    video?.actions.setQueue(
+                        0,
+                        videos,
+                        false,
+                        false,
+                        VideoState.Maximized,
+                        undefined,
+                        undefined,
+                        metadata,
+                    );
+                    started = true;
+                    return 'updated';
+                }
+                return video?.actions.replaceUnplayedSmartMixTail(sessionId, videos, metadata) === true ? 'updated' : 'inactive';
+            };
             for (let attempt = 0; attempt < SMART_DISCOVERY_POLL_ATTEMPTS; attempt++) {
-                await new Promise<void>(resolve => window.setTimeout(resolve, SMART_DISCOVERY_POLL_INTERVAL_MS));
+                if (attempt > 0)
+                    await new Promise<void>(resolve => window.setTimeout(resolve, SMART_DISCOVERY_POLL_INTERVAL_MS));
                 session = await SmartSearchBackend.get(sessionId);
-            }
-            const videos = smartDiscoveryVideos(session as ISmartSearchSession, sourceVideo.url, smartTvSettings.maxVideos);
-            if (videos.length === 0) {
-                UIOverlay.toast("No related videos were found online");
-                return;
-            }
+                const queueStatus = updateQueue(session);
+                if (queueStatus === 'inactive')
+                    return;
 
-            const metadata: VideoQueueItemMeta[] = videos.map(result => ({
-                source: 'smart-mix',
-                sessionTitle: 'Smart Mix',
-                title: result.name,
-                summary: `Inspired by ${sourceVideo.name}`,
-                transitionKind: 'discover',
-                transitionLabel: 'Inspired discovery',
-                channelName: result.author?.name,
-                channelThumbnail: result.author?.thumbnail,
-            }));
-            video?.actions.setQueue(
-                0,
-                videos,
-                false,
-                false,
-                VideoState.Maximized,
-                undefined,
-                undefined,
-                metadata,
-            );
+                if (remainingStages > 0 && (started || Date.now() >= nextStageAt)) {
+                    session = await SmartSearchBackend.startNextDiscoveryStage(sessionId);
+                    remainingStages--;
+                    nextStageAt = Date.now() + SMART_DISCOVERY_STAGE_DELAY_MS;
+                    const stagedQueueStatus = updateQueue(session);
+                    if (stagedQueueStatus === 'inactive')
+                        return;
+                }
+            }
+            if (!started)
+                UIOverlay.toast("No related videos were found online");
         } catch (e: any) {
             console.warn("Failed to create Smart Mix", e);
             UIOverlay.toast("Smart Mix could not be created: " + (e?.message ?? "unknown error"));
