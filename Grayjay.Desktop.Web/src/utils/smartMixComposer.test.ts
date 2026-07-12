@@ -190,6 +190,68 @@ test("uses summaries and theses as a fallback for legacy highlights", () => {
     assert.equal(result[0]?.relevantSegment?.start, 60);
 });
 
+test("matches a versioned canonical topic without dropping its version number", () => {
+    const result = composeSmartMix(candidate({
+        videoUrl: "source",
+        mixProfile: {
+            topics: ["Grok 4.5"],
+            relatedTopics: [],
+            angleLabels: ["benchmark comparison"],
+        },
+    }), [candidate({
+        videoUrl: "grok-4-5",
+        mixProfile: {
+            topics: ["Grok 4.5", "model benchmarking"],
+            relatedTopics: [],
+            angleLabels: ["benchmark comparison"],
+        },
+    })], { ...settings, maxVideos: 1, distribution: { close: 100, related: 0, newAngle: 0 } });
+
+    assert.equal(result[0]?.candidate.videoUrl, "grok-4-5");
+    assert.equal(result[0]?.category, "close");
+});
+
+test("uses canonical related topics to connect adjacent subjects", () => {
+    const result = composeSmartMix(candidate({
+        videoUrl: "source",
+        mixProfile: {
+            topics: ["AI co-founder workflow"],
+            relatedTopics: ["developer productivity"],
+            angleLabels: ["live demo"],
+        },
+    }), [candidate({
+        videoUrl: "harness",
+        mixProfile: {
+            topics: ["AI agent harnesses", "developer productivity"],
+            relatedTopics: [],
+            angleLabels: ["live coding demo"],
+        },
+    })], { ...settings, maxVideos: 1, distribution: { close: 0, related: 100, newAngle: 0 } });
+
+    assert.equal(result[0]?.candidate.videoUrl, "harness");
+    assert.equal(result[0]?.category, "related");
+});
+
+test("does not connect topics using only generic label words", () => {
+    const result = composeSmartMix(candidate({
+        videoUrl: "source",
+        mixProfile: {
+            topics: ["open-source AI models"],
+            relatedTopics: [],
+            angleLabels: ["weekly news roundup"],
+        },
+    }), [candidate({
+        videoUrl: "irrigation",
+        mixProfile: {
+            topics: ["open-source irrigation management"],
+            relatedTopics: [],
+            angleLabels: ["installation guide"],
+        },
+    })], { ...settings, maxVideos: 1, distribution: { close: 50, related: 50, newAngle: 0 } });
+
+    assert.deepEqual(result, []);
+});
+
 test("returns the same order when all ranking inputs are equal", () => {
     const candidates = [candidate({ videoUrl: "zeta" }), candidate({ videoUrl: "alpha" })];
 
