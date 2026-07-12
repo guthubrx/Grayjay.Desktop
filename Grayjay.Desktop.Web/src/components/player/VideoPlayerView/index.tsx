@@ -76,6 +76,8 @@ interface VideoProps {
     onOptions?: (el: HTMLElement, inputSource: InputSource) => void;
     onContextMenu?: (event: MouseEvent) => void;
     smartChapterHighlights?: IVideoHighlightSet;
+    smartChapterIndexStatus?: "queued" | "running" | "done" | "error" | "skipped";
+    smartChapterIndexError?: string;
     translatedSubtitleEnabled?: boolean;
     minimized?: boolean;
     onReady?: (handle: VideoPlayerViewHandle) => void;
@@ -1858,6 +1860,8 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
                     position={position()}
                     positionBuffered={positionBuffered()}
                     smartChapterSegments={smartChapterSegments$()}
+                    smartChapterIndexStatus={props.smartChapterIndexStatus}
+                    smartChapterIndexError={props.smartChapterIndexError}
                     promotionSegments={promotionSegments$()}
 
                     activeSmartChapterIndex={displayHighlightIndex$()}

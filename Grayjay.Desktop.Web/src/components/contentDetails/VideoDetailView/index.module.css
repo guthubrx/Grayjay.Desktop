@@ -636,6 +636,27 @@
     margin-bottom: 12px;
 }
 
+.smartAnalysisStatus {
+    margin-left: 8px;
+    padding: 3px 6px;
+    border: 1px solid rgba(103, 193, 106, 0.42);
+    border-radius: 4px;
+    color: rgba(212, 235, 213, 0.95);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.smartAnalysisStatusPending {
+    border-color: rgba(244, 184, 63, 0.52);
+    color: rgba(255, 224, 150, 0.98);
+}
+
+.smartAnalysisStatusFailed {
+    border-color: rgba(228, 91, 91, 0.58);
+    color: rgba(255, 173, 173, 0.98);
+}
+
 .smartAnalysisIcon {
     width: 16px;
     height: 16px;

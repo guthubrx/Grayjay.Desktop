@@ -64,6 +64,8 @@ export interface PlayerControlsProps {
     eventMoved?: Event0;
     chapters?: IChapter[];
     smartChapterSegments?: IVideoHighlightSegment[];
+    smartChapterIndexStatus?: "queued" | "running" | "done" | "error" | "skipped";
+    smartChapterIndexError?: string;
     promotionSegments?: IVideoHighlightPromotionSegment[];
     activeSmartChapterIndex?: number;
     smartChapterFilter?: SmartChapterFilter;
@@ -470,6 +472,30 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
         return summary.length > 160 ? `${summary.slice(0, 157).trim()}...` : summary;
     };
     const smartChapterFilter$ = createMemo(() => props.smartChapterFilter ?? "smart");
+    const smartChapterIndexStatus$ = createMemo(() => props.smartChapterIndexStatus);
+    const hasSmartChapterSegments$ = createMemo(() => smartChapterSegments$().length > 0);
+    const smartChapterIsPending$ = createMemo(() => {
+        const status = smartChapterIndexStatus$();
+        return status === "queued" || status === "running";
+    });
+    const smartChapterHasFailed$ = createMemo(() => smartChapterIndexStatus$() === "error");
+    const showPendingSmartChapterStatus$ = createMemo(() => !hasSmartChapterSegments$() && smartChapterIsPending$());
+    const showFailedSmartChapterStatus$ = createMemo(() => !hasSmartChapterSegments$() && smartChapterHasFailed$());
+    const showSmartChapterControls$ = createMemo(() =>
+        hasSmartChapterSegments$() || showPendingSmartChapterStatus$() || showFailedSmartChapterStatus$()
+    );
+    const smartChapterStatusLabel$ = createMemo(() => {
+        if (showPendingSmartChapterStatus$() && smartChapterIndexStatus$() === "queued") return "Queued";
+        if (showPendingSmartChapterStatus$() && smartChapterIndexStatus$() === "running") return "Analyzing";
+        if (showFailedSmartChapterStatus$()) return "Failed";
+        return smartChapterFilterOptions.find(option => option.id === smartChapterFilter$())?.label ?? "Smart";
+    });
+    const smartChapterControlTitle$ = createMemo(() => {
+        if (showPendingSmartChapterStatus$() && smartChapterIndexStatus$() === "queued") return "Smart Chapters queued";
+        if (showPendingSmartChapterStatus$() && smartChapterIndexStatus$() === "running") return "Smart Chapters analysis in progress";
+        if (showFailedSmartChapterStatus$()) return `Smart Chapters analysis failed: ${props.smartChapterIndexError ?? "unknown error"}`;
+        return "Smart Chapter filter";
+    });
     const smartChapterFilterLabel$ = createMemo(() => {
         return smartChapterFilterOptions.find(option => option.id === smartChapterFilter$())?.label ?? "Smart";
     });
@@ -833,36 +859,49 @@ const PlayerControlsView: Component<PlayerControlsProps> = (props) => {
                 <Show when={props.onNextVideo && props.hasNextVideo}>
                     <img src={iconNext} class={styles.next} alt="next" onClick={(ev)=>onNext(ev)} onDblClick={(e) => e.stopPropagation()} />
                 </Show>
-                <Show when={smartChapterSegments$().length > 0}>
+                <Show when={showSmartChapterControls$()}>
                     <div class={styles.smartChapterNav} ref={smartChapterNavRef} onDblClick={(e) => e.stopPropagation()}>
+                        <Show when={hasSmartChapterSegments$()}>
+                            <button
+                                class={styles.smartChapterNavButton}
+                                disabled={!props.hasPreviousSmartChapter}
+                                title="Previous Smart Chapter"
+                                onClick={onPreviousSmartChapter}
+                            >
+                                <img src={iconSmartPrevious} alt="Previous Smart Chapter" />
+                            </button>
+                        </Show>
                         <button
-                            class={styles.smartChapterNavButton}
-                            disabled={!props.hasPreviousSmartChapter}
-                            title="Previous Smart Chapter"
-                            onClick={onPreviousSmartChapter}
-                        >
-                            <img src={iconSmartPrevious} alt="Previous Smart Chapter" />
-                        </button>
-                        <button
-                            class={styles.smartChapterFilterButton}
-                            title="Smart Chapter filter"
+                            classList={{
+                                [styles.smartChapterFilterButton]: true,
+                                [styles.smartChapterFilterPending]: showPendingSmartChapterStatus$(),
+                                [styles.smartChapterFilterFailed]: showFailedSmartChapterStatus$()
+                            }}
+                            disabled={showPendingSmartChapterStatus$() || showFailedSmartChapterStatus$()}
+                            title={smartChapterControlTitle$()}
                             onClick={onSmartChapterFilterMenu}
                         >
                             <span
-                                class={styles.smartChapterFilterMark}
-                                style={{ background: filterSwatchBackground(smartChapterFilter$()) }}
+                                classList={{
+                                    [styles.smartChapterFilterMark]: true,
+                                    [styles.smartChapterFilterMarkPending]: showPendingSmartChapterStatus$(),
+                                    [styles.smartChapterFilterMarkFailed]: showFailedSmartChapterStatus$()
+                                }}
+                                style={{ background: showFailedSmartChapterStatus$() ? "#e45b5b" : showPendingSmartChapterStatus$() ? "#f4b83f" : filterSwatchBackground(smartChapterFilter$()) }}
                             />
-                            <span class={styles.smartChapterFilterLabel}>{smartChapterFilterLabel$()}</span>
+                            <span class={styles.smartChapterFilterLabel}>{smartChapterStatusLabel$()}</span>
                         </button>
-                        <button
-                            class={styles.smartChapterNavButton}
-                            disabled={!props.hasNextSmartChapter}
-                            title="Next Smart Chapter"
-                            onClick={onNextSmartChapter}
-                        >
-                            <img src={iconSmartNext} alt="Next Smart Chapter" />
-                        </button>
-                        <Show when={smartChapterFilterMenuOpen$()}>
+                        <Show when={hasSmartChapterSegments$()}>
+                            <button
+                                class={styles.smartChapterNavButton}
+                                disabled={!props.hasNextSmartChapter}
+                                title="Next Smart Chapter"
+                                onClick={onNextSmartChapter}
+                            >
+                                <img src={iconSmartNext} alt="Next Smart Chapter" />
+                            </button>
+                        </Show>
+                        <Show when={hasSmartChapterSegments$() && smartChapterFilterMenuOpen$()}>
                             <div class={styles.smartChapterFilterMenu}>
                                 <For each={smartChapterFilterOptions}>{(option, i) =>
                                     <button
