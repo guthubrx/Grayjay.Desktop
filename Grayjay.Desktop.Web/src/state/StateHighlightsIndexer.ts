@@ -49,7 +49,7 @@ export async function indexVideo(url: string): Promise<IHighlightIndexJob> {
     const command = generatorCommand$().trim();
     if (!command)
         throw new Error("No generator command configured");
-    const job = await HighlightsBackend.generate(url, command, true);
+    const job = await HighlightsBackend.generate(url, command);
     setIndexJobs(prev => ({ ...prev, [url]: job }));
     return job;
 }

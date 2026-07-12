@@ -43,10 +43,10 @@ public static class StateHighlightsIndexer
             return _jobs.Values.ToList();
     }
 
-    public static IndexJob Enqueue(string url, string command, bool priority = false)
+    public static IndexJob Enqueue(string url, string command)
     {
         ValidateRequest(ref url, command);
-        return EnqueueValidated(url, command, priority);
+        return EnqueueValidated(url, command, priority: false);
     }
 
     public static IndexJob EnqueueIfNeeded(string url, string command)

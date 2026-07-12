@@ -548,8 +548,8 @@ namespace Grayjay.ClientServer.Settings
             [SettingsField("Smart Block", SettingsField.TOGGLE, "Automatically skip promotional segments detected by Smart Analysis. Runs in addition to SponsorBlock when both are enabled.", 6)]
             public bool SmartBlock { get; set; } = false;
 
-            [SettingsField("Auto-generate on video open", SettingsField.TOGGLE, "Queue missing Smart Chapters and translated subtitles in the background when a video opens. Playback is never delayed.", 7)]
-            public bool AutoGenerateOnVideoOpen { get; set; } = true;
+            [SettingsField("Auto-generate on video open", SettingsField.TOGGLE, "When enabled, queue missing Smart Chapters and translated subtitles with priority when a video opens. Playback is never delayed.", 7)]
+            public bool AutoGenerateOnVideoOpen { get; set; } = false;
 
             [SettingsField("Smart TV", SettingsField.GROUP, "Configure Smart TV session building", 20)]
             public SmartTvSettings SmartTv { get; set; } = new SmartTvSettings();

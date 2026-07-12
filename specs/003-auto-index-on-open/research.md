@@ -26,7 +26,7 @@
 
 ## Decision: Priority lane for opened videos
 
-**Rationale**: A user-selected video must not wait behind a long precompute backlog. A priority queue still respects the existing concurrency limit.
+**Rationale**: When a user explicitly opted in, a video opened for playback must not wait behind a long precompute backlog. A priority queue still respects the existing concurrency limit.
 
 **Alternative considered**: Increase worker concurrency for playback. Rejected because it could saturate Routr or Whisper.
 
