@@ -10,6 +10,7 @@ export abstract class SearchBackend {
         return await Backend.POST("/search/SearchLoadLazy", JSON.stringify({
             type: type,
             query: query,
+            order: order,
             filters: filters,
             excludePlugins: excludeClientIds
         }), "application/json") as PagerResult<IPlatformContent>;

@@ -48,10 +48,26 @@
     overflow: hidden;
 }
 
-.languages {
-    color: #8F8F8F;
-    font-size: 12px;
-    margin: 4px 10px 0;
+.mixedSection {
+    margin-top: 16px;
+}
+
+.provenance {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 6px 10px 0;
+    min-height: 20px;
+}
+
+.chip {
+    background: rgba(246, 200, 68, 0.1);
+    border: 1px solid rgba(246, 200, 68, 0.32);
+    border-radius: 4px;
+    color: #D6D6D6;
+    font-size: 11px;
+    line-height: 18px;
+    padding: 0 6px;
 }
 
 .status {

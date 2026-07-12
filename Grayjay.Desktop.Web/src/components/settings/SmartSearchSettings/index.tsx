@@ -8,11 +8,13 @@ import {
     SMART_SEARCH_LANGUAGE_OPTIONS,
     setSmartSearchAutoStart,
     setSmartSearchLanguages,
+    setSmartSearchResultLayout,
     setSmartSearchTitleDisplay,
     setSmartSearchTranslateCreatorNames,
     setTranslatorCommand,
     smartSearchAutoStart$,
     smartSearchLanguages$,
+    smartSearchResultLayout$,
     smartSearchTitleDisplay$,
     smartSearchTranslateCreatorNames$,
     translatorCommand$
@@ -62,6 +64,15 @@ const SmartSearchSettings: Component = () => {
             <div class={styles.settingRow}>
                 <div class={styles.label}>Translate channel names</div>
                 <Toggle value={smartSearchTranslateCreatorNames$()} onToggle={value => void setSmartSearchTranslateCreatorNames(value)} />
+            </div>
+            <div class={styles.settingRow}>
+                <div class={styles.label}>Result layout</div>
+                <Dropdown
+                    options={["Group by language", "Mix all results"]}
+                    value={smartSearchResultLayout$() === "mixed" ? 1 : 0}
+                    onSelectedChanged={index => void setSmartSearchResultLayout(index === 1 ? "mixed" : "grouped")}
+                    style={{ width: "260px" }}
+                />
             </div>
             <div class={styles.field}>
                 <div class={styles.label}>Search languages</div>
