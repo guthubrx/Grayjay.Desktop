@@ -28,6 +28,7 @@ import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overl
 import Anchor, { AnchorStyle } from '../../utility/Anchor';
 import UIOverlay from '../../state/UIOverlay';
 import { interestScoreFromSummary } from '../../utils/highlightInterest';
+import { rankRecommendationCandidates } from '../../utils/recommendationRanking';
 import { mergeSubscriptionGroupRows } from '../../utils/subscriptionGroupRows';
 import {
     sequenceSmartTvCandidates,
@@ -69,6 +70,7 @@ interface SmartTvSource {
     video?: IPlatformVideo;
     summary?: IVideoHighlightSummary;
     sourceGroup?: string;
+    recommendationScore?: number;
 }
 
 interface SmartTvStats {
@@ -86,6 +88,7 @@ interface SmartTvEntry {
     globalSummary?: string;
     chapterKey: string;
     score: number;
+    videoRecommendationScore?: number;
     creatorKey?: string;
     sourceGroup?: string;
     subjectText?: string;
@@ -291,8 +294,33 @@ function smartTvPreviewUrls(sources: SmartTvSource[], session: SmartTvSession | 
     return urls;
 }
 
+function sourceInterest(source: SmartTvSource): number | undefined {
+    return source.summary ? interestScoreFromSummary(source.summary, source.video) : undefined;
+}
+
 function sourceScore(source: SmartTvSource): number {
-    return interestScoreFromSummary(source.summary, source.video);
+    return source.recommendationScore ?? sourceInterest(source) ?? 0;
+}
+
+function rankSmartTvSources(sources: SmartTvSource[]): SmartTvSource[] {
+    return rankRecommendationCandidates(sources.map((source, fallbackOrder) => ({
+        key: highlightKeys(source.url, source.video?.url, source.summary?.videoUrl)[0] ?? `${fallbackOrder}`,
+        fallbackOrder,
+        publishedAt: source.video?.dateTime ?? source.summary?.video?.dateTime,
+        viewCount: source.video?.viewCount ?? source.summary?.video?.viewCount,
+        contentInterest: sourceInterest(source),
+        source,
+    }))).map(item => ({ ...item.candidate.source, recommendationScore: item.score }));
+}
+
+function rankHomeVideos(videos: IPlatformVideo[]): IPlatformVideo[] {
+    return rankRecommendationCandidates(videos.map((video, fallbackOrder) => ({
+        key: normalizeUrlKey(video.url) ?? `${fallbackOrder}`,
+        fallbackOrder,
+        publishedAt: video.dateTime,
+        viewCount: video.viewCount,
+        video,
+    }))).map(item => item.candidate.video);
 }
 
 function dedupeSmartTvSources(sources: SmartTvSource[]): SmartTvSource[] {
@@ -302,7 +330,7 @@ function dedupeSmartTvSources(sources: SmartTvSource[]): SmartTvSource[] {
         if (!key) continue;
         const existing = byKey.get(key);
         const sameVideoState = Boolean(existing?.video) === Boolean(source.video);
-        if (!existing || (!existing.video && source.video) || (sameVideoState && sourceScore(source) > sourceScore(existing))) {
+        if (!existing || (!existing.video && source.video) || (sameVideoState && (sourceInterest(source) ?? 0) > (sourceInterest(existing) ?? 0))) {
             byKey.set(key, source.sourceGroup || !existing?.sourceGroup
                 ? source
                 : { ...source, sourceGroup: existing.sourceGroup });
@@ -310,7 +338,7 @@ function dedupeSmartTvSources(sources: SmartTvSource[]): SmartTvSource[] {
             byKey.set(key, { ...existing, sourceGroup: source.sourceGroup });
         }
     }
-    return [...byKey.values()].sort((a, b) => sourceScore(b) - sourceScore(a));
+    return rankSmartTvSources([...byKey.values()]);
 }
 
 function smartTvChapterKey(url: string, segment: IVideoHighlightSegment): string {
@@ -368,6 +396,7 @@ function sequenceSmartTvEntries(
     const candidates: SmartTvCandidate[] = entries.map(entry => ({
         chapterKey: entry.chapterKey,
         score: entry.score,
+        videoRecommendationScore: entry.videoRecommendationScore,
         durationSeconds: Math.max(0, entry.end - entry.start),
         videoKey: smartTvVideoKey(entry),
         creatorKey: entry.creatorKey,
@@ -476,9 +505,8 @@ function buildGroupCarousels(subGroups: ISubscriptionGroup[], allVideos: IPlatfo
     if (subGroups.length > 0) {
         return subGroups.map(g => ({
             name: g.name,
-            videos: g.urls
-                .flatMap(url => byChannel.get(url) ?? [])
-                .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
+            videos: rankHomeVideos(g.urls
+                .flatMap(url => byChannel.get(url) ?? []))
                 .slice(0, MAX_CAROUSEL_ITEMS)
         })).filter(g => g.videos.length > 0);
     }
@@ -486,7 +514,7 @@ function buildGroupCarousels(subGroups: ISubscriptionGroup[], allVideos: IPlatfo
         .filter(vs => vs.length >= MIN_CHANNEL_VIDEOS)
         .sort((a, b) => new Date(b[0]?.dateTime ?? 0).getTime() - new Date(a[0]?.dateTime ?? 0).getTime())
         .slice(0, MAX_CHANNEL_CAROUSELS)
-        .map(vs => ({ name: vs[0]?.author?.name ?? 'Unknown', videos: vs.slice(0, MAX_CAROUSEL_ITEMS) }));
+        .map(vs => ({ name: vs[0]?.author?.name ?? 'Unknown', videos: rankHomeVideos(vs).slice(0, MAX_CAROUSEL_ITEMS) }));
 }
 
 function loadGroupCarouselsCache(): GroupCarousel[] {
@@ -620,6 +648,19 @@ const HomePage: Component = () => {
         return undefined;
     };
 
+    const rankVideosForRecommendation = (videos: IPlatformVideo[]): IPlatformVideo[] =>
+        rankRecommendationCandidates(videos.map((video, fallbackOrder) => {
+            const summary = summaryForUrl(video.url);
+            return {
+                key: normalizeUrlKey(video.url) ?? `${fallbackOrder}`,
+                fallbackOrder,
+                publishedAt: video.dateTime,
+                viewCount: video.viewCount,
+                contentInterest: summary ? interestScoreFromSummary(summary, video) : undefined,
+                video,
+            };
+        })).map(item => item.candidate.video);
+
     const smartTvSourcesFromVideos = (videos: (IPlatformVideo | undefined)[], sourceGroup?: string): SmartTvSource[] => {
         const sources: SmartTvSource[] = [];
         for (const videoItem of videos) {
@@ -698,6 +739,7 @@ const HomePage: Component = () => {
                         globalSummary: set.globalSummary,
                         chapterKey: smartTvChapterKey(videoUrl, segment),
                         score: segment.score ?? fallbackScore,
+                        videoRecommendationScore: sourceScore(source),
                         creatorKey: smartTvCreatorKey(video),
                         sourceGroup: source.sourceGroup,
                         subjectText,
@@ -954,13 +996,12 @@ const HomePage: Component = () => {
         // Subs: group rows when ready, otherwise the durable bootstrap.
         const groupedSubscriptions = groupCarousels()
             .flatMap(g => g.videos)
-        const subs = (groupedSubscriptions.length > 0 ? groupedSubscriptions : subscriptionBootstrapVideos())
-            .sort((a, b) => new Date(b.dateTime ?? 0).getTime() - new Date(a.dateTime ?? 0).getTime())
-            .filter(v => !exclude(v));
+        const subs = rankVideosForRecommendation((groupedSubscriptions.length > 0 ? groupedSubscriptions : subscriptionBootstrapVideos())
+            .filter(v => !exclude(v)));
 
         // Recos: live pager preferred, cache as fallback
         const live = (homePager()?.data ?? []) as IPlatformVideo[];
-        const recos = (live.length > 0 ? live : homeCached()).filter(v => !exclude(v));
+        const recos = rankVideosForRecommendation((live.length > 0 ? live : homeCached()).filter(v => !exclude(v)));
 
         // 1:1 interleave: sub, reco, sub, reco…
         const seen = new Set<string>();
@@ -989,9 +1030,9 @@ const HomePage: Component = () => {
     const recommendedItems = createMemo(() => {
         const live = (homePager()?.data ?? []) as IPlatformVideo[];
         const source = live.length > 0 ? live : homeCached();
-        return source
+        return rankVideosForRecommendation(source
             .slice(HERO_COUNT)
-            .filter(v => v.name && v.name.trim() && (v as IPlatformVideo).duration > 0 && !hasWatchedUrl((v as IPlatformVideo).url)) as IPlatformVideo[];
+            .filter(v => v.name && v.name.trim() && (v as IPlatformVideo).duration > 0 && !hasWatchedUrl((v as IPlatformVideo).url)) as IPlatformVideo[]);
     });
 
     const continueWatchingSmartTvSources = createMemo(() =>
@@ -1179,7 +1220,7 @@ const HomePage: Component = () => {
                 <Show when={(groupCarousels()?.length ?? 0) > 0}>
                     <For each={groupCarousels()}>
                         {(group) => {
-                            const items = createMemo(() => group.videos.filter(v => !hasWatchedUrl(v.url)));
+                            const items = createMemo(() => rankVideosForRecommendation(group.videos.filter(v => !hasWatchedUrl(v.url))));
                             const smartTvSources = createMemo(() => smartTvSourcesFromVideos(items(), group.name));
                             const smartTvSourceStats = createMemo(() => smartTvStats(smartTvSources()));
                             const smartTvKey = () => `group:${group.name}`;
