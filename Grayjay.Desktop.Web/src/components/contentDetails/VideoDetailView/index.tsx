@@ -113,6 +113,7 @@ import { interestDetailText, interestFromSet, starsText } from "../../../utils/h
 import { SmartSearchBackend, type ISmartSearchSession } from "../../../backend/SmartSearchBackend";
 import { smartDiscoveryPlan, smartDiscoveryQuery, smartDiscoveryVideos } from "../../../utils/smartDiscovery";
 import { smartTvSettingsFromObject } from "../../../utils/smartTvSettings";
+import { formatTranscriptForClipboard } from "../../../utils/transcriptClipboard";
 
 const SCOPE_ID = "video-detail-view";
 const SMART_TV_INTRO_MODES = ['hidden', 'sticky', 'timed'] as const;
@@ -378,6 +379,19 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         }
         return undefined;
     });
+    const [videoTranscriptAvailable$] = createResourceDefault(() => videoHighlightUrls$(), async (urls) => {
+        for (const url of urls) {
+            try {
+                if (await HighlightsBackend.transcriptAvailable(url))
+                    return true;
+            } catch {}
+        }
+        return false;
+    });
+    const hasCopyableTranscript$ = createMemo(() =>
+        (videoTranscriptAvailable$() ?? false) ||
+        (videoHighlights$()?.translatedSubtitles?.cues.length ?? 0) > 0
+    );
     const currentSmartChapterJob$ = createMemo(() => {
         const jobs = videoHighlightUrls$()
             .map(url => jobFor(url))
@@ -1774,6 +1788,43 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         UIOverlay.overlayShare(shareUrl$());
     }
 
+    async function copyCurrentVideoTranscript() {
+        let cues = [] as { start: number, text: string }[];
+        let copiedTranslatedSubtitles = false;
+
+        for (const url of videoHighlightUrls$()) {
+            try {
+                const transcript = await HighlightsBackend.transcript(url);
+                if ((transcript?.cues.length ?? 0) > 0) {
+                    cues = transcript!.cues;
+                    break;
+                }
+            } catch {}
+        }
+
+        if (cues.length === 0) {
+            const translatedSubtitles = videoHighlights$()?.translatedSubtitles;
+            if ((translatedSubtitles?.cues.length ?? 0) > 0) {
+                cues = translatedSubtitles!.cues;
+                copiedTranslatedSubtitles = true;
+            }
+        }
+
+        const text = formatTranscriptForClipboard(cues);
+        if (!text) {
+            UIOverlay.toast("No transcript is available for this video");
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(text);
+            UIOverlay.toast(copiedTranslatedSubtitles ? "Translated subtitles copied" : "Transcript copied");
+        } catch (error) {
+            console.warn("Failed to copy transcript", error);
+            UIOverlay.toast("Could not copy transcript");
+        }
+    }
+
     function downloadCurrentVideo() {
         download();
     }
@@ -1946,7 +1997,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const hasVideoActions = !videoLoaded$.loading && !(videoLoaded$()?.isLive === true);
         const itemCount = 2
             + ((StateSync.devicesOnline$()?.length ?? 0) > 0 ? 1 : 0)
-            + (hasVideoActions ? 3 : 0);
+            + (hasVideoActions ? 3 : 0)
+            + (hasCopyableTranscript$() ? 1 : 0);
         const menuHeight = 56 + (itemCount * 50);
         setVideoContextMenuPosition({
             x: Math.max(0, Math.min(ev.clientX, window.innerWidth - menuWidth)),
@@ -1962,6 +2014,9 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                 new MenuItemButton("Send To Device", ic_sync, undefined, showSendToDeviceOverlay)
             ] : []),
             new MenuItemButton("Share", share, undefined, shareCurrentVideo),
+            ...(hasCopyableTranscript$() ? [
+                new MenuItemButton("Copy transcript", undefined, undefined, copyCurrentVideoTranscript)
+            ] : []),
             ...(!videoLoaded$.loading && !(videoLoaded$()?.isLive === true) ? [
                 new MenuItemButton("Download", iconDownload, undefined, downloadCurrentVideo)
             ] : []),

@@ -3,6 +3,7 @@ import { IPlatformVideo } from "./models/content/IPlatformVideo";
 import { IVideoHighlightMixCandidate } from "./models/highlights/IVideoHighlightMixCandidate";
 import { IVideoHighlightSet } from "./models/highlights/IVideoHighlightSet";
 import { IVideoHighlightSummary } from "./models/highlights/IVideoHighlightSummary";
+import { IVideoHighlightTranscript } from "./models/highlights/IVideoHighlightTranscript";
 
 export abstract class HighlightsBackend {
     static async get(url: string): Promise<IVideoHighlightSet | undefined> {
@@ -11,6 +12,14 @@ export abstract class HighlightsBackend {
 
     static async getAll(): Promise<IVideoHighlightSummary[]> {
         return await Backend.GET("/highlights/GetAll") as IVideoHighlightSummary[];
+    }
+
+    static async transcriptAvailable(url: string): Promise<boolean> {
+        return await Backend.GET("/highlights/TranscriptAvailable?url=" + encodeURIComponent(url)) as boolean;
+    }
+
+    static async transcript(url: string): Promise<IVideoHighlightTranscript | undefined> {
+        return await Backend.GET("/highlights/Transcript?url=" + encodeURIComponent(url)) as IVideoHighlightTranscript | undefined;
     }
 
     static async getMixCandidates(): Promise<IVideoHighlightMixCandidate[]> {

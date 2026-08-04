@@ -15,6 +15,18 @@ public class HighlightsController : ControllerBase
     }
 
     [HttpGet]
+    public ActionResult<bool> TranscriptAvailable(string url)
+    {
+        return Ok(StateHighlights.HasTranscript(url));
+    }
+
+    [HttpGet]
+    public ActionResult<VideoHighlightTranscript?> Transcript(string url)
+    {
+        return Ok(StateHighlights.GetTranscript(url));
+    }
+
+    [HttpGet]
     public ActionResult<List<VideoHighlightSummary>> GetAll()
     {
         return Ok(StateHighlights.GetSummaries());
