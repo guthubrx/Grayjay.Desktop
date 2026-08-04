@@ -17,12 +17,16 @@ public static class StateSmartSearch
     private const int DefaultDiscoveryParallelism = 3;
     private const int MaxDiscoveryParallelism = 32;
     private const int MaxDisplayTranslationsPerRequest = 6;
+    private const int MaxActiveSessions = 8;
     private const long CachePruneIntervalSeconds = 6 * 60 * 60;
+    private static readonly TimeSpan SessionLifetime = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan SessionPruneInterval = TimeSpan.FromMinutes(1);
     private static readonly HashSet<string> SupportedLanguages = ["ar", "bn", "cs", "da", "de", "el", "en", "es", "fa", "fi", "fr", "he", "hi", "hu", "id", "it", "ja", "ko", "ms", "nb", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "zh-Hans", "zh-Hant"];
     private static readonly HashSet<string> DiscoveryAxisIds = ["core", "context", "impact", "debate"];
     private static readonly object Lock = new();
     private static readonly object CachePruneLock = new();
     private static readonly Dictionary<string, ActiveSession> Sessions = [];
+    private static readonly System.Threading.Timer SessionPruneTimer = new(_ => PruneSessions(), null, SessionPruneInterval, SessionPruneInterval);
     private sealed class TranslationCacheEntry
     {
         public required string Key { get; init; }
@@ -48,6 +52,7 @@ public static class StateSmartSearch
         public required Dictionary<string, IPager<PlatformContent>> Pagers { get; init; }
         public required SmartSearchRequest Request { get; init; }
         public SemaphoreSlim? SearchLimiter { get; init; }
+        public DateTimeOffset LastAccessedAt { get; set; } = DateTimeOffset.UtcNow;
         public Dictionary<string, string> TranslatedTitles { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> TranslatedCreatorNames { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
@@ -70,7 +75,12 @@ public static class StateSmartSearch
             SearchLimiter = request.Discovery == null ? null : new SemaphoreSlim(request.MaxParallelism ?? DefaultDiscoveryParallelism, request.MaxParallelism ?? DefaultDiscoveryParallelism)
         };
         lock (Lock)
+        {
+            PruneSessionsLocked(DateTimeOffset.UtcNow);
+            RemoveSessionLocked(session.SessionId);
             Sessions[session.SessionId] = active;
+            TrimSessionsLocked();
+        }
 
         if (request.Discovery == null)
             StartVariants(active, session.Variants, request);
@@ -83,11 +93,19 @@ public static class StateSmartSearch
     {
         lock (Lock)
         {
-            if (!Sessions.TryGetValue(sessionId, out var active))
-                throw new KeyNotFoundException("Smart Search session not found.");
+            var active = GetSessionLocked(sessionId);
             StartNextDiscoveryStage(active);
         }
         return Snapshot(sessionId);
+    }
+
+    public static void Close(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return;
+
+        lock (Lock)
+            RemoveSessionLocked(sessionId);
     }
 
     private static void StartNextDiscoveryStage(ActiveSession active)
@@ -126,14 +144,61 @@ public static class StateSmartSearch
         }
     }
 
+    private static ActiveSession GetSessionLocked(string sessionId)
+    {
+        if (!TryGetSessionLocked(sessionId, out var active))
+            throw new KeyNotFoundException("Smart Search session not found.");
+        return active;
+    }
+
+    private static bool TryGetSessionLocked(string sessionId, out ActiveSession active)
+    {
+        PruneSessionsLocked(DateTimeOffset.UtcNow);
+        if (!Sessions.TryGetValue(sessionId, out active!))
+            return false;
+        active.LastAccessedAt = DateTimeOffset.UtcNow;
+        return true;
+    }
+
+    private static void PruneSessions()
+    {
+        lock (Lock)
+            PruneSessionsLocked(DateTimeOffset.UtcNow);
+    }
+
+    private static void PruneSessionsLocked(DateTimeOffset now)
+    {
+        foreach (var sessionId in Sessions
+            .Where(entry => now - entry.Value.LastAccessedAt >= SessionLifetime)
+            .Select(entry => entry.Key)
+            .ToArray())
+        {
+            RemoveSessionLocked(sessionId);
+        }
+    }
+
+    private static void TrimSessionsLocked()
+    {
+        foreach (var sessionId in Sessions
+            .OrderBy(entry => entry.Value.LastAccessedAt)
+            .SkipLast(MaxActiveSessions)
+            .Select(entry => entry.Key)
+            .ToArray())
+        {
+            RemoveSessionLocked(sessionId);
+        }
+    }
+
+    private static void RemoveSessionLocked(string sessionId)
+    {
+        Sessions.Remove(sessionId);
+    }
+
     public static SmartSearchSession Snapshot(string sessionId)
     {
         ActiveSession active;
         lock (Lock)
-        {
-            if (!Sessions.TryGetValue(sessionId, out active!))
-                throw new KeyNotFoundException("Smart Search session not found.");
-        }
+            active = GetSessionLocked(sessionId);
 
         var clone = new SmartSearchSession { SessionId = active.Session.SessionId, Error = active.Session.Error };
         var contents = new Dictionary<string, PlatformContent>(StringComparer.OrdinalIgnoreCase);
@@ -201,7 +266,7 @@ public static class StateSmartSearch
             .ToList();
         lock (Lock)
         {
-            if (!Sessions.TryGetValue(request.SessionId, out var active))
+            if (!TryGetSessionLocked(request.SessionId, out var active))
                 return snapshot;
             foreach (var entry in cached)
                 ApplyTranslation(active, entry.Item, entry.Translation!);
@@ -222,7 +287,7 @@ public static class StateSmartSearch
         var pendingByKey = pending.ToDictionary(item => item.Key, StringComparer.OrdinalIgnoreCase);
         lock (Lock)
         {
-            if (!Sessions.TryGetValue(request.SessionId, out var active))
+            if (!TryGetSessionLocked(request.SessionId, out var active))
                 return snapshot;
             foreach (var translation in translated)
             {

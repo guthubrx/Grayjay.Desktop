@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { Backend } from "../backend/Backend";
 import { SettingsBackend } from "../backend/SettingsBackend";
-import type { ISmartSearchSession } from "../backend/SmartSearchBackend";
+import { SmartSearchBackend, type ISmartSearchSession } from "../backend/SmartSearchBackend";
 import {
     defaultSubtitleTranslationLanguages,
     normalizeSmartSearchLanguages,
@@ -183,15 +183,25 @@ export async function setSmartSearchDiscoveryParallelism(value: unknown) {
     await persistSmartSearchSettings();
 }
 
+function closeSmartSearchSession() {
+    const sessionId = smartSearchSession$()?.sessionId;
+    if (sessionId)
+        void SmartSearchBackend.close(sessionId).catch(() => undefined);
+}
+
 export function beginSmartSearch(query: string, visible = true) {
+    closeSmartSearchSession();
+    const sessionId = "smart-" + Date.now().toString(36);
     setSmartSearchQuerySignal(query);
-    setSmartSearchSessionSignal(undefined);
+    setSmartSearchSessionSignal({ sessionId, variants: [] });
     setSmartSearchLoadingSignal(true);
     setSmartSearchTranslatingTitlesSignal(false);
     setSmartSearchVisibleSignal(visible);
+    return sessionId;
 }
 
 export function clearSmartSearch() {
+    closeSmartSearchSession();
     setSmartSearchQuerySignal(undefined);
     setSmartSearchSessionSignal(undefined);
     setSmartSearchLoadingSignal(false);
