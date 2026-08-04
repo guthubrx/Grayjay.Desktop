@@ -11,6 +11,7 @@ namespace Grayjay.ClientServer.States;
 public static class StateHighlights
 {
     private const string StoreName = "highlights";
+    private const string TranscriptCacheName = "transcripts_cache";
     private const double InterestMinScore = 0.55;
     private const double InterestStrongScore = 0.88;
     private const double InterestExcellentScore = 0.93;
@@ -72,6 +73,43 @@ public static class StateHighlights
             return FindByUrl(videoUrl);
 
         return Read(file);
+    }
+
+    public static bool HasTranscript(string videoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(videoUrl))
+            return false;
+
+        if (GetTranscriptFile(videoUrl).Exists)
+            return true;
+
+        foreach (var cachedFile in TranscriptCacheDirectory.GetFiles("*.json"))
+        {
+            var transcript = ReadTranscript(cachedFile);
+            if (transcript != null && UrlsMatch(transcript.VideoUrl, videoUrl))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static VideoHighlightTranscript? GetTranscript(string videoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(videoUrl))
+            return null;
+
+        var file = GetTranscriptFile(videoUrl);
+        if (file.Exists)
+            return ReadTranscript(file);
+
+        foreach (var cachedFile in TranscriptCacheDirectory.GetFiles("*.json"))
+        {
+            var transcript = ReadTranscript(cachedFile);
+            if (transcript != null && UrlsMatch(transcript.VideoUrl, videoUrl))
+                return transcript;
+        }
+
+        return null;
     }
 
     public static List<VideoHighlightSet> GetAll()
@@ -263,6 +301,44 @@ public static class StateHighlights
     private static FileInfo GetFile(string videoUrl)
     {
         return new FileInfo(Path.Combine(StoreDirectory.FullName, Hash(videoUrl) + ".json"));
+    }
+
+    private static DirectoryInfo TranscriptCacheDirectory
+    {
+        get
+        {
+            var dir = new DirectoryInfo(Path.Combine(StateApp.GetAppDirectory().FullName, TranscriptCacheName));
+            if (!dir.Exists)
+                dir.Create();
+            return dir;
+        }
+    }
+
+    private static FileInfo GetTranscriptFile(string videoUrl)
+    {
+        return new FileInfo(Path.Combine(TranscriptCacheDirectory.FullName, Hash(videoUrl) + ".json"));
+    }
+
+    private static VideoHighlightTranscript? ReadTranscript(FileInfo file)
+    {
+        try
+        {
+            var json = File.ReadAllText(file.FullName, Encoding.UTF8);
+            var transcript = GJsonSerializer.AndroidCompatible.DeserializeObj<VideoHighlightTranscript>(json);
+            if (string.IsNullOrWhiteSpace(transcript?.VideoUrl))
+                return null;
+
+            transcript.Cues = (transcript.Cues ?? new List<VideoHighlightSubtitleCue>())
+                .Where(cue => cue.End > cue.Start && !string.IsNullOrWhiteSpace(cue.Text))
+                .OrderBy(cue => cue.Start)
+                .ToList();
+            return transcript.Cues.Count > 0 ? transcript : null;
+        }
+        catch (Exception ex)
+        {
+            Logger.w(nameof(StateHighlights), $"Failed to read transcript [{file.Name}]: {ex.Message}");
+            return null;
+        }
     }
 
     private static bool UrlsMatch(string? storedUrl, string? requestedUrl)
