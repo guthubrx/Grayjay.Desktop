@@ -19,6 +19,13 @@ public class SmartSearchController : ControllerBase
         return Ok(StateSmartSearch.Snapshot(sessionId));
     }
 
+    [HttpPost]
+    public IActionResult Close([FromBody] SmartSearchSessionRequest request)
+    {
+        StateSmartSearch.Close(request.SessionId);
+        return Ok();
+    }
+
     [HttpPost("[action]")]
     public ActionResult<SmartSearchSession> StartNextDiscoveryStage([FromBody] SmartSearchSessionRequest request)
     {

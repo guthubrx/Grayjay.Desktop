@@ -62,6 +62,10 @@ export abstract class SmartSearchBackend {
         return await Backend.GET("/smartsearch/Get?sessionId=" + encodeURIComponent(sessionId)) as ISmartSearchSession;
     }
 
+    static async close(sessionId: string): Promise<void> {
+        await Backend.POST("/smartsearch/Close", JSON.stringify({ sessionId }), "application/json");
+    }
+
     static async startNextDiscoveryStage(sessionId: string): Promise<ISmartSearchSession> {
         return await Backend.POST("/smartsearch/StartNextDiscoveryStage", JSON.stringify({ sessionId }), "application/json") as ISmartSearchSession;
     }

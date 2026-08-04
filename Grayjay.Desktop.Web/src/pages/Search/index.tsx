@@ -245,8 +245,7 @@ const SearchPage: Component = () => {
       );
       return;
     }
-    beginSmartSearch(query, showResults);
-    const sessionId = "smart-" + Date.now().toString(36);
+    const sessionId = beginSmartSearch(query, showResults);
     try {
       const session = await SmartSearchBackend.load({
         sessionId,
@@ -258,9 +257,15 @@ const SearchPage: Component = () => {
         filters: untrack(filterValues$),
         excludePlugins: untrack(disabledSources$)
       });
+      if (smartSearchSession$()?.sessionId !== sessionId) {
+        void SmartSearchBackend.close(sessionId);
+        return;
+      }
       setSmartSearchSession(session);
       void refreshSmartSearchSession(sessionId);
     } catch (error) {
+      if (smartSearchSession$()?.sessionId !== sessionId)
+        return;
       setSmartSearchSession({ sessionId, error: error instanceof Error ? error.message : "Smart Search failed.", variants: [] });
       setSmartSearchLoading(false);
     }
@@ -388,6 +393,8 @@ const SearchPage: Component = () => {
     }
     void startSmartSearch(true, true);
   };
+
+  onCleanup(() => clearSmartSearch());
 
   let filtersScrollContainerRef: HTMLDivElement | undefined;
 
