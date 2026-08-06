@@ -7,7 +7,8 @@ import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
 import { IVideoHighlightSummary } from '../../../backend/models/highlights/IVideoHighlightSummary';
 import { WatchLaterBackend } from '../../../backend/WatchLaterBackend';
 import VideoThumbnailView from '../../content/VideoThumbnailView';
-import { interestDetailText, interestFromSummary, starsText } from '../../../utils/highlightInterest';
+import { interestDetailText, interestFromSummary } from '../../../utils/highlightInterest';
+import InterestRatingStars from '../../highlights/InterestRatingStars';
 import styles from './index.module.css';
 
 import iconWatchLater from '../../../assets/icons/icon24_watch_later.svg';
@@ -210,7 +211,12 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                     <Show when={currentInterest()}>
                         {(interest) => (
                             <div class={styles.heroInterest}>
-                                <span class={styles.heroInterestStars}>{starsText(interest().stars)}</span>
+                                <InterestRatingStars
+                                    class={styles.heroInterestStars}
+                                    stars={interest().stars}
+                                    text={interest().ratingText}
+                                    ariaLabel={interest().ratingAriaLabel}
+                                />
                                 <span class={styles.heroInterestLabel}>{interest().label}</span>
                                 <Show when={interestDetailText(interest())}>
                                     {(detail) => <span class={styles.heroInterestDetail}>{detail()}</span>}
@@ -311,7 +317,12 @@ const HeroBanner: Component<HeroBannerProps> = (props) => {
                             <Show when={currentInterest()}>
                                 {(interest) => (
                                     <div class={styles.overlayInterest}>
-                                        <div class={styles.overlayInterestStars}>{starsText(interest().stars)}</div>
+                                        <InterestRatingStars
+                                            class={styles.overlayInterestStars}
+                                            stars={interest().stars}
+                                            text={interest().ratingText}
+                                            ariaLabel={interest().ratingAriaLabel}
+                                        />
                                         <div class={styles.overlayInterestCopy}>
                                             <div class={styles.overlayInterestLabel}>{interest().label}</div>
                                             <Show when={interestDetailText(interest())}>

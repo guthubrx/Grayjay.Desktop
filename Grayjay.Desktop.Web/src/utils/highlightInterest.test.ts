@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { IPlatformVideo } from '../backend/models/content/IPlatformVideo';
+import type { IVideoHighlightSet } from '../backend/models/highlights/IVideoHighlightSet';
 import type { IVideoHighlightSummary } from '../backend/models/highlights/IVideoHighlightSummary';
 
-const { interestFromSummary } = await import(
+const { interestFromSet, interestFromSummary, interestRatingFromScore } = await import(
     new URL('./highlightInterest.ts', import.meta.url).href
 ) as typeof import('./highlightInterest');
 
@@ -30,4 +31,66 @@ test('keeps editorial interest independent from publication freshness', () => {
 
     assert.equal(recent?.score, old?.score);
     assert.equal(recent?.stars, old?.stars);
+});
+
+test('maps the video-interest signal to all ten half-star levels', () => {
+    const cases = [
+        { score: 0, stars: 0.5, label: 'Très faible', text: '0,5 / 5' },
+        { score: 0.15, stars: 1, label: 'Faible', text: '1,0 / 5' },
+        { score: 0.30, stars: 1.5, label: 'Anecdotique', text: '1,5 / 5' },
+        { score: 0.39, stars: 2, label: 'À picorer', text: '2,0 / 5' },
+        { score: 0.48, stars: 2.5, label: 'Utile', text: '2,5 / 5' },
+        { score: 0.57, stars: 3, label: 'Intéressante', text: '3,0 / 5' },
+        { score: 0.66, stars: 3.5, label: 'Très intéressante', text: '3,5 / 5' },
+        { score: 0.74, stars: 4, label: 'Remarquable', text: '4,0 / 5' },
+        { score: 0.82, stars: 4.5, label: 'Excellente', text: '4,5 / 5' },
+        { score: 0.91, stars: 5, label: 'Passionnante', text: '5,0 / 5' },
+    ];
+
+    for (const expected of cases) {
+        const rating = interestRatingFromScore(expected.score);
+        assert.equal(rating.stars, expected.stars);
+        assert.equal(rating.label, expected.label);
+        assert.equal(rating.text, expected.text);
+        assert.equal(rating.ariaLabel, `${expected.text} étoiles sur 5 - ${expected.label}`);
+    }
+});
+
+test('keeps half-star thresholds deterministic and bounds invalid scores', () => {
+    assert.equal(interestRatingFromScore(0.149).stars, 0.5);
+    assert.equal(interestRatingFromScore(0.299).stars, 1);
+    assert.equal(interestRatingFromScore(0.909).stars, 4.5);
+    assert.equal(interestRatingFromScore(Number.NaN).stars, 0.5);
+    assert.equal(interestRatingFromScore(Number.POSITIVE_INFINITY).stars, 0.5);
+});
+
+test('derives a rating from legacy highlights without requiring regeneration', () => {
+    const legacySet = {
+        schemaVersion: 1,
+        videoUrl: 'https://example.com/video',
+        source: 'test',
+        createdAt: '2026-08-06T12:00:00Z',
+        updatedAt: '2026-08-06T12:00:00Z',
+        segments: [
+            { start: 0, end: 180, title: 'Intro', summary: 'Introduction', score: 0.32 },
+            { start: 180, end: 420, title: 'Key point', summary: 'Useful detail', score: 0.82 },
+        ],
+    } as IVideoHighlightSet;
+
+    const interest = interestFromSet(legacySet);
+
+    assert.ok(interest);
+    assert.equal(interest.score > 0, true);
+    assert.equal(interest.stars % 0.5, 0);
+});
+
+test('does not invent a rating when no highlight signal exists', () => {
+    assert.equal(interestFromSummary(undefined), undefined);
+    assert.equal(interestFromSet({
+        schemaVersion: 1,
+        videoUrl: 'https://example.com/video',
+        createdAt: '2026-08-06T12:00:00Z',
+        updatedAt: '2026-08-06T12:00:00Z',
+        segments: [],
+    }), undefined);
 });

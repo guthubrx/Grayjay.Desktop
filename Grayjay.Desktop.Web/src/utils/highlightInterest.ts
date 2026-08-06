@@ -12,6 +12,8 @@ export interface VideoInterest {
     score: number;
     stars: number;
     label: string;
+    ratingText: string;
+    ratingAriaLabel: string;
     usefulSegmentCount: number;
     strongSegmentCount: number;
     excellentSegmentCount: number;
@@ -33,30 +35,48 @@ interface InterestInput {
     excellentSegmentCount?: number;
 }
 
+export interface VideoInterestRating {
+    stars: number;
+    label: string;
+    text: string;
+    ariaLabel: string;
+}
+
+interface InterestRatingLevel {
+    minimumScore: number;
+    stars: number;
+    label: string;
+}
+
+const INTEREST_RATING_LEVELS: readonly InterestRatingLevel[] = [
+    { minimumScore: 0.91, stars: 5, label: "Passionnante" },
+    { minimumScore: 0.82, stars: 4.5, label: "Excellente" },
+    { minimumScore: 0.74, stars: 4, label: "Remarquable" },
+    { minimumScore: 0.66, stars: 3.5, label: "Très intéressante" },
+    { minimumScore: 0.57, stars: 3, label: "Intéressante" },
+    { minimumScore: 0.48, stars: 2.5, label: "Utile" },
+    { minimumScore: 0.39, stars: 2, label: "À picorer" },
+    { minimumScore: 0.30, stars: 1.5, label: "Anecdotique" },
+    { minimumScore: 0.15, stars: 1, label: "Faible" },
+    { minimumScore: 0, stars: 0.5, label: "Très faible" },
+];
+
 function clamp01(value: number): number {
     if (!Number.isFinite(value)) return 0;
     return Math.max(0, Math.min(1, value));
 }
 
-function starsFromScore(score: number): number {
-    if (score >= 0.82) return 5;
-    if (score >= 0.66) return 4;
-    if (score >= 0.48) return 3;
-    if (score >= 0.30) return 2;
-    return 1;
-}
-
-function labelFromStars(stars: number): string {
-    if (stars >= 5) return "Exceptional";
-    if (stars >= 4) return "Very interesting";
-    if (stars >= 3) return "Interesting";
-    if (stars >= 2) return "Occasional signal";
-    return "Low signal";
-}
-
-export function starsText(stars: number): string {
-    const full = Math.max(0, Math.min(5, Math.round(stars)));
-    return `${"★".repeat(full)}${"☆".repeat(5 - full)}`;
+export function interestRatingFromScore(score: number): VideoInterestRating {
+    const safeScore = clamp01(score);
+    const level = INTEREST_RATING_LEVELS.find(candidate => safeScore >= candidate.minimumScore)
+        ?? INTEREST_RATING_LEVELS[INTEREST_RATING_LEVELS.length - 1];
+    const text = `${level.stars.toFixed(1).replace('.', ',')} / 5`;
+    return {
+        stars: level.stars,
+        label: level.label,
+        text,
+        ariaLabel: `${text} étoiles sur 5 - ${level.label}`,
+    };
 }
 
 export function formatInterestDuration(seconds: number): string {
@@ -124,11 +144,13 @@ function computeInterest(input: InterestInput): VideoInterest | undefined {
         );
     }
 
-    const stars = starsFromScore(score);
+    const rating = interestRatingFromScore(score);
     return {
         score,
-        stars,
-        label: labelFromStars(stars),
+        stars: rating.stars,
+        label: rating.label,
+        ratingText: rating.text,
+        ratingAriaLabel: rating.ariaLabel,
         usefulSegmentCount,
         strongSegmentCount,
         excellentSegmentCount,
