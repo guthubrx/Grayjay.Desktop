@@ -109,7 +109,8 @@ import { SearchBackend } from "../../../backend/SearchBackend";
 import history from '../../../assets/icons/icon_nav_history.svg';
 import iconHighlights from '../../../assets/icons/label_important_24dp_FFFFFF_FILL1_wght300_GRAD0_opsz24.svg';
 import { Portal } from "solid-js/web";
-import { interestDetailText, interestFromSet, starsText } from "../../../utils/highlightInterest";
+import { interestDetailText, interestFromSet } from "../../../utils/highlightInterest";
+import InterestRatingStars from "../../highlights/InterestRatingStars";
 import { SmartSearchBackend, type ISmartSearchSession } from "../../../backend/SmartSearchBackend";
 import { smartDiscoveryPlan, smartDiscoveryQuery, smartDiscoveryVideos } from "../../../utils/smartDiscovery";
 import { smartTvSettingsFromObject } from "../../../utils/smartTvSettings";
@@ -2821,7 +2822,12 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                                     <Show when={videoInterest$()}>
                                         {(interest) => (
                                             <div class={styles.smartAnalysisInterest}>
-                                                <span class={styles.smartAnalysisInterestStars}>{starsText(interest().stars)}</span>
+                                                <InterestRatingStars
+                                                    class={styles.smartAnalysisInterestStars}
+                                                    stars={interest().stars}
+                                                    text={interest().ratingText}
+                                                    ariaLabel={interest().ratingAriaLabel}
+                                                />
                                                 <span class={styles.smartAnalysisInterestLabel}>{interest().label}</span>
                                                 <Show when={interestDetailText(interest())}>
                                                     {(detail) => <span class={styles.smartAnalysisInterestDetail}>{detail()}</span>}
