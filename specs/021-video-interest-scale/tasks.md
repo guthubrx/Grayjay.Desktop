@@ -117,5 +117,5 @@
 - [X] T022 [US5] Ajouter au generateur `tools/generate_smart_chapters.py` le schema, le prompt et la validation du profil editorial dans la passe d'analyse normale, puis conserver ce profil lors des ecritures et mises a jour de highlights.
 - [X] T023 [US7] Ajouter un mode de backfill idempotent dans `tools/generate_smart_chapters.py` : lecture de highlights locaux, analyse texte compacte, ecriture atomique du seul profil, limite et parallelisme configurables.
 - [X] T024 [US7] Ajouter des tests Python cibles pour la validation et la construction de l'entree de backfill, sans appel reseau ni modele.
-- [ ] T025 Executer les tests TypeScript cibles, les tests Python, le build frontend et la publication .NET ; documenter les avertissements historiques et les eventuels blocages preexistants.
+- [X] T025 Executer les tests TypeScript cibles, les tests Python, le build frontend et la publication .NET ; documenter les avertissements historiques et les eventuels blocages preexistants.
 - [ ] T026 Mettre a jour `implementation.md`, effectuer une revue spec/plan/tasks/code et demander la validation visuelle avant de construire et installer BlueJay.
