@@ -76,4 +76,28 @@
 ## Livraison Git
 
 - Branche dediee : `pr/021-video-interest-scale`.
-- Aucun commit ni publication GitHub n'ont ete effectues automatiquement.
+- Commit candidat : `403c997 feat(highlights): show interest rating on video cards`.
+- Aucune publication GitHub n'a ete effectuee.
+
+## Extension en cours - Note sur les cartes videos
+
+### T015 et T016 - Index compact et badge de miniature
+
+- **Statut**: Complete, en attente de validation visuelle
+- **Fichiers modifies**:
+  - `Grayjay.Desktop.Web/src/utils/highlightInterest.ts`
+  - `Grayjay.Desktop.Web/src/utils/highlightInterest.test.ts`
+  - `Grayjay.Desktop.Web/src/state/StateIndexedHighlights.ts`
+  - `Grayjay.Desktop.Web/src/components/content/VideoThumbnailView/index.tsx`
+  - `Grayjay.Desktop.Web/src/components/content/VideoThumbnailView/index.module.css`
+- **Decision**: `StateIndexedHighlights` remplace son `Set` booleen par une `Map` reactive qui ne retient que les sept champs numeriques du resume utiles au calcul. Les cartes reutilisent l'echelle et le composant d'etoiles existants dans le coin superieur gauche ; elles ne font ni appel reseau ni appel LLM.
+- **Compatibilite**: une carte sans highlight score ne rend aucun badge. Le marqueur bleu de duree reste base sur la meme presence dans l'index, et les controles existants conservent leurs coins respectifs.
+
+### T017 - Verification
+
+- **Tests automatises**:
+  - `node --test src/utils/highlightInterest.test.ts`: 6 tests passes sur 6.
+  - `npm run build`: succes, avec les avertissements Vite/CSS historiques hors diff.
+  - `npx tsc --noEmit`: echec sur les erreurs globales preexistantes du projet et de ses dependances ; aucun diagnostic ne vise les fichiers de cette extension.
+  - `git diff --check`: succes.
+- **Validation manuelle**: en attente. Verifier dans BlueJay une carte indexee, une carte sans Smart Chapters et le rafraichissement apres reception de `HighlightsChanged`.

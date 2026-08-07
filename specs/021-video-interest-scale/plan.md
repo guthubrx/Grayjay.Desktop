@@ -5,7 +5,7 @@
 
 ## Summary
 
-Remplacer la conversion de score d'interet video en etoiles entieres par une conversion deterministe vers les dix demi-paliers de `0,5` a `5,0`, avec dix libelles francais. Les scores de chapitres et le classement des recommandations restent hors perimetre. Les interfaces existantes de detail video et de Hero Banner reutilisent un rendu d'etoiles accessible unique, sans nouvelle dependance ni migration de highlights.
+Remplacer la conversion de score d'interet video en etoiles entieres par une conversion deterministe vers les dix demi-paliers de `0,5` a `5,0`, avec dix libelles francais. Exposer ce meme signal sur les cartes videos indexees a partir d'un etat partage qui ne conserve que les champs numeriques necessaires. Les scores de chapitres et le classement des recommandations restent hors perimetre. Les interfaces de detail video, Hero Banner et cartes reutilisent un rendu d'etoiles accessible unique, sans nouvelle dependance ni migration de highlights.
 
 ## Technical Context
 
@@ -23,7 +23,7 @@ Remplacer la conversion de score d'interet video en etoiles entieres par une con
 **Project Type**: Application desktop avec frontend web embarque
 **Performance Goals**: Conversion O(1), aucun appel reseau, aucune regeneration Smart Chapters et aucun recalcul de liste
 **Constraints**: Compatibilite avec tous les highlights existants, rendu lisible et accessible, aucune modification du score brut ni des filtres de chapitres
-**Scale/Scope**: Un utilitaire, un composant de rendu reutilise trois fois, deux styles d'integration et leurs tests
+**Scale/Scope**: Un utilitaire, un composant de rendu reutilise dans les details, les heroes et les cartes, un etat d'index compact, trois styles d'integration et leurs tests
 
 ## Constitution Check
 
@@ -65,8 +65,10 @@ Grayjay.Desktop.Web/src/
 │   └── highlightInterest.test.ts
 ├── components/highlights/
 │   └── InterestRatingStars/
+├── components/content/VideoThumbnailView/
 ├── components/contentDetails/VideoDetailView/
-└── components/home/HeroBanner/
+├── components/home/HeroBanner/
+└── state/StateIndexedHighlights.ts
 
 docs/decisions/
 └── 021-half-star-video-interest.md

@@ -24,6 +24,17 @@ export interface VideoInterest {
     hasChapterScores: boolean;
 }
 
+export interface HighlightInterestSummary {
+    segmentCount?: number;
+    totalDuration?: number;
+    interestingDuration?: number;
+    averageScore?: number;
+    topScore?: number;
+    strongSegmentCount?: number;
+    excellentSegmentCount?: number;
+    video?: IPlatformVideo;
+}
+
 interface InterestInput {
     videoDuration?: number;
     segmentCount?: number;
@@ -162,7 +173,7 @@ function computeInterest(input: InterestInput): VideoInterest | undefined {
     };
 }
 
-export function interestFromSummary(summary?: IVideoHighlightSummary, video?: IPlatformVideo): VideoInterest | undefined {
+export function interestFromSummary(summary?: HighlightInterestSummary, video?: IPlatformVideo): VideoInterest | undefined {
     if (!summary) return undefined;
     const sourceVideo = video ?? summary.video;
     return computeInterest({

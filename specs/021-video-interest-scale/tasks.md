@@ -69,6 +69,18 @@
 - [X] T013 Mettre a jour `specs/021-video-interest-scale/implementation.md` avec les commandes, resultats de tests, fichiers modifies et revue Article XIX/XX.
 - [X] T014 Realiser une revue finale spec/plan/tasks/code, verifier `git diff --check` et confirmer que toutes les taches sont cochees uniquement apres leur verification.
 
+---
+
+## Phase 6: User Story 4 - Voir la note dans les cartes (Priority: P1)
+
+**Goal**: Rendre la note sur toutes les cartes videos deja indexees, sans appel par carte ni retention de resume textuel.
+
+**Independent Test**: Charger une grille avec une video indexee puis publier un highlight pour une autre video et verifier que les badges apparaissent sans recharger la page.
+
+- [X] T015 [US4] Etendre `Grayjay.Desktop.Web/src/state/StateIndexedHighlights.ts` pour indexer les seuls champs numeriques de resume utiles a l'interet.
+- [X] T016 [US4] Integrer `InterestRatingStars` a `Grayjay.Desktop.Web/src/components/content/VideoThumbnailView/index.tsx` et reserver le coin superieur gauche dans son module CSS.
+- [ ] T017 [US4] Executer les tests cibles et le build frontend, puis verifier manuellement une carte avec et sans Smart Chapters.
+
 ## Dependencies & Execution Order
 
 - T001 precede toutes les autres taches.
