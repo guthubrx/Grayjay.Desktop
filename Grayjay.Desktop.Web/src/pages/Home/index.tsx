@@ -27,7 +27,7 @@ import { useVideo, VideoState, type VideoQueueItemMeta } from '../../contexts/Vi
 import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overlays/SettingsMenu';
 import Anchor, { AnchorStyle } from '../../utility/Anchor';
 import UIOverlay from '../../state/UIOverlay';
-import { interestScoreFromSummary } from '../../utils/highlightInterest';
+import { editorialFreshnessHalfLifeDays, interestScoreFromSummary } from '../../utils/highlightInterest';
 import { rankRecommendationCandidates } from '../../utils/recommendationRanking';
 import { mergeSubscriptionGroupRows } from '../../utils/subscriptionGroupRows';
 import {
@@ -309,6 +309,7 @@ function rankSmartTvSources(sources: SmartTvSource[]): SmartTvSource[] {
         publishedAt: source.video?.dateTime ?? source.summary?.video?.dateTime,
         viewCount: source.video?.viewCount ?? source.summary?.video?.viewCount,
         contentInterest: sourceInterest(source),
+        freshnessHalfLifeDays: editorialFreshnessHalfLifeDays(source.summary?.editorialProfile),
         source,
     }))).map(item => ({ ...item.candidate.source, recommendationScore: item.score }));
 }
@@ -657,6 +658,7 @@ const HomePage: Component = () => {
                 publishedAt: video.dateTime,
                 viewCount: video.viewCount,
                 contentInterest: summary ? interestScoreFromSummary(summary, video) : undefined,
+                freshnessHalfLifeDays: editorialFreshnessHalfLifeDays(summary?.editorialProfile),
                 video,
             };
         })).map(item => item.candidate.video);

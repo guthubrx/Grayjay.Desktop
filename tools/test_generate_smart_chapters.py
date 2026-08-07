@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 MODULE_PATH = Path(__file__).with_name("generate_smart_chapters.py")
@@ -28,6 +29,7 @@ def args_for(root: Path, **overrides):
         "subtitle_file": None,
         "output_language": None,
         "discovery_languages": "en,fr,ja",
+        "editorial_backfill_overwrite": False,
     }
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -92,7 +94,7 @@ class AnalysisOnlyTests(unittest.TestCase):
             GENERATOR.update_highlights_analysis(task, analysis, args_for(root))
             updated = json.loads(highlight_path.read_text(encoding="utf-8"))
 
-            self.assertEqual(updated["schemaVersion"], 7)
+            self.assertEqual(updated["schemaVersion"], 8)
             self.assertEqual(updated["globalSummary"], "Updated summary")
             self.assertEqual(updated["mixProfile"], analysis["mixProfile"])
             self.assertEqual(updated["discoveryProfile"], analysis["discoveryProfile"])
@@ -130,6 +132,64 @@ class AnalysisOnlyTests(unittest.TestCase):
 
         parsed = GENERATOR.validate_analysis(analysis, args)
         self.assertNotIn("discoveryProfile", parsed)
+
+    def test_editorial_profile_requires_normalized_dimensions(self):
+        valid = {
+            "version": 1,
+            "genre": "documentary",
+            "substance": 0.9,
+            "rigor": 0.8,
+            "clarity": 0.7,
+            "distinctiveness": 0.6,
+            "audienceValue": 0.5,
+            "temporalSensitivity": 0.2,
+            "confidence": 0.85,
+            "rationale": "  Useful   long-form explanation. ",
+        }
+
+        parsed = GENERATOR.validate_editorial_profile(valid)
+        self.assertEqual(parsed["rationale"], "Useful long-form explanation.")
+        self.assertEqual(parsed["substance"], 0.9)
+        self.assertIsNone(GENERATOR.validate_editorial_profile({**valid, "genre": "invalid"}))
+        self.assertIsNone(GENERATOR.validate_editorial_profile({**valid, "rigor": 1.1}))
+        self.assertIsNone(GENERATOR.validate_editorial_profile({**valid, "clarity": True}))
+
+    def test_editorial_backfill_preserves_the_original_update_timestamp(self):
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            url = "https://www.youtube.com/watch?v=editorial"
+            path = root / "highlights" / f"{hashlib.sha256(url.encode('utf-8')).hexdigest()}.json"
+            path.parent.mkdir(parents=True)
+            existing = {
+                "schemaVersion": 7,
+                "videoUrl": url,
+                "updatedAt": "2026-07-01T10:00:00Z",
+                "globalSummary": "A durable explanation of a technical subject.",
+                "theses": [{"id": 1, "statement": "The explanation is structured around evidence."}],
+                "mixProfile": {"topics": ["technical explanation"], "relatedTopics": [], "angleLabels": []},
+                "segments": [{"title": "Evidence", "summary": "The presenter cites sources.", "score": 0.8}],
+            }
+            path.write_text(json.dumps(existing), encoding="utf-8")
+            profile = {
+                "version": 1,
+                "genre": "explainer",
+                "substance": 0.8,
+                "rigor": 0.75,
+                "clarity": 0.85,
+                "distinctiveness": 0.65,
+                "audienceValue": 0.8,
+                "temporalSensitivity": 0.1,
+                "confidence": 0.8,
+            }
+
+            with patch.object(GENERATOR, "run_editorial_profile", return_value=profile):
+                result = GENERATOR.backfill_editorial_profile(path, args_for(root))
+            updated = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(result, "written")
+            self.assertEqual(updated["schemaVersion"], 8)
+            self.assertEqual(updated["updatedAt"], existing["updatedAt"])
+            self.assertEqual(updated["editorialProfile"], profile)
 
 
 if __name__ == "__main__":

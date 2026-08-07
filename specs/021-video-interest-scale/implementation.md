@@ -107,3 +107,20 @@
   - `npx tsc --noEmit`: echec sur les erreurs globales preexistantes du projet et de ses dependances ; aucun diagnostic ne vise les fichiers de cette extension.
   - `git diff --check`: succes.
 - **Validation manuelle**: en attente. Verifier dans BlueJay une carte indexee, une carte sans Smart Chapters et le rafraichissement apres reception de `HighlightsChanged`.
+
+## Extension en cours - Profil editorial comparable
+
+- **Statut**: Implementation terminee, verification d'integration et validation visuelle restantes.
+- **Decision**: la valeur editoriale devient un profil multidimensionnel versionne. Elle ne depend pas de la date ; la fraicheur reste un signal de classement distinct et optionnel.
+- **Corpus constate**: 4 257 highlights distincts dans `/Users/moi/Library/Application Support/Grayjay/highlights`, dont 4 255 resumes globaux et 4 176 transcripts caches. Le backfill exploitera ces donnees locales sans Whisper ni telechargement.
+- **Recherche**: LLM-Rubric et les travaux sur le biais de position des LLM juges confirment l'usage de rubriques explicites, de dimensions separees et d'une validation ulterieure par comparaisons de paires. Sources dans `research.md`.
+
+### T018 a T024 - Transport, calcul et backfill
+
+- **Modeles**: `VideoHighlightEditorialProfile` est transporte de `VideoHighlightSet` vers les resumes et candidats Smart Mix, avec le contrat TypeScript correspondant. Le champ reste optionnel pour tous les clients qui n'ont pas Smart Chapters.
+- **Calcul**: les cinq dimensions stables sont combinees localement avec les poids documentes ; une date differente ne peut pas modifier la note. Un profil absent ou invalide reutilise strictement le calcul historique issu des chapitres.
+- **Classement**: `temporalSensitivity` regle seulement une demi-vie entre 30 et 365 jours dans le moteur de ranking central. En son absence, la formule historique `1 / (1 + age / 21)` reste bit a bit identique.
+- **Generateur**: le schema editorial est demande dans la premiere passe d'analyse sans ajouter d'appel pour une nouvelle video. Une relecture d'un cache ancien peut l'enrichir par un appel texte isole, et une erreur conserve les chapitres et l'analyse existants.
+- **Backfill**: `--backfill-editorial-profiles` lit uniquement les fichiers de highlights locaux, ne lance ni yt-dlp ni Whisper, saute les profils valides, borne la concurrence a 32 et ecrit atomiquement sans modifier `updatedAt`.
+- **Tests cibles**: `python3 -m unittest tools/test_generate_smart_chapters.py` : 7 passes ; `node --test src/utils/highlightInterest.test.ts src/utils/recommendationRanking.test.ts` : 15 passes ; `npm run build` : succes.
+- **Limites de compilation**: dans cette worktree, `dotnet build Grayjay.ClientServer/Grayjay.ClientServer.csproj` est bloque avant nos fichiers par les sous-modules absents (`Grayjay.Engine`, `FUTO.MDNS`, `SyncServer`) et leurs dependances. `npx tsc --noEmit` conserve les diagnostics globaux historiques du projet et des dependances ; aucun diagnostic ne cible les fichiers de cette extension.

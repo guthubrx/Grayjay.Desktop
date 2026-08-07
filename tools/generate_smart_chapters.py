@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import argparse
 import bisect
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import html
 import json
+import math
 import os
 import re
 import shlex
@@ -38,7 +40,7 @@ DEFAULT_GRAYJAY_DIR = Path.home() / "Library/Application Support/Grayjay"
 DEFAULT_ROUTR_CLIENT = "bluejay-smart-chapters"
 DEFAULT_ROUTR_PHASE = "precompute"
 DEFAULT_ROUTR_PROFILE = "balanced-cheap"
-DEFAULT_ROUTR_PROMPT_VERSION = "smart-chapters-v1"
+DEFAULT_ROUTR_PROMPT_VERSION = "smart-chapters-v2"
 DEFAULT_ROUTR_CALLER_ID = "bluejay-smart-chapters-precompute"
 DEFAULT_PROMOTION_CATEGORIES = "sponsor,selfpromo,interaction"
 SPONSORBLOCK_API_BASE = "https://sponsor.ajay.app"
@@ -52,6 +54,19 @@ DISCOVERY_PROFILE_VERSION = 1
 DISCOVERY_AXIS_IDS = ("core", "context", "impact", "debate")
 DISCOVERY_AXIS_LABEL_MAX_CHARS = 100
 DISCOVERY_QUERY_MAX_CHARS = 180
+EDITORIAL_PROFILE_VERSION = 1
+EDITORIAL_PROFILE_GENRES = {
+    "news",
+    "explainer",
+    "review",
+    "documentary",
+    "interview",
+    "tutorial",
+    "commentary",
+    "entertainment",
+    "other",
+}
+EDITORIAL_PROFILE_RATIONALE_MAX_CHARS = 280
 
 LANGUAGE_ALIASES = {
     "arabic": "ar", "arabe": "ar", "ar": "ar",
@@ -219,6 +234,10 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--sub-langs", default="fr.*,fr,en.*,en", help="yt-dlp subtitle languages.")
     generation.add_argument("--refresh-analysis", action="store_true", help="Ignore cached analysis (theses + global summary) and re-run pass 1.")
     generation.add_argument("--analysis-only", action="store_true", help="Refresh only summary, theses, and mix profile in existing highlights; preserves chapters and subtitles.")
+    generation.add_argument("--backfill-editorial-profiles", action="store_true", help="Generate editorial profiles for existing highlights files only; never downloads media or invokes Whisper.")
+    generation.add_argument("--editorial-backfill-limit", type=int, default=0, help="Maximum existing highlights files to enrich with an editorial profile. 0 means all eligible files.")
+    generation.add_argument("--editorial-backfill-parallelism", type=int, default=int(os.environ.get("GRAYJAY_EDITORIAL_BACKFILL_PARALLELISM", "3")), help="Concurrent editorial-profile model calls during --backfill-editorial-profiles.")
+    generation.add_argument("--editorial-backfill-overwrite", action="store_true", help="Recompute existing valid editorial profiles during --backfill-editorial-profiles.")
     generation.add_argument("--no-sponsorblock", action="store_true", help="Do not fetch SponsorBlock promotion segments.")
     generation.add_argument("--promotion-categories", default=DEFAULT_PROMOTION_CATEGORIES, help="Comma-separated promotion categories imported from SponsorBlock and requested from analysis.")
     generation.add_argument("--routr-client", default=os.environ.get("ROUTR_CLIENT", DEFAULT_ROUTR_CLIENT), help="X-Routr-Client metadata header for Routr.")
@@ -254,8 +273,8 @@ def parse_args() -> argparse.Namespace:
     output.add_argument("--keep-workdir", action="store_true", help="Keep temporary transcript files.")
 
     args = parser.parse_args()
-    if not args.list_playlists and not args.interactive and not args.check and not any([args.url, args.media_file, args.urls_file, args.playlist, args.grayjay_video]):
-        parser.error("Provide --url, --media-file, --urls-file, --playlist, --grayjay-video, --list-playlists, or --check.")
+    if not args.list_playlists and not args.interactive and not args.check and not args.backfill_editorial_profiles and not any([args.url, args.media_file, args.urls_file, args.playlist, args.grayjay_video]):
+        parser.error("Provide --url, --media-file, --urls-file, --playlist, --grayjay-video, --backfill-editorial-profiles, --list-playlists, or --check.")
     return args
 
 
@@ -264,6 +283,13 @@ def load_json(path: Path) -> Any | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 
 def grayjay_playlists(grayjay_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
@@ -894,6 +920,9 @@ def load_cached_analysis(task: VideoTask, args: argparse.Namespace) -> dict[str,
         return None
     data["mixProfile"] = mix_profile
     data["discoveryProfile"] = discovery_profile
+    editorial_profile = validate_editorial_profile(data.get("editorialProfile"))
+    if editorial_profile:
+        data["editorialProfile"] = editorial_profile
     return data
 
 
@@ -904,7 +933,7 @@ def save_cached_analysis(task: VideoTask, analysis: dict[str, Any], args: argpar
     path.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     payload = {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "videoUrl": task.url,
         "updatedAt": now,
         **analysis,
@@ -1466,6 +1495,18 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
           {{"id": "impact", "label": "short label", "queries": {{"en": "short video search query"}}}},
           {{"id": "debate", "label": "short label", "queries": {{"en": "short video search query"}}}}
         ]
+      }},
+      "editorialProfile": {{
+        "version": {EDITORIAL_PROFILE_VERSION},
+        "genre": "one of: news, explainer, review, documentary, interview, tutorial, commentary, entertainment, other",
+        "substance": 0.0,
+        "rigor": 0.0,
+        "clarity": 0.0,
+        "distinctiveness": 0.0,
+        "audienceValue": 0.0,
+        "temporalSensitivity": 0.0,
+        "confidence": 0.0,
+        "rationale": "one neutral sentence, maximum 280 characters"
       }}
     }}
 
@@ -1483,6 +1524,12 @@ def build_analysis_prompt(task: VideoTask, cues: list[TranscriptCue], args: argp
     - Each axis must be grounded in the transcript. If a dimension is weak, formulate the nearest real expansion without inventing a claim.
     - For EVERY requested discovery language, add one concise natural video-search query in `queries`, using the BCP-47 key exactly. Do not copy the globalSummary, do not add quotes, URLs, source names, commentary or Boolean operators.
     - The requested discovery languages are: {json.dumps(requested_discovery_languages, ensure_ascii=False)}.
+    - editorialProfile measures likely value to a neutral viewer interested in this subject. It is not a popularity score, production-value score, or a measure of agreement with the speaker.
+    - Score every editorialProfile dimension from 0.0 to 1.0. Use the whole scale across videos: 0.90+ is rare and reserved for reference-quality material, 0.75-0.89 is strong, 0.55-0.74 is solid, 0.40-0.54 is limited, and below 0.40 has little demonstrated value.
+    - substance = depth, completeness and explanatory value; rigor = evidence, caveats and sound reasoning; clarity = coherent and understandable argument; distinctiveness = non-generic insight, synthesis or access; audienceValue = practical, intellectual or cultural usefulness for the interested viewer.
+    - temporalSensitivity is separate from value: high for rapidly expiring news, market moves or product releases; low for durable explanation, history or long-lived technique.
+    - confidence reflects how well the transcript supports the assessment. Do not infer production quality, factual truth, or political alignment from absent evidence.
+    - genre MUST be one canonical value from the provided list. rationale is concise, neutral and based only on the transcript.
 
     Video title: {task.title or "(unknown)"}
     Video URL: {task.url}
@@ -1567,6 +1614,106 @@ def validate_discovery_profile(data: Any, args: argparse.Namespace) -> dict[str,
     return {"version": DISCOVERY_PROFILE_VERSION, "axes": axes}
 
 
+def normalized_editorial_score(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    score = float(value)
+    if not math.isfinite(score) or score < 0 or score > 1:
+        return None
+    return round(score, 3)
+
+
+def validate_editorial_profile(data: Any) -> dict[str, Any] | None:
+    if not isinstance(data, dict) or data.get("version") != EDITORIAL_PROFILE_VERSION:
+        return None
+    genre = str(data.get("genre") or "").strip().lower()
+    if genre not in EDITORIAL_PROFILE_GENRES:
+        return None
+
+    profile: dict[str, Any] = {
+        "version": EDITORIAL_PROFILE_VERSION,
+        "genre": genre,
+    }
+    for key in ("substance", "rigor", "clarity", "distinctiveness", "audienceValue", "temporalSensitivity", "confidence"):
+        score = normalized_editorial_score(data.get(key))
+        if score is None:
+            return None
+        profile[key] = score
+
+    rationale = re.sub(r"\s+", " ", str(data.get("rationale") or "")).strip()
+    if rationale:
+        profile["rationale"] = rationale[:EDITORIAL_PROFILE_RATIONALE_MAX_CHARS]
+    return profile
+
+
+def editorial_profile_evidence(analysis: dict[str, Any], segments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    evidence: dict[str, Any] = {
+        "globalSummary": str(analysis.get("globalSummary") or "").strip()[:2000],
+        "theses": [
+            str(item.get("statement") or "").strip()[:500]
+            for item in analysis.get("theses") or []
+            if isinstance(item, dict) and str(item.get("statement") or "").strip()
+        ][:8],
+        "mixProfile": analysis.get("mixProfile") if isinstance(analysis.get("mixProfile"), dict) else {},
+    }
+    if segments:
+        evidence["segments"] = [
+            {
+                "title": str(segment.get("title") or "").strip()[:120],
+                "summary": str(segment.get("summary") or "").strip()[:500],
+                "score": segment.get("score"),
+            }
+            for segment in segments
+            if isinstance(segment, dict)
+        ][:16]
+    return evidence
+
+
+def build_editorial_profile_prompt(task: VideoTask, analysis: dict[str, Any],
+                                   segments: list[dict[str, Any]] | None = None) -> str:
+    evidence = editorial_profile_evidence(analysis, segments)
+    return textwrap.dedent(f"""
+    You assess the enduring editorial value of one video from existing transcript-derived evidence.
+
+    Return only valid JSON with this exact shape:
+    {{
+      "version": {EDITORIAL_PROFILE_VERSION},
+      "genre": "one of: news, explainer, review, documentary, interview, tutorial, commentary, entertainment, other",
+      "substance": 0.0,
+      "rigor": 0.0,
+      "clarity": 0.0,
+      "distinctiveness": 0.0,
+      "audienceValue": 0.0,
+      "temporalSensitivity": 0.0,
+      "confidence": 0.0,
+      "rationale": "one neutral sentence, maximum 280 characters"
+    }}
+
+    Rules:
+    - Every numeric field is a number from 0.0 to 1.0. Use the whole scale across videos: 0.90+ is rare and reserved for reference-quality material, 0.75-0.89 is strong, 0.55-0.74 is solid, 0.40-0.54 is limited, and below 0.40 has little demonstrated value.
+    - Assess likely value to a neutral viewer interested in the subject. Do not score popularity, production value, political agreement, or factual truth not established by the evidence.
+    - substance = depth, completeness and explanatory value; rigor = evidence, caveats and sound reasoning; clarity = coherent and understandable argument; distinctiveness = non-generic insight, synthesis or access; audienceValue = practical, intellectual or cultural usefulness.
+    - temporalSensitivity is separate from editorial value: high for expiring news, market moves or product releases; low for durable explanation, history or long-lived technique.
+    - confidence reflects how completely this evidence supports the assessment. Do not invent facts absent from it.
+    - genre must be one canonical value. rationale is concise, neutral and evidence-based.
+
+    Video title: {task.title or "(unknown)"}
+    Video URL: {task.url}
+    Evidence:
+    {json.dumps(evidence, ensure_ascii=False, indent=2)}
+    """).strip()
+
+
+def run_editorial_profile(task: VideoTask, analysis: dict[str, Any], args: argparse.Namespace,
+                          segments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    prompt = build_editorial_profile_prompt(task, analysis, segments)
+    raw = call_model(prompt, args)
+    profile = validate_editorial_profile(raw)
+    if not profile:
+        raise RuntimeError("Editorial profile JSON is invalid.")
+    return profile
+
+
 def validate_analysis(data: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     global_summary = str(data.get("globalSummary") or "").strip()
     if not global_summary:
@@ -1596,6 +1743,9 @@ def validate_analysis(data: dict[str, Any], args: argparse.Namespace) -> dict[st
     discovery_profile = validate_discovery_profile(data.get("discoveryProfile"), args)
     if discovery_profile:
         analysis["discoveryProfile"] = discovery_profile
+    editorial_profile = validate_editorial_profile(data.get("editorialProfile"))
+    if editorial_profile:
+        analysis["editorialProfile"] = editorial_profile
     return analysis
 
 
@@ -1603,13 +1753,22 @@ def run_analysis(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     cached = load_cached_analysis(task, args)
     if cached:
         cached["transcriptLanguage"] = normalize_language_code(cached.get("transcriptLanguage"))
+        if not validate_editorial_profile(cached.get("editorialProfile")):
+            log(f"  editorial profile/{args.provider}: enriching cached analysis")
+            try:
+                cached["editorialProfile"] = run_editorial_profile(task, cached, args)
+                save_cached_analysis(task, cached, args)
+            except Exception as exc:
+                log(f"  editorial profile warning: {exc}")
         log(f"  analysis: cached ({len(cached['theses'])} thesis/theses, {cached['transcriptLanguage']})")
         return cached
-    log(f"  analysis pass 1/{args.provider}: extracting theses + global summary + discovery profile")
+    log(f"  analysis pass 1/{args.provider}: extracting theses + global summary + discovery + editorial profiles")
     prompt = build_analysis_prompt(task, cues, args)
     raw = call_model(prompt, args)
     analysis = validate_analysis(raw, args)
     analysis["transcriptLanguage"] = infer_transcript_language(cues, analysis.get("transcriptLanguage"))
+    if not validate_editorial_profile(analysis.get("editorialProfile")):
+        log("  editorial profile warning: omitted by analysis response; legacy interest remains available")
     log(f"  analysis: {len(analysis['theses'])} thesis/theses extracted")
     save_cached_analysis(task, analysis, args)
     return analysis
@@ -2029,6 +2188,101 @@ def highlights_output_dir(args: argparse.Namespace) -> Path:
     return Path(args.output_dir).expanduser() if args.output_dir else Path(args.grayjay_dir).expanduser() / "highlights"
 
 
+def task_from_highlights(payload: dict[str, Any]) -> VideoTask:
+    video = payload.get("video") if isinstance(payload.get("video"), dict) else None
+    title = None
+    duration = None
+    if video:
+        title = str(video.get("name") or video.get("title") or "").strip() or None
+        raw_duration = video.get("duration")
+        if isinstance(raw_duration, (int, float)) and not isinstance(raw_duration, bool) and raw_duration > 0:
+            duration = float(raw_duration)
+    return VideoTask(url=str(payload.get("videoUrl") or "").strip(), title=title, duration=duration, video=video)
+
+
+def editorial_analysis_from_highlights(payload: dict[str, Any]) -> dict[str, Any] | None:
+    global_summary = str(payload.get("globalSummary") or "").strip()
+    theses = payload.get("theses")
+    if not global_summary or not isinstance(theses, list):
+        return None
+    return {
+        "globalSummary": global_summary,
+        "theses": theses,
+        "mixProfile": payload.get("mixProfile") if isinstance(payload.get("mixProfile"), dict) else {},
+    }
+
+
+def backfill_editorial_profile(path: Path, args: argparse.Namespace) -> str:
+    payload = load_json(path)
+    if not isinstance(payload, dict):
+        return "invalid"
+    if not args.editorial_backfill_overwrite and validate_editorial_profile(payload.get("editorialProfile")):
+        return "skipped"
+
+    task = task_from_highlights(payload)
+    analysis = editorial_analysis_from_highlights(payload)
+    if not task.url or not analysis:
+        return "ineligible"
+
+    segments = payload.get("segments") if isinstance(payload.get("segments"), list) else []
+    profile = run_editorial_profile(task, analysis, args, segments)
+    if args.dry_run:
+        return "dry-run"
+
+    updated = dict(payload)
+    current_schema = payload.get("schemaVersion")
+    schema_version = current_schema if isinstance(current_schema, int) else 0
+    updated["schemaVersion"] = max(8, schema_version)
+    updated["editorialProfile"] = profile
+    # Conserver updatedAt : le backfill ne doit pas faire passer une archive pour une nouveaute.
+    write_json_atomic(path, updated)
+    return "written"
+
+
+def backfill_editorial_profiles(args: argparse.Namespace) -> int:
+    output_dir = highlights_output_dir(args)
+    if not output_dir.exists():
+        log(f"No highlights directory: {output_dir}")
+        return 0
+
+    candidates: list[Path] = []
+    for path in output_dir.glob("*.json"):
+        payload = load_json(path)
+        if not isinstance(payload, dict):
+            continue
+        if not args.editorial_backfill_overwrite and validate_editorial_profile(payload.get("editorialProfile")):
+            continue
+        if editorial_analysis_from_highlights(payload):
+            candidates.append(path)
+    candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    if args.editorial_backfill_limit > 0:
+        candidates = candidates[:args.editorial_backfill_limit]
+
+    if not candidates:
+        log("Editorial profile backfill: no eligible highlights files.")
+        return 0
+
+    parallelism = max(1, min(32, args.editorial_backfill_parallelism))
+    log(f"Editorial profile backfill: {len(candidates)} file(s), {parallelism} concurrent model call(s).")
+    counts: dict[str, int] = {}
+    failures = 0
+    with ThreadPoolExecutor(max_workers=parallelism) as executor:
+        futures = {executor.submit(backfill_editorial_profile, path, args): path for path in candidates}
+        for index, future in enumerate(as_completed(futures), start=1):
+            path = futures[future]
+            try:
+                result = future.result()
+                counts[result] = counts.get(result, 0) + 1
+                log(f"  [{index}/{len(candidates)}] {result}: {path.name}")
+            except Exception as exc:
+                failures += 1
+                log(f"  [{index}/{len(candidates)}] ERROR: {path.name}: {exc}")
+
+    summary = ", ".join(f"{name}={count}" for name, count in sorted(counts.items()))
+    log(f"Editorial profile backfill completed: {summary or 'no writes'}; failures={failures}.")
+    return 1 if failures else 0
+
+
 def update_highlights_analysis(task: VideoTask, analysis: dict[str, Any], args: argparse.Namespace) -> Path:
     output_dir = highlights_output_dir(args)
     path = highlights_path(task.url, output_dir)
@@ -2041,7 +2295,7 @@ def update_highlights_analysis(task: VideoTask, analysis: dict[str, Any], args: 
     now = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     payload = dict(existing)
     payload.update({
-        "schemaVersion": 7,
+        "schemaVersion": 8,
         "videoUrl": task.url,
         "transcriptLanguage": analysis.get("transcriptLanguage") or existing.get("transcriptLanguage") or "und",
         "updatedAt": now,
@@ -2053,11 +2307,15 @@ def update_highlights_analysis(task: VideoTask, analysis: dict[str, Any], args: 
         payload["discoveryProfile"] = analysis["discoveryProfile"]
     elif isinstance(existing.get("discoveryProfile"), dict):
         payload["discoveryProfile"] = existing["discoveryProfile"]
+    if analysis.get("editorialProfile"):
+        payload["editorialProfile"] = analysis["editorialProfile"]
+    elif isinstance(existing.get("editorialProfile"), dict):
+        payload["editorialProfile"] = existing["editorialProfile"]
 
     if task.video and not isinstance(payload.get("video"), dict):
         payload["video"] = task.video
     if not args.dry_run:
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json_atomic(path, payload)
     return path
 
 
@@ -2074,7 +2332,7 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
     existing = load_json(path) if path.exists() else None
     created_at = existing.get("createdAt") if isinstance(existing, dict) and existing.get("createdAt") else now
     payload: dict[str, Any] = {
-        "schemaVersion": 7,
+        "schemaVersion": 8,
         "videoUrl": task.url,
         "source": f"smart-chapters-generator+{args.provider}-{args.model}",
         "transcriptLanguage": analysis.get("transcriptLanguage") or "und",
@@ -2092,6 +2350,10 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
         payload["discoveryProfile"] = analysis["discoveryProfile"]
     elif isinstance(existing, dict) and isinstance(existing.get("discoveryProfile"), dict):
         payload["discoveryProfile"] = existing["discoveryProfile"]
+    if analysis.get("editorialProfile"):
+        payload["editorialProfile"] = analysis["editorialProfile"]
+    elif isinstance(existing, dict) and isinstance(existing.get("editorialProfile"), dict):
+        payload["editorialProfile"] = existing["editorialProfile"]
     if promotion_segments:
         payload["promotionSegments"] = promotion_segments
     if translated:
@@ -2102,7 +2364,7 @@ def write_highlights(task: VideoTask, segments: list[dict[str, Any]], promotion_
         payload["video"] = task.video
 
     if not args.dry_run:
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json_atomic(path, payload)
     return path
 
 
@@ -2279,6 +2541,7 @@ def process_task(task: VideoTask, args: argparse.Namespace) -> Path | None:
                 "theses": analysis.get("theses"),
                 "transcriptLanguage": analysis.get("transcriptLanguage"),
                 "discoveryProfile": analysis.get("discoveryProfile"),
+                "editorialProfile": analysis.get("editorialProfile"),
                 "segments": segments,
                 "promotionSegments": promotion_segments,
                 "translatedSubtitles": translated,
@@ -2359,6 +2622,9 @@ def main() -> int:
 
     if args.interactive:
         return interactive_command(args)
+
+    if args.backfill_editorial_profiles:
+        return backfill_editorial_profiles(args)
 
     tasks = resolve_tasks(args)
     if not tasks:

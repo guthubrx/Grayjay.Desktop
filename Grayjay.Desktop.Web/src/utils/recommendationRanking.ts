@@ -5,6 +5,7 @@ export interface RecommendationCandidate {
     viewCount?: number;
     contentInterest?: number;
     semanticRelevance?: number;
+    freshnessHalfLifeDays?: number;
 }
 
 export interface RecommendationSignals {
@@ -38,10 +39,13 @@ function timestamp(value: RecommendationCandidate['publishedAt']): number | unde
     return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function freshness(value: RecommendationCandidate['publishedAt'], now: number): number | undefined {
+function freshness(value: RecommendationCandidate['publishedAt'], now: number, halfLifeDays?: number): number | undefined {
     const publishedAt = timestamp(value);
     if (publishedAt == null) return undefined;
     const ageDays = Math.max(0, (now - publishedAt) / 86_400_000);
+    if (halfLifeDays != null && Number.isFinite(halfLifeDays)) {
+        return Math.pow(0.5, ageDays / Math.max(30, Math.min(365, halfLifeDays)));
+    }
     return 1 / (1 + ageDays / 21);
 }
 
@@ -81,7 +85,7 @@ export function rankRecommendationCandidates<T extends RecommendationCandidate>(
         .map(candidate => {
             const signals: RecommendationSignals = {
                 popularity: popularity.get(candidate.key),
-                freshness: freshness(candidate.publishedAt, now),
+                freshness: freshness(candidate.publishedAt, now, candidate.freshnessHalfLifeDays),
                 contentInterest: clamp01(candidate.contentInterest),
                 semanticRelevance: clamp01(candidate.semanticRelevance),
             };

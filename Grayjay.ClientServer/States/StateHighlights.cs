@@ -171,6 +171,7 @@ public static class StateHighlights
             StrongSegmentCount = scored.Count(s => ClampScore(s.Score!.Value) >= InterestStrongScore),
             ExcellentSegmentCount = scored.Count(s => ClampScore(s.Score!.Value) >= InterestExcellentScore),
             GlobalSummary = set.GlobalSummary,
+            EditorialProfile = set.EditorialProfile,
             Video = video
         };
     }
@@ -185,6 +186,7 @@ public static class StateHighlights
             Video = summary.Video,
             MixProfile = set.MixProfile,
             GlobalSummary = set.GlobalSummary,
+            EditorialProfile = set.EditorialProfile,
             Theses = set.Theses,
             AverageScore = summary.AverageScore,
             TopScore = summary.TopScore,

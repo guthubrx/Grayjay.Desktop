@@ -103,3 +103,19 @@
 
 - Aucun commit automatique.
 - Aucun build complet de BlueJay ni installation dans `/Applications` ne sont necessaires pour valider cette PR frontend ; ils seront une etape de livraison distincte.
+
+---
+
+## Phase 7: Profil editorial comparable entre videos
+
+**Purpose**: Produire une valeur editoriale stable, conserver la fraicheur comme signal de classement distinct et enrichir le corpus existant sans retranscription.
+
+- [X] T018 [US5] Ajouter les contrats et modeles `VideoHighlightEditorialProfile` dans `Grayjay.ClientServer/Models/Highlights/` et `Grayjay.Desktop.Web/src/backend/models/highlights/`, puis propager la propriete optionnelle dans `VideoHighlightSet`, `VideoHighlightSummary` et `VideoHighlightMixCandidate`.
+- [X] T019 [US5] Etendre `Grayjay.Desktop.Web/src/utils/highlightInterest.ts` et ses tests pour valider le profil, deriver sa valeur editoriale par formule stable et basculer proprement sur le calcul historique lorsque le profil est absent ou invalide.
+- [X] T020 [US6] Etendre `Grayjay.Desktop.Web/src/utils/recommendationRanking.ts`, `src/pages/Home/index.tsx` et leurs tests avec un horizon de fraicheur optionnel derive de `temporalSensitivity`, sans changement pour les candidats qui n'en disposent pas.
+- [X] T021 [US5] Mettre a jour `StateIndexedHighlights.ts` afin que l'index de cartes conserve uniquement les dimensions editoriales necessaires, sans justification textuelle.
+- [X] T022 [US5] Ajouter au generateur `tools/generate_smart_chapters.py` le schema, le prompt et la validation du profil editorial dans la passe d'analyse normale, puis conserver ce profil lors des ecritures et mises a jour de highlights.
+- [X] T023 [US7] Ajouter un mode de backfill idempotent dans `tools/generate_smart_chapters.py` : lecture de highlights locaux, analyse texte compacte, ecriture atomique du seul profil, limite et parallelisme configurables.
+- [X] T024 [US7] Ajouter des tests Python cibles pour la validation et la construction de l'entree de backfill, sans appel reseau ni modele.
+- [ ] T025 Executer les tests TypeScript cibles, les tests Python, le build frontend et la publication .NET ; documenter les avertissements historiques et les eventuels blocages preexistants.
+- [ ] T026 Mettre a jour `implementation.md`, effectuer une revue spec/plan/tasks/code et demander la validation visuelle avant de construire et installer BlueJay.

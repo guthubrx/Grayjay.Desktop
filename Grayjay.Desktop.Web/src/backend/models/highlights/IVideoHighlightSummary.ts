@@ -1,4 +1,5 @@
 import { IPlatformVideo } from "../content/IPlatformVideo";
+import { IVideoHighlightEditorialProfile } from "./IVideoHighlightEditorialProfile";
 
 export interface IVideoHighlightSummary {
     videoUrl: string;
@@ -12,5 +13,6 @@ export interface IVideoHighlightSummary {
     strongSegmentCount?: number;
     excellentSegmentCount?: number;
     globalSummary?: string;
+    editorialProfile?: IVideoHighlightEditorialProfile;
     video?: IPlatformVideo;
 }

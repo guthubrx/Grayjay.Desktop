@@ -1,11 +1,11 @@
-# Implementation Plan: Echelle d'interet a dix paliers
+# Implementation Plan: Echelle d'interet et profil editorial video
 
 **Branch**: `pr/021-video-interest-scale` | **Date**: 2026-08-06 | **Spec**: [spec.md](spec.md)
 **Input**: Specification de l'echelle video en cinq etoiles et demi-etoiles.
 
 ## Summary
 
-Remplacer la conversion de score d'interet video en etoiles entieres par une conversion deterministe vers les dix demi-paliers de `0,5` a `5,0`, avec dix libelles francais. Exposer ce meme signal sur les cartes videos indexees a partir d'un etat partage qui ne conserve que les champs numeriques necessaires. Les scores de chapitres et le classement des recommandations restent hors perimetre. Les interfaces de detail video, Hero Banner et cartes reutilisent un rendu d'etoiles accessible unique, sans nouvelle dependance ni migration de highlights.
+Conserver l'echelle visible a dix demi-paliers et faire evoluer sa source vers un profil editorial versionne. Les cinq dimensions stables sont evaluees par le generateur et agregees localement ; la fraicheur et la pertinence restent des signaux separes de classement. Les analyses existantes peuvent etre enrichies a partir de leurs fichiers locaux, sans transcription ni media.
 
 ## Technical Context
 
@@ -17,21 +17,21 @@ Remplacer la conversion de score d'interet video en etoiles entieres par une con
 
 **Language/Version**: TypeScript 5.9, SolidJS 1.9, CSS modules
 **Primary Dependencies**: SolidJS et Vite existants ; aucune dependance ajoutee
-**Storage**: N/A, conversion derivee en memoire a partir du score d'interet deja calcule
-**Testing**: `node --test` avec support TypeScript de Node, build Vite existant
+**Storage**: JSON highlights versionne, compatible avec les fichiers existants ; caches transcript et analyse existants en lecture pour le backfill
+**Testing**: `node --test` avec support TypeScript de Node, `unittest` Python cible, build Vite et publication .NET existants
 **Target Platform**: Grayjay Desktop / BlueJay local
 **Project Type**: Application desktop avec frontend web embarque
-**Performance Goals**: Conversion O(1), aucun appel reseau, aucune regeneration Smart Chapters et aucun recalcul de liste
-**Constraints**: Compatibilite avec tous les highlights existants, rendu lisible et accessible, aucune modification du score brut ni des filtres de chapitres
-**Scale/Scope**: Un utilitaire, un composant de rendu reutilise dans les details, les heroes et les cartes, un etat d'index compact, trois styles d'integration et leurs tests
+**Performance Goals**: Calcul O(1) sur le frontend, aucune requete par carte, aucune transcription durant le backfill, ecritures atomiques de highlights
+**Constraints**: Compatibilite avec tous les highlights existants, note editoriale independante de la date, scores de chapitres et filtres player inchanges, absence de Smart Chapters sans regression
+**Scale/Scope**: Modeles highlights C#/TypeScript, utilitaire de calcul, moteur de classement optionnel, generateur et backfill de profils, index compact, tests et ADR
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
 - SpecKit: les artefacts restent dans `specs/021-video-interest-scale/`.
-- Article XIX: reutiliser le calcul `highlightInterest.ts` et les deux composants deja consommateurs ; pas de nouveau service, store, preference ou schema persistant.
-- Article XX: le nom du signal reste un interet derive et n'est pas presente comme une probabilite, une note utilisateur ou une qualite absolue.
+- Article XIX: reutiliser `highlightInterest.ts`, les modeles highlights et `recommendationRanking.ts` ; le schema persistant est justifie car le profil doit etre partage entre le generateur, le backend et le frontend.
+- Article XX: la note est une valeur editoriale estimee pour un spectateur interesse par le sujet, pas une probabilite de satisfaction, une opinion personnelle ou une verite universelle.
 - Accessibilite: fournir une valeur textuelle et un libelle en plus du rendu graphique de demi-etoile.
 - Performance: aucune operation asynchrone, aucune requete et aucun changement de classement.
 - Git anonymat: aucun commit automatique et aucun trailer IA.
@@ -63,6 +63,8 @@ Grayjay.Desktop.Web/src/
 ├── utils/
 │   ├── highlightInterest.ts
 │   └── highlightInterest.test.ts
+├── backend/models/highlights/
+│   └── IVideoHighlightEditorialProfile.ts
 ├── components/highlights/
 │   └── InterestRatingStars/
 ├── components/content/VideoThumbnailView/
@@ -70,11 +72,18 @@ Grayjay.Desktop.Web/src/
 ├── components/home/HeroBanner/
 └── state/StateIndexedHighlights.ts
 
+Grayjay.ClientServer/Models/Highlights/
+└── VideoHighlightEditorialProfile.cs
+
+tools/
+└── generate_smart_chapters.py
+
 docs/decisions/
-└── 021-half-star-video-interest.md
+├── 021-half-star-video-interest.md
+└── 022-editorial-video-value.md
 ```
 
-**Structure Decision**: Extraire seulement le rendu d'etoiles qui est effectivement utilise trois fois. Le calcul et les seuils restent dans l'utilitaire existant. Les composants parents conservent leurs conteneurs, libelles et details existants.
+**Structure Decision**: Le profil est stocke avec le highlight car il est genere en dehors de l'application web et doit survivre au redemarrage. Le calcul de note reste dans `highlightInterest.ts`; le classement ne recoit qu'un horizon optionnel de fraicheur. Aucun service, store global ou dependance n'est ajoute.
 
 ## Complexity Tracking
 

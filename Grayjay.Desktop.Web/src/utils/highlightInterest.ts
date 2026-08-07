@@ -1,4 +1,5 @@
 import type { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
+import type { IVideoHighlightEditorialProfile } from "../backend/models/highlights/IVideoHighlightEditorialProfile";
 import type { IVideoHighlightSegment } from "../backend/models/highlights/IVideoHighlightSegment";
 import type { IVideoHighlightSet } from "../backend/models/highlights/IVideoHighlightSet";
 import type { IVideoHighlightSummary } from "../backend/models/highlights/IVideoHighlightSummary";
@@ -7,6 +8,30 @@ export const INTEREST_MIN_SCORE = 0.55;
 export const INTEREST_GOOD_SCORE = 0.72;
 export const INTEREST_STRONG_SCORE = 0.88;
 export const INTEREST_EXCELLENT_SCORE = 0.93;
+export const EDITORIAL_PROFILE_VERSION = 1;
+
+const EDITORIAL_GENRES = new Set([
+    "news",
+    "explainer",
+    "review",
+    "documentary",
+    "interview",
+    "tutorial",
+    "commentary",
+    "entertainment",
+    "other",
+]);
+
+const EDITORIAL_DIMENSION_WEIGHTS = {
+    substance: 0.28,
+    rigor: 0.25,
+    clarity: 0.20,
+    distinctiveness: 0.15,
+    audienceValue: 0.12,
+} as const;
+
+const MIN_TEMPORAL_HALF_LIFE_DAYS = 30;
+const MAX_TEMPORAL_HALF_LIFE_DAYS = 365;
 
 export interface VideoInterest {
     score: number;
@@ -22,6 +47,7 @@ export interface VideoInterest {
     averageScore?: number;
     topScore?: number;
     hasChapterScores: boolean;
+    hasEditorialProfile: boolean;
 }
 
 export interface HighlightInterestSummary {
@@ -32,6 +58,7 @@ export interface HighlightInterestSummary {
     topScore?: number;
     strongSegmentCount?: number;
     excellentSegmentCount?: number;
+    editorialProfile?: IVideoHighlightEditorialProfile;
     video?: IPlatformVideo;
 }
 
@@ -44,6 +71,7 @@ interface InterestInput {
     topScore?: number;
     strongSegmentCount?: number;
     excellentSegmentCount?: number;
+    editorialProfile?: IVideoHighlightEditorialProfile;
 }
 
 export interface VideoInterestRating {
@@ -75,6 +103,39 @@ const INTEREST_RATING_LEVELS: readonly InterestRatingLevel[] = [
 function clamp01(value: number): number {
     if (!Number.isFinite(value)) return 0;
     return Math.max(0, Math.min(1, value));
+}
+
+function isNormalizedScore(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+export function isEditorialProfile(profile: IVideoHighlightEditorialProfile | undefined): profile is IVideoHighlightEditorialProfile {
+    return profile?.version === EDITORIAL_PROFILE_VERSION
+        && EDITORIAL_GENRES.has(profile.genre)
+        && isNormalizedScore(profile.substance)
+        && isNormalizedScore(profile.rigor)
+        && isNormalizedScore(profile.clarity)
+        && isNormalizedScore(profile.distinctiveness)
+        && isNormalizedScore(profile.audienceValue)
+        && isNormalizedScore(profile.temporalSensitivity)
+        && isNormalizedScore(profile.confidence);
+}
+
+export function editorialScoreFromProfile(profile: IVideoHighlightEditorialProfile | undefined): number | undefined {
+    if (!isEditorialProfile(profile)) return undefined;
+    return Number(clamp01(
+        profile.substance * EDITORIAL_DIMENSION_WEIGHTS.substance
+        + profile.rigor * EDITORIAL_DIMENSION_WEIGHTS.rigor
+        + profile.clarity * EDITORIAL_DIMENSION_WEIGHTS.clarity
+        + profile.distinctiveness * EDITORIAL_DIMENSION_WEIGHTS.distinctiveness
+        + profile.audienceValue * EDITORIAL_DIMENSION_WEIGHTS.audienceValue
+    ).toFixed(4));
+}
+
+export function editorialFreshnessHalfLifeDays(profile: IVideoHighlightEditorialProfile | undefined): number | undefined {
+    if (!isEditorialProfile(profile)) return undefined;
+    return MAX_TEMPORAL_HALF_LIFE_DAYS
+        - profile.temporalSensitivity * (MAX_TEMPORAL_HALF_LIFE_DAYS - MIN_TEMPORAL_HALF_LIFE_DAYS);
 }
 
 export function interestRatingFromScore(score: number): VideoInterestRating {
@@ -120,7 +181,8 @@ function computeInterest(input: InterestInput): VideoInterest | undefined {
     const averageScore = input.averageScore;
     const topScore = input.topScore;
     const hasChapterScores = averageScore != null || topScore != null;
-    if (segmentCount === 0 && interestingDuration === 0 && !hasChapterScores) return undefined;
+    const editorialScore = editorialScoreFromProfile(input.editorialProfile);
+    if (segmentCount === 0 && interestingDuration === 0 && !hasChapterScores && editorialScore == null) return undefined;
     const strongSegmentCount = Math.max(0, input.strongSegmentCount ?? 0);
     const excellentSegmentCount = Math.max(0, input.excellentSegmentCount ?? 0);
     const usefulSegmentCount = segmentCount;
@@ -132,7 +194,9 @@ function computeInterest(input: InterestInput): VideoInterest | undefined {
     const usefulSignal = clamp01(usefulSegmentCount / 8);
 
     let score: number;
-    if (hasChapterScores) {
+    if (editorialScore != null) {
+        score = editorialScore;
+    } else if (hasChapterScores) {
         const qualitySignal = averageScore != null
             ? clamp01((averageScore - INTEREST_MIN_SCORE) / (INTEREST_EXCELLENT_SCORE - INTEREST_MIN_SCORE))
             : clamp01(((topScore ?? INTEREST_MIN_SCORE) - INTEREST_GOOD_SCORE) / (INTEREST_EXCELLENT_SCORE - INTEREST_GOOD_SCORE));
@@ -170,6 +234,7 @@ function computeInterest(input: InterestInput): VideoInterest | undefined {
         averageScore,
         topScore,
         hasChapterScores,
+        hasEditorialProfile: editorialScore != null,
     };
 }
 
@@ -185,6 +250,7 @@ export function interestFromSummary(summary?: HighlightInterestSummary, video?: 
         topScore: summary.topScore,
         strongSegmentCount: summary.strongSegmentCount,
         excellentSegmentCount: summary.excellentSegmentCount,
+        editorialProfile: summary.editorialProfile,
     });
 }
 
@@ -206,6 +272,7 @@ export function interestFromSet(set?: IVideoHighlightSet, video?: IPlatformVideo
         topScore: scored.length ? Math.max(...scored.map(segment => segment.score ?? 0)) : undefined,
         strongSegmentCount: scored.filter(segment => (segment.score ?? 0) >= INTEREST_STRONG_SCORE).length,
         excellentSegmentCount: scored.filter(segment => (segment.score ?? 0) >= INTEREST_EXCELLENT_SCORE).length,
+        editorialProfile: set.editorialProfile,
     });
 }
 

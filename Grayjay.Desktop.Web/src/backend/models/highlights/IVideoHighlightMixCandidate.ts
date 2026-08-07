@@ -1,5 +1,6 @@
 import { IPlatformVideo } from "../content/IPlatformVideo";
 import { IVideoHighlightMixProfile } from "./IVideoHighlightMixProfile";
+import { IVideoHighlightEditorialProfile } from "./IVideoHighlightEditorialProfile";
 import { IVideoHighlightSegment } from "./IVideoHighlightSegment";
 import { IVideoHighlightThesis } from "./IVideoHighlightThesis";
 
@@ -9,6 +10,7 @@ export interface IVideoHighlightMixCandidate {
     video?: IPlatformVideo;
     mixProfile?: IVideoHighlightMixProfile;
     globalSummary?: string;
+    editorialProfile?: IVideoHighlightEditorialProfile;
     theses?: IVideoHighlightThesis[];
     averageScore?: number;
     topScore?: number;

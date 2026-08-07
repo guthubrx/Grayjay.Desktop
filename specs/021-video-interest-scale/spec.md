@@ -1,9 +1,9 @@
-# Feature Specification: Echelle d'interet a dix paliers
+# Feature Specification: Echelle d'interet et profil editorial video
 
 **Feature Branch**: `pr/021-video-interest-scale`
 **Created**: 2026-08-06
 **Status**: In Progress
-**Input**: User description: "Remplacer l'echelle d'interet video par les cinq etoiles et leurs demi-etoiles : dix paliers gradues et des libelles francais."
+**Input**: Produire une note editorialement comparable entre videos analysees, distincte de la fraicheur et de la pertinence contextuelle.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -68,6 +68,42 @@ Comme spectateur, je veux voir la note d'interet directement sur la miniature d'
 2. **Given** une carte sans score exploitable, **When** la carte est rendue, **Then** aucun badge ni espace reserve n'est affiche.
 3. **Given** un rafraichissement des highlights, **When** les donnees d'index changent, **Then** les cartes se mettent a jour sans requete individuelle ni conservation du resume textuel.
 
+### User Story 5 - Comparer la valeur editoriale (Priority: P1)
+
+Comme spectateur, je veux que la note visible de deux videos analysees soit derivee d'une grille editoriale commune, afin que `4,5 / 5` signifie le meme niveau de valeur potentielle pour un spectateur interesse par le sujet, quel que soit le genre de la video.
+
+**Independent Test**: Fournir deux profils editoriaux aux memes dimensions mais avec des dates de publication differentes et verifier qu'ils produisent la meme note.
+
+**Acceptance Scenarios**:
+
+1. **Given** une analyse recente qui fournit un profil editorial valide, **When** la note video est calculee, **Then** elle est derivee deterministiquement de ses dimensions editoriales et non des scores relatifs de ses chapitres.
+2. **Given** une video documentaire, un test produit et une news, **When** leurs profils sont analyses, **Then** chacun est evalue selon les memes dimensions transversales, avec le genre conserve comme contexte et non comme bonus automatique.
+3. **Given** une video sans profil editorial, **When** elle est affichee, **Then** son comportement historique reste disponible sans requete ni note inventee.
+
+### User Story 6 - Distinguer valeur et actualite (Priority: P1)
+
+Comme spectateur, je veux qu'une excellente video durable conserve sa valeur editoriale tandis que les listes "a regarder maintenant" tiennent compte de l'actualite, afin de ne pas confondre qualite et nouveaute.
+
+**Independent Test**: Classer deux videos de meme valeur avec une sensibilite temporelle differente et verifier que la note reste identique tandis que le signal de fraicheur varie.
+
+**Acceptance Scenarios**:
+
+1. **Given** une valeur editoriale identique, **When** une video est plus ancienne, **Then** sa note editoriale ne change pas.
+2. **Given** une video fortement sensible au temps, **When** elle vieillit, **Then** son signal de fraicheur decroit plus vite que celui d'un documentaire peu sensible au temps.
+3. **Given** un candidat sans profil editorial, **When** il est classe, **Then** la formule de classement historique reste applicable.
+
+### User Story 7 - Enrichir sans retranscrire (Priority: P1)
+
+Comme utilisateur, je veux pouvoir enrichir les analyses existantes a partir de leurs resumes, theses et chapitres, afin d'obtenir la nouvelle note sur mon corpus sans relancer Whisper ni telecharger les videos.
+
+**Independent Test**: Executer le backfill sur un highlight existant avec transcript cache et verifier qu'il ajoute un profil editorial sans modifier les chapitres, les sous-titres ou le transcript.
+
+**Acceptance Scenarios**:
+
+1. **Given** un highlight existant sans profil editorial, **When** le backfill est lance, **Then** il appelle uniquement le modele de texte avec les donnees locales existantes.
+2. **Given** un highlight deja enrichi, **When** le backfill standard est relance, **Then** il est ignore sans nouvel appel modele.
+3. **Given** une erreur de modele sur une video, **When** le backfill continue, **Then** les autres videos sont traitees et le fichier en erreur reste intact.
+
 ### Edge Cases
 
 - Un score absent, non fini ou hors de la plage attendue ne doit pas creer de note invalide.
@@ -88,11 +124,18 @@ Comme spectateur, je veux voir la note d'interet directement sur la miniature d'
 - **FR-007**: Le systeme MUST fournir une sortie accessible, indiquant la note sur cinq et son libelle, y compris lorsqu'une demi-etoile est presente.
 - **FR-008**: Le systeme MUST afficher cette meme note sur les cartes videos lorsque le resume Smart Chapters correspondant fournit un signal exploitable.
 - **FR-009**: Le cache d'etat partage par les cartes MUST ne conserver que les champs numeriques utiles au calcul d'interet, sans conserver les resumes textuels.
+- **FR-010**: Le highlight MAY contenir un profil editorial versionne avec les dimensions `substance`, `rigor`, `clarity`, `distinctiveness`, `audienceValue`, `temporalSensitivity` et `confidence`, toutes bornees dans `[0, 1]`.
+- **FR-011**: Lorsqu'un profil editorial valide est disponible, la note visible MUST etre derivee de ses dimensions stables et MUST rester independante de la date de publication.
+- **FR-012**: La fraicheur utilisee pour classer les recommandations MUST pouvoir employer `temporalSensitivity` sans modifier le comportement des candidats qui ne fournissent pas ce signal.
+- **FR-013**: Le generateur MUST produire le profil editorial dans sa passe d'analyse normale, sans nouvel appel pour une nouvelle video.
+- **FR-014**: Le backfill MUST pouvoir enrichir les highlights existants a partir de donnees locales, sans recuperer de media, de sous-titres ni lancer Whisper.
+- **FR-015**: Le profil ne MUST ni noter l'accord ideologique avec une these ni presenter sa valeur comme une verite objective ; il estime une valeur potentielle pour un spectateur interesse par le sujet.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Signal d'interet video**: Score derive deja disponible pour presenter l'interet d'une video, distinct des scores de ses chapitres et de sa priorite de recommandation.
 - **Palier d'interet**: Une des dix valeurs visibles de demi-etoile avec son seuil minimal, son libelle francais et sa representation accessible.
+- **Profil editorial video**: Dimensions versionnees et expliquees qui estiment la substance et la qualite de traitement d'une video, independamment de sa nouveaute.
 
 ## Success Criteria *(mandatory)*
 
@@ -104,10 +147,13 @@ Comme spectateur, je veux voir la note d'interet directement sur la miniature d'
 - **SC-004**: Le build frontend reussit sans nouvelle dependance de production.
 - **SC-005**: Une video sans signal d'interet ne montre aucune note artificielle et ne declenche aucun travail d'analyse supplementaire.
 - **SC-006**: Une grille de cartes affiche la note d'une video analysee sans requete reseau additionnelle par carte et sans chevauchement avec les elements existants de la miniature.
+- **SC-007**: Deux profils editoriaux identiques produisent la meme note, quelle que soit leur date de publication.
+- **SC-008**: Le backfill d'un highlight existant ne modifie ni `segments`, ni `translatedSubtitles`, ni les fichiers de transcript cache.
+- **SC-009**: Les tests couvrent les bornes de validation du profil, la priorite de son score sur le signal historique et la degradation gracieuse en son absence.
 
 ## Assumptions
 
-- Cette feature gradue l'affichage du signal d'interet video existant ; elle ne constitue pas encore une calibration editoriale inter-videos par jugement humain.
+- Cette feature fournit une grille editoriale stable et une calibration operationnelle par rubriques ; une calibration personnalisee par comparaisons humaines restera une evolution distincte.
 - Les dix libelles francais sont des niveaux d'interet affiches, pas une promesse de qualite objective ou de satisfaction personnelle.
 - Une prochaine feature pourra introduire une valeur editoriale calibree et distincte, sans changer le contrat des scores de chapitres.
 - Les seuils intermediaires conservent les seuils des etoiles entieres existantes afin d'eviter un reclassement brutal des donnees deja presentes.

@@ -33,6 +33,17 @@ async function reload() {
                         topScore: summary.topScore,
                         strongSegmentCount: summary.strongSegmentCount,
                         excellentSegmentCount: summary.excellentSegmentCount,
+                        editorialProfile: summary.editorialProfile ? {
+                            version: summary.editorialProfile.version,
+                            genre: summary.editorialProfile.genre,
+                            substance: summary.editorialProfile.substance,
+                            rigor: summary.editorialProfile.rigor,
+                            clarity: summary.editorialProfile.clarity,
+                            distinctiveness: summary.editorialProfile.distinctiveness,
+                            audienceValue: summary.editorialProfile.audienceValue,
+                            temporalSensitivity: summary.editorialProfile.temporalSensitivity,
+                            confidence: summary.editorialProfile.confidence,
+                        } : undefined,
                     });
                 }
             }
