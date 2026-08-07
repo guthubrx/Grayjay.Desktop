@@ -2,10 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { IPlatformVideo } from '../backend/models/content/IPlatformVideo';
+import type { IVideoHighlightEditorialProfile } from '../backend/models/highlights/IVideoHighlightEditorialProfile';
 import type { IVideoHighlightSet } from '../backend/models/highlights/IVideoHighlightSet';
 import type { IVideoHighlightSummary } from '../backend/models/highlights/IVideoHighlightSummary';
 
-const { interestFromSet, interestFromSummary, interestRatingFromScore } = await import(
+const {
+    editorialFreshnessHalfLifeDays,
+    editorialScoreFromProfile,
+    interestFromSet,
+    interestFromSummary,
+    interestRatingFromScore,
+} = await import(
     new URL('./highlightInterest.ts', import.meta.url).href
 ) as typeof import('./highlightInterest');
 
@@ -22,6 +29,21 @@ function summary(dateTime: string): IVideoHighlightSummary {
         strongSegmentCount: 3,
         excellentSegmentCount: 1,
         video: { dateTime } as IPlatformVideo,
+    };
+}
+
+function editorialProfile(overrides: Partial<IVideoHighlightEditorialProfile> = {}): IVideoHighlightEditorialProfile {
+    return {
+        version: 1,
+        genre: 'documentary',
+        substance: 0.90,
+        rigor: 0.80,
+        clarity: 0.85,
+        distinctiveness: 0.75,
+        audienceValue: 0.80,
+        temporalSensitivity: 0.15,
+        confidence: 0.85,
+        ...overrides,
     };
 }
 
@@ -98,6 +120,35 @@ test('derives a rating from the compact data retained for video cards', () => {
     assert.ok(interest);
     assert.equal(interest.ratingText, '3,5 / 5');
     assert.equal(interest.label, 'Très intéressante');
+});
+
+test('derives a stable rating from a valid editorial profile', () => {
+    const profile = editorialProfile();
+    const recent = interestFromSummary({ ...summary('2026-07-11T12:00:00Z'), editorialProfile: profile });
+    const old = interestFromSummary({ ...summary('2021-07-11T12:00:00Z'), editorialProfile: profile });
+
+    assert.equal(editorialScoreFromProfile(profile), 0.8305);
+    assert.equal(recent?.score, old?.score);
+    assert.equal(recent?.stars, 4.5);
+    assert.equal(recent?.hasEditorialProfile, true);
+});
+
+test('keeps temporal sensitivity outside the editorial rating', () => {
+    const durable = editorialProfile({ temporalSensitivity: 0.05 });
+    const timely = editorialProfile({ temporalSensitivity: 0.95 });
+
+    assert.equal(editorialScoreFromProfile(durable), editorialScoreFromProfile(timely));
+    assert.ok((editorialFreshnessHalfLifeDays(durable) ?? 0) > (editorialFreshnessHalfLifeDays(timely) ?? 0));
+});
+
+test('falls back to chapter interest when an editorial profile is invalid', () => {
+    const interest = interestFromSummary({
+        ...summary('2026-07-11T12:00:00Z'),
+        editorialProfile: editorialProfile({ genre: 'unknown' }),
+    });
+
+    assert.equal(interest?.hasEditorialProfile, false);
+    assert.equal(interest?.ratingText, '3,5 / 5');
 });
 
 test('does not invent a rating when no highlight signal exists', () => {

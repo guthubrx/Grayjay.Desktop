@@ -1,6 +1,7 @@
 import { IPlatformVideo } from "../content/IPlatformVideo";
 import { IVideoHighlightPromotionSegment } from "./IVideoHighlightPromotionSegment";
 import { IVideoHighlightDiscoveryProfile } from "./IVideoHighlightDiscoveryProfile";
+import { IVideoHighlightEditorialProfile } from "./IVideoHighlightEditorialProfile";
 import { IVideoHighlightSegment } from "./IVideoHighlightSegment";
 import { IVideoHighlightMixProfile } from "./IVideoHighlightMixProfile";
 import { IVideoHighlightThesis } from "./IVideoHighlightThesis";
@@ -17,6 +18,7 @@ export interface IVideoHighlightSet {
     theses?: IVideoHighlightThesis[];
     mixProfile?: IVideoHighlightMixProfile;
     discoveryProfile?: IVideoHighlightDiscoveryProfile;
+    editorialProfile?: IVideoHighlightEditorialProfile;
     translatedSubtitles?: IVideoHighlightSubtitle;
     video?: IPlatformVideo;
     segments: IVideoHighlightSegment[];

@@ -14,6 +14,7 @@ public class VideoHighlightSet
     public List<VideoHighlightThesis>? Theses { get; set; }
     public VideoHighlightMixProfile? MixProfile { get; set; }
     public VideoHighlightDiscoveryProfile? DiscoveryProfile { get; set; }
+    public VideoHighlightEditorialProfile? EditorialProfile { get; set; }
     public VideoHighlightSubtitle? TranslatedSubtitles { get; set; }
     public PlatformVideo? Video { get; set; }
     public List<VideoHighlightSegment> Segments { get; set; } = new();

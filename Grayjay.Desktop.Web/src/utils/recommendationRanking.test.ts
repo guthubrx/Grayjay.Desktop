@@ -62,3 +62,29 @@ test('uses semantic relevance when an optional caller provides it', () => {
     assert.equal(ranked[0]?.candidate.key, 'precise');
     assert.ok((ranked[0]?.signals.semanticRelevance ?? 0) > 0.9);
 });
+
+test('keeps the historical freshness curve when no editorial horizon is available', () => {
+    const ranked = rankRecommendationCandidates([
+        candidate({ key: 'legacy', publishedAt: '2026-06-21T12:00:00Z' }),
+    ], now);
+
+    assert.equal(ranked[0]?.signals.freshness, 0.5);
+});
+
+test('keeps durable editorial videos discoverable longer than timely ones', () => {
+    const ranked = rankRecommendationCandidates([
+        candidate({
+            key: 'timely',
+            publishedAt: '2026-05-13T12:00:00Z',
+            freshnessHalfLifeDays: 30,
+        }),
+        candidate({
+            key: 'durable',
+            publishedAt: '2026-05-13T12:00:00Z',
+            freshnessHalfLifeDays: 365,
+        }),
+    ], now);
+
+    assert.equal(ranked[0]?.candidate.key, 'durable');
+    assert.ok((ranked[0]?.signals.freshness ?? 0) > (ranked[1]?.signals.freshness ?? 0));
+});

@@ -62,3 +62,21 @@
 
 - La recherche multilingue complete est archivee dans `/Users/moi/Nextcloud/12.Recherches/RECHERCHE_20260806T123230_recherche-comparative-en-francais-anglais-espagnol-allem/RAPPORT.md`.
 - La note affichee restera un signal d'interet derive. Elle n'est ni une probabilite de satisfaction ni une mesure universelle entre langues et cultures.
+
+## Decision 5 - Profil editorial multidimensionnel, score derive
+
+**Decision**: Le modele produit sept dimensions normalisees : `substance`, `rigor`, `clarity`, `distinctiveness`, `audienceValue`, `temporalSensitivity` et `confidence`. Le score editorial stable est calcule localement a partir des cinq premieres dimensions ; la fraicheur et la confiance restent des signaux distincts.
+
+**Rationale**: Une rubrique multidimensionnelle rend le jugement plus inspectable qu'une note LLM globale. Elle permet d'evaluer un documentaire, un test produit, une news ou un tutoriel selon une definition commune : valeur potentielle pour un spectateur interesse, et non conformite a une opinion. La recherche LLM-Rubric recommande une decomposition explicite plutot qu'une note monolithique ; les travaux recents sur les LLM juges relevent un biais de position des echelles et soutiennent l'usage d'ancrages et de validations par comparaisons. [LLM-Rubric](https://arxiv.org/abs/2501.00274) [Position bias](https://arxiv.org/abs/2602.02219)
+
+**Alternatives considered**:
+
+- Note absolue unique produite par le LLM : rejetee, opaque et trop sensible a la formulation du prompt.
+- Score relatif entre les chapitres : conserve pour la navigation intra-video uniquement ; rejetee pour comparer les videos.
+- Score depend de la date : rejetee, car une video durable ne doit pas perdre sa valeur editoriale.
+
+## Decision 6 - Fraicheur contextuelle et degradation gracieuse
+
+**Decision**: La `temporalSensitivity` determine uniquement l'horizon de fraicheur utilise par les listes de recommandations. Les candidats sans profil gardent la formule de fraicheur historique. Le backfill lit uniquement les fichiers de highlights et de transcript deja presents ; il ne passe jamais par Whisper ou yt-dlp.
+
+**Rationale**: Le moteur de classement central existe deja et combine interet, fraicheur, pertinence semantique et popularite. Ajouter un horizon optionnel conserve cette separation et evite de rendre un documentaire ancien artificiellement faible. Les jugements LLM restent imparfaits ; le profil conserve donc une `confidence` et le backfill est idempotent, ce qui autorise une validation humaine ulterieure par comparaisons de paires. [Efficient Inference for Noisy LLM-as-a-Judge](https://arxiv.org/abs/2601.05420)

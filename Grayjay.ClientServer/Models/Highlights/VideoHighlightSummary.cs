@@ -15,5 +15,6 @@ public class VideoHighlightSummary
     public int StrongSegmentCount { get; set; }
     public int ExcellentSegmentCount { get; set; }
     public string? GlobalSummary { get; set; }
+    public VideoHighlightEditorialProfile? EditorialProfile { get; set; }
     public PlatformVideo? Video { get; set; }
 }

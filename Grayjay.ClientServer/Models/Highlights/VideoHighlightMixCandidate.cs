@@ -9,6 +9,7 @@ public class VideoHighlightMixCandidate
     public PlatformVideo? Video { get; set; }
     public VideoHighlightMixProfile? MixProfile { get; set; }
     public string? GlobalSummary { get; set; }
+    public VideoHighlightEditorialProfile? EditorialProfile { get; set; }
     public List<VideoHighlightThesis>? Theses { get; set; }
     public double? AverageScore { get; set; }
     public double? TopScore { get; set; }
