@@ -78,7 +78,7 @@
 **Independent Test**: Charger une grille avec une video indexee puis publier un highlight pour une autre video et verifier que les badges apparaissent sans recharger la page.
 
 - [X] T015 [US4] Etendre `Grayjay.Desktop.Web/src/state/StateIndexedHighlights.ts` pour indexer les seuls champs numeriques de resume utiles a l'interet.
-- [X] T016 [US4] Integrer `InterestRatingStars` a `Grayjay.Desktop.Web/src/components/content/VideoThumbnailView/index.tsx` et reserver le coin superieur gauche dans son module CSS.
+- [X] T016 [US4] Afficher dans `Grayjay.Desktop.Web/src/components/content/VideoThumbnailView/index.tsx` une note compacte et accessible dans le coin superieur gauche, sans ajouter d'appel reseau ni LLM.
 - [ ] T017 [US4] Executer les tests cibles et le build frontend, puis verifier manuellement une carte avec et sans Smart Chapters.
 
 ## Dependencies & Execution Order

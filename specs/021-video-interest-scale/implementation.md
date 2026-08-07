@@ -76,7 +76,7 @@
 ## Livraison Git
 
 - Branche dediee : `pr/021-video-interest-scale`.
-- Commit candidat : `403c997 feat(highlights): show interest rating on video cards`.
+- Premier commit : `752e4c1 feat(highlights): show interest rating on video cards`.
 - Aucune publication GitHub n'a ete effectuee.
 
 ## Extension en cours - Note sur les cartes videos
@@ -90,8 +90,14 @@
   - `Grayjay.Desktop.Web/src/state/StateIndexedHighlights.ts`
   - `Grayjay.Desktop.Web/src/components/content/VideoThumbnailView/index.tsx`
   - `Grayjay.Desktop.Web/src/components/content/VideoThumbnailView/index.module.css`
-- **Decision**: `StateIndexedHighlights` remplace son `Set` booleen par une `Map` reactive qui ne retient que les sept champs numeriques du resume utiles au calcul. Les cartes reutilisent l'echelle et le composant d'etoiles existants dans le coin superieur gauche ; elles ne font ni appel reseau ni appel LLM.
+- **Decision**: `StateIndexedHighlights` remplace son `Set` booleen par une `Map` reactive qui ne retient que les sept champs numeriques du resume utiles au calcul. Les cartes reutilisent l'echelle dans le coin superieur gauche, sous la forme compacte `x,y ★ / 5` ; elles ne font ni appel reseau ni appel LLM.
 - **Compatibilite**: une carte sans highlight score ne rend aucun badge. Le marqueur bleu de duree reste base sur la meme presence dans l'index, et les controles existants conservent leurs coins respectifs.
+
+### Retouche visuelle - Badge compact
+
+- **Statut**: Complete
+- **Decision**: le rendu dense a cinq etoiles est reserve aux surfaces riches. Les cartes affichent une note sur cinq avec une seule etoile, plus discrete et plus compacte.
+- **Accessibilite**: le libelle detaille existant reste expose par `aria-label`.
 
 ### T017 - Verification
 
