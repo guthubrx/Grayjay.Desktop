@@ -31,6 +31,21 @@
     object-fit: cover;
     border-radius: 6px;
 }
+.interestBadge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    border: 1px solid rgba(242, 196, 63, 0.6);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.78);
+    color: #F2C43F;
+    font-size: 13px;
+    line-height: 1;
+    pointer-events: none;
+}
 .container:hover .videoThumbnail {
     transform: scale(1.05);
 }

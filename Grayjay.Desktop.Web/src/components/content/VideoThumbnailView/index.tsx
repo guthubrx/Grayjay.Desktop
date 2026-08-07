@@ -8,11 +8,13 @@ import { dateFromAny, toHumanNowDiffString, toHumanNumber, toHumanTime } from '.
 import { DateTime } from 'luxon';
 import { useNavigate } from '@solidjs/router';
 import StateGlobal from '../../../state/StateGlobal';
-import { isIndexed } from '../../../state/StateIndexedHighlights';
+import { indexedHighlightSummaryFor, isIndexed } from '../../../state/StateIndexedHighlights';
 import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
 import AnimatedImage from '../../basics/AnimatedImage';
 import { FocusableOptions } from '../../../nav';
 import { focusable } from '../../../focusable';import { useFocus } from '../../../FocusProvider';
+import { interestFromSummary } from '../../../utils/highlightInterest';
+import InterestRatingStars from '../../highlights/InterestRatingStars';
  void focusable;
 
 interface VideoProps {
@@ -40,6 +42,7 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
     let videoAny = props.video as any;
     return (videoAny?.metadata?.position && props.video?.duration && props.video.duration > 0) ? (videoAny?.metadata?.position / props.video!.duration) : 0;
   })
+  const interest$ = createMemo(() => interestFromSummary(indexedHighlightSummaryFor(props.video?.url), props.video));
   
   const navigate = useNavigate();
   function onClickAuthor() {
@@ -81,6 +84,16 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
           
           <AnimatedImage class={styles.image} src={(!props.useCache) ? bestThumbnail$()?.url?.replace("u0026", "&") : "/Images/CachePassthrough?url=" + encodeURIComponent(bestThumbnail$()?.url?.replace("u0026", "&") ?? "")} referrerPolicy='no-referrer' />
 
+          <Show when={interest$()}>
+            {(interest) => (
+              <InterestRatingStars
+                class={styles.interestBadge}
+                stars={interest().stars}
+                text={interest().ratingText}
+                ariaLabel={interest().ratingAriaLabel}
+              />
+            )}
+          </Show>
           <Show when={pluginIconUrl()}>
             <img src={pluginIconUrl()} class={styles.sourceIcon} />
           </Show>

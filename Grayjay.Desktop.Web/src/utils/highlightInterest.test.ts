@@ -84,6 +84,22 @@ test('derives a rating from legacy highlights without requiring regeneration', (
     assert.equal(interest.stars % 0.5, 0);
 });
 
+test('derives a rating from the compact data retained for video cards', () => {
+    const interest = interestFromSummary({
+        segmentCount: 5,
+        totalDuration: 1_000,
+        interestingDuration: 700,
+        averageScore: 0.81,
+        topScore: 0.96,
+        strongSegmentCount: 3,
+        excellentSegmentCount: 1,
+    }, { duration: 1_200 } as IPlatformVideo);
+
+    assert.ok(interest);
+    assert.equal(interest.ratingText, '3,5 / 5');
+    assert.equal(interest.label, 'Très intéressante');
+});
+
 test('does not invent a rating when no highlight signal exists', () => {
     assert.equal(interestFromSummary(undefined), undefined);
     assert.equal(interestFromSet({

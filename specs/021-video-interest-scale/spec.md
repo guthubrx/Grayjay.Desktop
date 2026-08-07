@@ -2,7 +2,7 @@
 
 **Feature Branch**: `pr/021-video-interest-scale`
 **Created**: 2026-08-06
-**Status**: Implemented
+**Status**: In Progress
 **Input**: User description: "Remplacer l'echelle d'interet video par les cinq etoiles et leurs demi-etoiles : dix paliers gradues et des libelles francais."
 
 ## User Scenarios & Testing *(mandatory)*
@@ -52,6 +52,22 @@ Comme utilisateur, je veux que les anciennes analyses Smart Chapters continuent 
 2. **Given** une video sans score exploitable, **When** elle est affichee, **Then** l'interface garde son comportement actuel et n'affiche pas une note inventee.
 3. **Given** une vue qui n'utilise pas l'indicateur d'interet, **When** elle est ouverte, **Then** son ordre de recommandation et son comportement restent inchanges.
 
+---
+
+### User Story 4 - Identifier une video interessante dans une grille (Priority: P1)
+
+Comme spectateur, je veux voir la note d'interet directement sur la miniature d'une video deja analysee, afin de pouvoir comparer les videos d'une grille sans ouvrir chacune de leurs fiches.
+
+**Why this priority**: Le score n'est utile a la selection que s'il est visible avant l'ouverture de la video.
+
+**Independent Test**: Ouvrir une grille contenant une video analysee et une autre sans Smart Chapters, puis constater que seule la premiere montre une note en haut a gauche sans recouvrir sa duree, son icone de source ou son menu.
+
+**Acceptance Scenarios**:
+
+1. **Given** une carte correspondant a une video avec un resume Smart Chapters score, **When** la carte est rendue, **Then** elle affiche la note graduee existante en haut a gauche de la miniature.
+2. **Given** une carte sans score exploitable, **When** la carte est rendue, **Then** aucun badge ni espace reserve n'est affiche.
+3. **Given** un rafraichissement des highlights, **When** les donnees d'index changent, **Then** les cartes se mettent a jour sans requete individuelle ni conservation du resume textuel.
+
 ### Edge Cases
 
 - Un score absent, non fini ou hors de la plage attendue ne doit pas creer de note invalide.
@@ -70,6 +86,8 @@ Comme utilisateur, je veux que les anciennes analyses Smart Chapters continuent 
 - **FR-005**: Le systeme MUST continuer de calculer l'interet a partir des anciens highlights et ne MUST lancer aucune analyse, transcription ou requete reseau pour cette seule graduation.
 - **FR-006**: Le systeme MUST laisser les scores de chapitres et le rang de recommandation existant inchanges par cette fonctionnalite.
 - **FR-007**: Le systeme MUST fournir une sortie accessible, indiquant la note sur cinq et son libelle, y compris lorsqu'une demi-etoile est presente.
+- **FR-008**: Le systeme MUST afficher cette meme note sur les cartes videos lorsque le resume Smart Chapters correspondant fournit un signal exploitable.
+- **FR-009**: Le cache d'etat partage par les cartes MUST ne conserver que les champs numeriques utiles au calcul d'interet, sans conserver les resumes textuels.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -85,6 +103,7 @@ Comme utilisateur, je veux que les anciennes analyses Smart Chapters continuent 
 - **SC-003**: Les calculs realises sur les highlights existants ne changent ni le score brut d'interet ni les scores des chapitres.
 - **SC-004**: Le build frontend reussit sans nouvelle dependance de production.
 - **SC-005**: Une video sans signal d'interet ne montre aucune note artificielle et ne declenche aucun travail d'analyse supplementaire.
+- **SC-006**: Une grille de cartes affiche la note d'une video analysee sans requete reseau additionnelle par carte et sans chevauchement avec les elements existants de la miniature.
 
 ## Assumptions
 
