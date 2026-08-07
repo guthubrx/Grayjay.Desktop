@@ -14,7 +14,6 @@ import AnimatedImage from '../../basics/AnimatedImage';
 import { FocusableOptions } from '../../../nav';
 import { focusable } from '../../../focusable';import { useFocus } from '../../../FocusProvider';
 import { interestFromSummary } from '../../../utils/highlightInterest';
-import InterestRatingStars from '../../highlights/InterestRatingStars';
  void focusable;
 
 interface VideoProps {
@@ -86,12 +85,9 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
 
           <Show when={interest$()}>
             {(interest) => (
-              <InterestRatingStars
-                class={styles.interestBadge}
-                stars={interest().stars}
-                text={interest().ratingText}
-                ariaLabel={interest().ratingAriaLabel}
-              />
+              <span class={styles.interestBadge} role="img" aria-label={interest().ratingAriaLabel}>
+                <span aria-hidden="true">{interest().stars.toFixed(1).replace('.', ',')} ★ / 5</span>
+              </span>
             )}
           </Show>
           <Show when={pluginIconUrl()}>

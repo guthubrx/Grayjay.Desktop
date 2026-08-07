@@ -37,12 +37,17 @@
     left: 10px;
     z-index: 1;
     box-sizing: border-box;
-    padding: 4px 6px;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 5px;
     border: 1px solid rgba(242, 196, 63, 0.6);
     border-radius: 4px;
     background: rgba(0, 0, 0, 0.78);
     color: #F2C43F;
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
     line-height: 1;
     pointer-events: none;
 }
