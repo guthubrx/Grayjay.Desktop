@@ -31,6 +31,7 @@ import {
   hideSmartSearch,
   isSmartSearchForQuery,
   setSmartSearchLoading,
+  setSmartSearchPreferredMode,
   setSmartSearchSession,
   setSmartSearchTranslatingTitles,
   setTranslatorCommand,
@@ -38,6 +39,7 @@ import {
   smartSearchAutoStart$,
   smartSearchLanguages$,
   smartSearchLoading$,
+  smartSearchPreferredMode$,
   smartSearchResultLayout$,
   smartSearchSession$,
   smartSearchSettingsReady$,
@@ -162,12 +164,14 @@ const SearchPage: Component = () => {
   const smartSessionForDisplay$ = createMemo(() => sortSmartSearchSession(smartSearchSession$(), clientSort$()));
   let filtersChanged = false;
   let autoStartedQuery: string | undefined;
+  let restoredSmartModeForQuery: string | undefined;
 
   createEffect(() => {
     console.log("query changed", params.q);
     if (params.q !== query$()) {
       clearSmartSearch();
       autoStartedQuery = undefined;
+      restoredSmartModeForQuery = undefined;
     }
     setQuery(params.q);
     searchPagerActions.refetch();
@@ -179,6 +183,7 @@ const SearchPage: Component = () => {
     if (nextType !== searchType$()) {
       clearSmartSearch();
       autoStartedQuery = undefined;
+      restoredSmartModeForQuery = undefined;
     }
     setSearchType(nextType);
     searchPagerActions.refetch();
@@ -277,6 +282,25 @@ const SearchPage: Component = () => {
       return;
     autoStartedQuery = query;
     void startSmartSearch(false, false);
+  });
+
+  createEffect(() => {
+    const query = query$();
+    if (!smartSearchSettingsReady$() || !query || restoredSmartModeForQuery === query)
+      return;
+
+    restoredSmartModeForQuery = query;
+    if (smartSearchPreferredMode$() !== "smart") {
+      hideSmartSearch();
+      return;
+    }
+
+    if (isSmartSearchForQuery(query) && (smartSearchSession$() || smartSearchLoading$())) {
+      showSmartSearch();
+      return;
+    }
+
+    void startSmartSearch(true, false);
   });
 
   const refreshSmartSearchSession = async (sessionId: string) => {
@@ -387,14 +411,13 @@ const SearchPage: Component = () => {
   };
 
   const setSearchMode = (mode: "standard" | "smart") => {
+    void setSmartSearchPreferredMode(mode);
     if (mode === "standard") {
       hideSmartSearch();
       return;
     }
     void startSmartSearch(true, true);
   };
-
-  onCleanup(() => clearSmartSearch());
 
   let filtersScrollContainerRef: HTMLDivElement | undefined;
 
