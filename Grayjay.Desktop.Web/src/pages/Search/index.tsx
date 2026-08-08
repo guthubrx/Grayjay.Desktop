@@ -231,6 +231,7 @@ const SearchPage: Component = () => {
     searchPagerActions.refetch();
     clearSmartSearch();
     autoStartedQuery = undefined;
+    restoredSmartModeForQuery = undefined;
   };
 
   const startSmartSearch = async (showResults = true, promptForCommand = true) => {
