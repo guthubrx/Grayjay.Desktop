@@ -23,8 +23,14 @@ import { focusScope } from '../../focusScope'; void focusScope;
 import { focusable } from "../../focusable"; void focusable;
 import { createResourceDefault } from '../../utility';
 import { IPlatformContent } from '../../backend/models/content/IPlatformContent';
+import {
+  searchPreferences$,
+  searchPreferencesReady$,
+  setSearchPreferences,
+  type SearchSortEntry
+} from '../../state/StateSearchPreferences';
 
-type SortEntry = { field: string; dir: 'asc' | 'desc' };
+type SortEntry = SearchSortEntry;
 
 const SORT_OPTIONS = [
   { text: "Date",     value: "date",     defaultDir: 'desc' as const },
@@ -61,6 +67,7 @@ const SearchPage: Component = () => {
   const [enabledSources$, setEnabledSources] = createSignal<string[]>(params.clientIds ? JSON.parse(params.clientIds) : (StateGlobal.sourceStates$() ?? []).map(v => v.config.id));
   const disabledSources$ = createMemo<string[]>(()=>((StateGlobal.sourceStates$() ?? []).filter(x=>enabledSources$().indexOf(x.config.id) < 0).map(v => v.config.id)));
   let filtersChanged = false;
+  let preferencesApplied = false;
 
   createEffect(() => {
     console.log("query changed", params.q);
@@ -92,10 +99,38 @@ const SearchPage: Component = () => {
     searchPagerActions.refetch();
   };
 
+  const persistCurrentPreferences = () => {
+    void setSearchPreferences({
+      filters: untrack(filterValues$),
+      sortBy: untrack(sortBy$),
+      clientSort: untrack(clientSort$),
+      enabledSources: untrack(enabledSources$)
+    });
+  };
+
   let filtersScrollContainerRef: HTMLDivElement | undefined;
 
   createEffect(() => {
-    setEnabledSources((StateGlobal.sourceStates$() ?? []).map(v => v.config.id));
+    const sourceIds = (StateGlobal.sourceStates$() ?? []).map(v => v.config.id);
+    if (!searchPreferencesReady$() || sourceIds.length === 0 || preferencesApplied)
+      return;
+
+    const preferences = searchPreferences$();
+    const requestedSources = params.clientIds ? JSON.parse(params.clientIds) : preferences.enabledSources;
+    const enabledSources = Array.isArray(requestedSources)
+      ? requestedSources.filter((source): source is string => typeof source === "string" && sourceIds.includes(source))
+      : [];
+
+    batch(() => {
+      if (!params.filters)
+        setFilterValues(preferences.filters);
+      if (!params.sortBy)
+        setSortBy(preferences.sortBy);
+      setClientSort(preferences.clientSort);
+      setEnabledSources(enabledSources.length > 0 ? enabledSources : sourceIds);
+    });
+    preferencesApplied = true;
+    searchPagerActions.refetch();
   });
 
   const commonCapabilities$ = createMemo(() => {
@@ -123,6 +158,7 @@ const SearchPage: Component = () => {
   createEffect(() => {
     if (!filtersDialogVisible$() && filtersChanged) {
       filtersChanged = false;
+      persistCurrentPreferences();
       performSearch(untrack(searchType$), untrack(sortBy$), untrack(filterValues$), untrack(enabledSources$));
     }
   });
@@ -208,6 +244,7 @@ const SearchPage: Component = () => {
     } else {
       setClientSort(clientSort$().filter(e => e.field !== opt.value));
     }
+    persistCurrentPreferences();
   };
 
   const handleBack = () => {
