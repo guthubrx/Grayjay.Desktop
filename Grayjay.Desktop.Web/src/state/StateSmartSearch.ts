@@ -2,11 +2,7 @@ import { createSignal } from "solid-js";
 import { Backend } from "../backend/Backend";
 import { SettingsBackend } from "../backend/SettingsBackend";
 import { SmartSearchBackend, type ISmartSearchSession } from "../backend/SmartSearchBackend";
-import {
-    defaultSubtitleTranslationLanguages,
-    normalizeSmartSearchLanguages,
-    normalizeSubtitleTranslationLanguages
-} from "../utils/smartSearchLanguagePreferences";
+import { normalizeSmartSearchLanguages } from "../utils/smartSearchLanguagePreferences";
 
 export type SmartSearchTitleDisplay = "both" | "translated";
 export type SmartSearchResultLayout = "grouped" | "mixed";
@@ -60,7 +56,6 @@ const [smartSearchTranslateCreatorNames$, setSmartSearchTranslateCreatorNamesSig
 const [smartSearchResultLayout$, setSmartSearchResultLayoutSignal] = createSignal<SmartSearchResultLayout>("grouped");
 const [smartSearchPreferredMode$, setSmartSearchPreferredModeSignal] = createSignal<SmartSearchMode>("standard");
 const [smartSearchDiscoveryParallelism$, setSmartSearchDiscoveryParallelismSignal] = createSignal(DEFAULT_DISCOVERY_PARALLELISM);
-const [smartSearchSubtitleTranslationLanguages$, setSmartSearchSubtitleTranslationLanguagesSignal] = createSignal<string[]>(defaultSubtitleTranslationLanguages(DEFAULT_SMART_SEARCH_LANGUAGES));
 const [smartSearchSettingsReady$, setSmartSearchSettingsReadySignal] = createSignal(false);
 const [smartSearchSession$, setSmartSearchSessionSignal] = createSignal<ISmartSearchSession>();
 const [smartSearchQuery$, setSmartSearchQuerySignal] = createSignal<string>();
@@ -85,10 +80,6 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
             : DEFAULT_SMART_SEARCH_LANGUAGES;
         if (languages.length > 0)
             setSmartSearchLanguagesSignal(languages);
-        const translationLanguages = Array.isArray(settings?.subtitleTranslationLanguages)
-            ? normalizeSubtitleTranslationLanguages(settings.subtitleTranslationLanguages, languages)
-            : defaultSubtitleTranslationLanguages(languages);
-        setSmartSearchSubtitleTranslationLanguagesSignal(translationLanguages);
         if (settings?.titleDisplay === "translated")
             setSmartSearchTitleDisplaySignal("translated");
         if (typeof settings?.translateCreatorNames === "boolean")
@@ -105,7 +96,7 @@ const [smartSearchVisible$, setSmartSearchVisibleSignal] = createSignal(false);
     }
 })();
 
-export { smartSearchAutoStart$, smartSearchDiscoveryParallelism$, smartSearchLanguages$, smartSearchLoading$, smartSearchPreferredMode$, smartSearchQuery$, smartSearchResultLayout$, smartSearchSession$, smartSearchSettingsReady$, smartSearchSubtitleTranslationLanguages$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
+export { smartSearchAutoStart$, smartSearchDiscoveryParallelism$, smartSearchLanguages$, smartSearchLoading$, smartSearchPreferredMode$, smartSearchQuery$, smartSearchResultLayout$, smartSearchSession$, smartSearchSettingsReady$, smartSearchTitleDisplay$, smartSearchTranslatingTitles$, smartSearchTranslateCreatorNames$, smartSearchVisible$, translatorCommand$ };
 
 function normalizeLanguages(languages: unknown[]) {
     const supported = new Set(SMART_SEARCH_LANGUAGE_OPTIONS.map(option => option.code));
@@ -122,7 +113,6 @@ async function persistSmartSearchSettings() {
     await SettingsBackend.persistSet("smartSearch.settings", {
         autoStart: smartSearchAutoStart$(),
         languages: smartSearchLanguages$(),
-        subtitleTranslationLanguages: smartSearchSubtitleTranslationLanguages$(),
         titleDisplay: smartSearchTitleDisplay$(),
         translateCreatorNames: smartSearchTranslateCreatorNames$(),
         resultLayout: smartSearchResultLayout$(),
@@ -151,21 +141,8 @@ export async function setSmartSearchLanguages(languages: unknown[]) {
     if (normalized.length === 0)
         return false;
     setSmartSearchLanguagesSignal(normalized);
-    setSmartSearchSubtitleTranslationLanguagesSignal(normalizeSubtitleTranslationLanguages(smartSearchSubtitleTranslationLanguages$(), normalized));
     await persistSmartSearchSettings();
     return true;
-}
-
-export async function setSmartSearchSubtitleTranslationLanguage(language: string, enabled: boolean) {
-    if (!smartSearchLanguages$().includes(language))
-        return;
-
-    const current = smartSearchSubtitleTranslationLanguages$();
-    const next = enabled
-        ? [...current, language]
-        : current.filter(value => value !== language);
-    setSmartSearchSubtitleTranslationLanguagesSignal(normalizeSubtitleTranslationLanguages(next, smartSearchLanguages$()));
-    await persistSmartSearchSettings();
 }
 
 export async function setSmartSearchTitleDisplay(titleDisplay: SmartSearchTitleDisplay) {

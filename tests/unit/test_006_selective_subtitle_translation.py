@@ -27,10 +27,14 @@ class SelectiveSubtitleTranslationTests(unittest.TestCase):
         self.assertFalse(MODULE.should_translate_subtitles("en", "French", args))
         self.assertFalse(MODULE.should_translate_subtitles("zh-Hans", "Chinese", args))
 
-    def test_006_keeps_explicit_legacy_translation_behavior_without_a_policy(self):
+    def test_006_default_policy_translates_every_foreign_language(self):
         args = SimpleNamespace(translate_subtitles=True, translate_subtitles_from="")
 
+        self.assertTrue(MODULE.should_translate_subtitles("ja", "French", args))
         self.assertTrue(MODULE.should_translate_subtitles("ru", "French", args))
+        self.assertTrue(MODULE.should_translate_subtitles("ar", "French", args))
+        self.assertFalse(MODULE.should_translate_subtitles("fr", "French", args))
+        self.assertFalse(MODULE.should_translate_subtitles("und", "French", args))
 
     def test_006_uses_script_fallback_when_the_model_cannot_identify_japanese(self):
         cues = [MODULE.TranscriptCue(0.0, 1.0, "こんにちは、人工知能のニュースです")]

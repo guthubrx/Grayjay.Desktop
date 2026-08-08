@@ -26,8 +26,8 @@ public static class StateHighlightsIndexer
 
     private static readonly object _lock = new();
     private static readonly Dictionary<string, IndexJob> _jobs = new();
-    private static readonly Queue<(string Url, string Command, string[] TranslationSourceLanguages)> _priorityQueue = new();
-    private static readonly Queue<(string Url, string Command, string[] TranslationSourceLanguages)> _queue = new();
+    private static readonly Queue<(string Url, string Command)> _priorityQueue = new();
+    private static readonly Queue<(string Url, string Command)> _queue = new();
     private static int _activeWorkers = 0;
     private const int DefaultParallelism = 1;
     private const int MaxParallelism = 24;
@@ -44,20 +44,19 @@ public static class StateHighlightsIndexer
             return _jobs.Values.ToList();
     }
 
-    public static IndexJob Enqueue(string url, string command, IEnumerable<string>? translationSourceLanguages = null)
+    public static IndexJob Enqueue(string url, string command)
     {
         ValidateRequest(ref url, command);
-        return EnqueueValidated(url, command, NormalizeLanguageCodes(translationSourceLanguages), priority: false);
+        return EnqueueValidated(url, command, priority: false);
     }
 
-    public static IndexJob EnqueueIfNeeded(string url, string command, IEnumerable<string>? translationSourceLanguages = null)
+    public static IndexJob EnqueueIfNeeded(string url, string command)
     {
         ValidateRequest(ref url, command);
-        var normalizedLanguages = NormalizeLanguageCodes(translationSourceLanguages);
-        if (!GrayjaySettings.Instance.XrayPanel.AutoGenerateOnVideoOpen || HasRequiredOutput(StateHighlights.Get(url), normalizedLanguages))
+        if (!GrayjaySettings.Instance.XrayPanel.AutoGenerateOnVideoOpen || HasRequiredOutput(StateHighlights.Get(url)))
             return new IndexJob { Url = url, Status = "skipped" };
 
-        return EnqueueValidated(url, command, normalizedLanguages, priority: true);
+        return EnqueueValidated(url, command, priority: true);
     }
 
     private static void ValidateRequest(ref string url, string command)
@@ -72,7 +71,7 @@ public static class StateHighlightsIndexer
             throw new ArgumentException("Unsafe or invalid url");
     }
 
-    private static IndexJob EnqueueValidated(string url, string command, string[] translationSourceLanguages, bool priority)
+    private static IndexJob EnqueueValidated(string url, string command, bool priority)
     {
         lock (_lock)
         {
@@ -83,9 +82,9 @@ public static class StateHighlightsIndexer
             var job = new IndexJob { Url = url, Status = "queued" };
             _jobs[url] = job;
             if (priority)
-                _priorityQueue.Enqueue((url, command, translationSourceLanguages));
+                _priorityQueue.Enqueue((url, command));
             else
-                _queue.Enqueue((url, command, translationSourceLanguages));
+                _queue.Enqueue((url, command));
             StateWebsocket.HighlightsIndexChanged(job);
             EnsureWorkersLocked();
             return job;
@@ -141,7 +140,7 @@ public static class StateHighlightsIndexer
     {
         while (true)
         {
-            (string Url, string Command, string[] TranslationSourceLanguages) item;
+            (string Url, string Command) item;
             IndexJob job;
             lock (_lock)
             {
@@ -159,7 +158,7 @@ public static class StateHighlightsIndexer
 
             try
             {
-                await RunCommand(item.Command, item.Url, item.TranslationSourceLanguages);
+                await RunCommand(item.Command, item.Url);
                 lock (_lock)
                 {
                     job.Status = "done";
@@ -181,19 +180,17 @@ public static class StateHighlightsIndexer
         }
     }
 
-    private static bool HasRequiredOutput(VideoHighlightSet? highlights, IReadOnlyCollection<string> translationSourceLanguages)
+    private static bool HasRequiredOutput(VideoHighlightSet? highlights)
     {
         if ((highlights?.Segments.Count ?? 0) == 0)
             return false;
 
         var outputLanguage = GrayjaySettings.Instance.XrayPanel.GenerationLanguageName();
-        if (outputLanguage == null || translationSourceLanguages.Count == 0)
+        if (outputLanguage == null)
             return true;
 
         var transcriptLanguage = NormalizeLanguageCode(highlights?.TranscriptLanguage);
-        if (transcriptLanguage == null)
-            return false;
-        if (transcriptLanguage == "und" || !translationSourceLanguages.Contains(transcriptLanguage, StringComparer.OrdinalIgnoreCase))
+        if (transcriptLanguage == null || transcriptLanguage == "und")
             return true;
 
         var outputLanguageCode = OutputLanguageCode(outputLanguage);
@@ -201,16 +198,6 @@ public static class StateHighlightsIndexer
             return true;
 
         return string.Equals(highlights?.TranslatedSubtitles?.Language, outputLanguage, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string[] NormalizeLanguageCodes(IEnumerable<string>? languages)
-    {
-        return (languages ?? [])
-            .Select(NormalizeLanguageCode)
-            .Where(language => language != null && language != "und")
-            .Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 
     private static string? NormalizeLanguageCode(string? language)
@@ -303,7 +290,7 @@ public static class StateHighlightsIndexer
         }
     }
 
-    private static async Task RunCommand(string command, string url, IReadOnlyCollection<string> translationSourceLanguages)
+    private static async Task RunCommand(string command, string url)
     {
         // {url} est substitué si présent, sinon l'URL est ajoutée en dernier argument.
         var commandLine = command.Contains("{url}") ? command.Replace("{url}", url) : $"{command} {url}";
@@ -320,17 +307,17 @@ public static class StateHighlightsIndexer
 
         // {language} : langue de sortie choisie dans les réglages (Smart Analysis).
         // Vide en mode "Auto" -> le générateur garde la langue de la vidéo.
+        var outputLanguage = GrayjaySettings.Instance.XrayPanel.GenerationLanguageName();
         if (command.Contains("{language}"))
         {
-            var lang = GrayjaySettings.Instance.XrayPanel.GenerationLanguageName();
             commandLine = commandLine.Replace("{language}",
-                lang != null ? $"--output-language \"{lang}\"" : "");
+                outputLanguage != null ? $"--output-language \"{outputLanguage}\"" : "");
         }
+        else if (outputLanguage != null && !commandLine.Contains("--output-language", StringComparison.Ordinal))
+            commandLine += $" --output-language \"{outputLanguage}\"";
 
-        if (translationSourceLanguages.Count > 0 && GrayjaySettings.Instance.XrayPanel.GenerationLanguageName() != null)
-        {
-            commandLine += $" --translate-subtitles --translate-subtitles-from \"{string.Join(',', translationSourceLanguages)}\"";
-        }
+        if (outputLanguage != null)
+            commandLine += " --translate-subtitles";
 
         var psi = new ProcessStartInfo
         {

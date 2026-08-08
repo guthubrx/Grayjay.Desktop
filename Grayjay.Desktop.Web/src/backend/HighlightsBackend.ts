@@ -41,12 +41,12 @@ export abstract class HighlightsBackend {
         await Backend.DELETE("/highlights/Delete?url=" + encodeURIComponent(url));
     }
 
-    static async generate(url: string, command: string, translationSourceLanguages: string[] = []): Promise<IHighlightIndexJob> {
-        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command, translationSourceLanguages }), "application/json") as IHighlightIndexJob;
+    static async generate(url: string, command: string): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command }), "application/json") as IHighlightIndexJob;
     }
 
-    static async generateIfNeeded(url: string, command: string, translationSourceLanguages: string[] = []): Promise<IHighlightIndexJob> {
-        return await Backend.POST("/highlights/GenerateIfNeeded", JSON.stringify({ url, command, translationSourceLanguages }), "application/json") as IHighlightIndexJob;
+    static async generateIfNeeded(url: string, command: string): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/GenerateIfNeeded", JSON.stringify({ url, command }), "application/json") as IHighlightIndexJob;
     }
 
     static async queueStatus(): Promise<IHighlightIndexJob[]> {

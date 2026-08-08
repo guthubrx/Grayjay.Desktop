@@ -22,3 +22,9 @@
 
 - [x] T010 Run focused tests, the frontend build, and the server build.
 - [ ] T011 Merge the feature into `bluejay/all-features`, rebuild `BlueJay.app`, install it after the application is closed, and manually verify the two-language scenario.
+
+## Output-Language Policy Revision
+
+- [x] T012 Remove Smart Search source-language subtitle preferences and their UI controls.
+- [x] T013 Use Smart Analysis generation language as the universal translated subtitle target.
+- [x] T014 Preserve lazy, on-demand enrichment without a global backfill.
