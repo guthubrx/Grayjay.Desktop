@@ -232,6 +232,8 @@ const SearchPage: Component = () => {
     clearSmartSearch();
     autoStartedQuery = undefined;
     restoredSmartModeForQuery = undefined;
+    if ((type ?? untrack(searchType$)) === ContentType.MEDIA && smartSearchPreferredMode$() === "smart")
+      void startSmartSearch(true, false);
   };
 
   const startSmartSearch = async (showResults = true, promptForCommand = true) => {
