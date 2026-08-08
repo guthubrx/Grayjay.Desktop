@@ -541,7 +541,7 @@ namespace Grayjay.ClientServer.Settings
             [SettingsDropdownOptions("All", "80", "150", "250", "400")]
             public int ChapterSummaryChars { get; set; } = 2;
 
-            [SettingsField("Generation language", SettingsField.DROPDOWN, "Language of generated chapter titles, summaries, and translated subtitles. Auto uses the video's language without a translated subtitle track.", 5)]
+            [SettingsField("Generation language", SettingsField.DROPDOWN, "Language of generated chapter titles, summaries, and subtitles translated from any different source language. Auto uses the video's language without a translated subtitle track.", 5)]
             [SettingsDropdownOptions("Auto (video language)", "Français", "English", "Español", "Deutsch", "Italiano", "Português", "Nederlands")]
             public int GenerationLanguage { get; set; } = 0;
 

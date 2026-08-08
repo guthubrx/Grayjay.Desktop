@@ -45,20 +45,20 @@ export function jobFor(url: string | undefined): IHighlightIndexJob | undefined 
     return url ? indexJobs$()[url] : undefined;
 }
 
-export async function indexVideo(url: string, translationSourceLanguages: string[] = []): Promise<IHighlightIndexJob> {
+export async function indexVideo(url: string): Promise<IHighlightIndexJob> {
     const command = generatorCommand$().trim();
     if (!command)
         throw new Error("No generator command configured");
-    const job = await HighlightsBackend.generate(url, command, translationSourceLanguages);
+    const job = await HighlightsBackend.generate(url, command);
     setIndexJobs(prev => ({ ...prev, [url]: job }));
     return job;
 }
 
-export async function ensureVideoIndexed(url: string, translationSourceLanguages: string[] = []): Promise<IHighlightIndexJob | undefined> {
+export async function ensureVideoIndexed(url: string): Promise<IHighlightIndexJob | undefined> {
     const command = generatorCommand$().trim();
     if (!command)
         return undefined;
-    const job = await HighlightsBackend.generateIfNeeded(url, command, translationSourceLanguages);
+    const job = await HighlightsBackend.generateIfNeeded(url, command);
     setIndexJobs(prev => ({ ...prev, [url]: job }));
     return job;
 }

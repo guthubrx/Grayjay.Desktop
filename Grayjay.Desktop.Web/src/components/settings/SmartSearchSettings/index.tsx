@@ -10,7 +10,6 @@ import {
     setSmartSearchDiscoveryParallelism,
     setSmartSearchLanguages,
     setSmartSearchResultLayout,
-    setSmartSearchSubtitleTranslationLanguage,
     setSmartSearchTitleDisplay,
     setSmartSearchTranslateCreatorNames,
     setTranslatorCommand,
@@ -18,7 +17,6 @@ import {
     smartSearchDiscoveryParallelism$,
     smartSearchLanguages$,
     smartSearchResultLayout$,
-    smartSearchSubtitleTranslationLanguages$,
     smartSearchTitleDisplay$,
     smartSearchTranslateCreatorNames$,
     translatorCommand$
@@ -96,7 +94,6 @@ const SmartSearchSettings: Component = () => {
                     <For each={[0, 1, 2, 3, 4, 5]}>{slot => {
                         const options = () => languageOptions(slot);
                         const selectedIndex = () => options().findIndex(option => option.code === smartSearchLanguages$()[slot]);
-                        const selectedLanguage = () => smartSearchLanguages$()[slot];
                         return (
                             <div class={styles.languageRow}>
                                 <Dropdown
@@ -106,17 +103,6 @@ const SmartSearchSettings: Component = () => {
                                     onSelectedChanged={index => updateLanguage(slot, options()[index]?.code ?? "")}
                                     style={{ width: "100%" }}
                                 />
-                                <div class={styles.translationToggle} classList={{ [styles.translationToggleDisabled]: !selectedLanguage() }}>
-                                    <span>Translate subtitles</span>
-                                    <Toggle
-                                        value={!!selectedLanguage() && smartSearchSubtitleTranslationLanguages$().includes(selectedLanguage()!)}
-                                        onToggle={enabled => {
-                                            const language = selectedLanguage();
-                                            if (language)
-                                                void setSmartSearchSubtitleTranslationLanguage(language, enabled);
-                                        }}
-                                    />
-                                </div>
                             </div>
                         );
                     }}</For>

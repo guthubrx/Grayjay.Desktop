@@ -47,30 +47,8 @@
 }
 
 .languageRow {
-    align-items: center;
     border-bottom: 1px solid #2D2D2D;
-    display: grid;
-    gap: 16px;
-    grid-template-columns: minmax(220px, 1fr) max-content;
     padding: 6px 0 10px;
-}
-
-.translationToggle {
-    align-items: center;
-    display: flex;
-    gap: 10px;
-    min-height: 40px;
-    white-space: nowrap;
-}
-
-.translationToggle span {
-    color: #B8B8B8;
-    font-size: 13px;
-}
-
-.translationToggleDisabled {
-    opacity: 0.45;
-    pointer-events: none;
 }
 
 .commandRow {

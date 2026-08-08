@@ -66,19 +66,18 @@ public class HighlightsController : ControllerBase
     {
         public required string Url { get; set; }
         public required string Command { get; set; }
-        public List<string>? TranslationSourceLanguages { get; set; }
     }
 
     [HttpPost]
     public ActionResult<StateHighlightsIndexer.IndexJob> Generate([FromBody] GenerateRequest request)
     {
-        return Ok(StateHighlightsIndexer.Enqueue(request.Url, request.Command, request.TranslationSourceLanguages));
+        return Ok(StateHighlightsIndexer.Enqueue(request.Url, request.Command));
     }
 
     [HttpPost]
     public ActionResult<StateHighlightsIndexer.IndexJob> GenerateIfNeeded([FromBody] GenerateRequest request)
     {
-        return Ok(StateHighlightsIndexer.EnqueueIfNeeded(request.Url, request.Command, request.TranslationSourceLanguages));
+        return Ok(StateHighlightsIndexer.EnqueueIfNeeded(request.Url, request.Command));
     }
 
     [HttpGet]
