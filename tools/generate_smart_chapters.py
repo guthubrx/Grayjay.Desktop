@@ -933,8 +933,23 @@ def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path
         ])
         run_command(cmd, check=True)
 
+    def download_with_retry(format_selector: str | None = None) -> None:
+        for attempt in range(3):
+            try:
+                download_with_format(format_selector)
+                return
+            except subprocess.CalledProcessError as exc:
+                detail = command_failure_tail(exc)
+                if "HTTP Error 403" not in detail or attempt == 2:
+                    raise
+
+                delay_seconds = attempt + 1
+                log(f"  audio download returned HTTP 403; retrying in {delay_seconds}s ({attempt + 1}/2)")
+                cleanup_audio_outputs()
+                time.sleep(delay_seconds)
+
     try:
-        download_with_format()
+        download_with_retry()
     except subprocess.CalledProcessError as exc:
         detail = command_failure_tail(exc)
         if "HTTP Error 403" not in detail or not extract_youtube_id(task.url):
@@ -945,7 +960,7 @@ def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path
         for format_selector in ["91", "92", "93", "94", "95", "96"]:
             cleanup_audio_outputs()
             try:
-                download_with_format(format_selector)
+                download_with_retry(format_selector)
                 log(f"  HLS fallback succeeded with format {format_selector}")
                 break
             except subprocess.CalledProcessError as fallback_exc:
