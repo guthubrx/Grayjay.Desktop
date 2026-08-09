@@ -1,4 +1,4 @@
-import { Component, JSX, Show, createMemo } from 'solid-js'
+import { Component, JSX, Show, createMemo, createSignal } from 'solid-js'
 
 import styles from './index.module.css';
 import IconButton from '../../buttons/IconButton';
@@ -14,6 +14,11 @@ import AnimatedImage from '../../basics/AnimatedImage';
 import { FocusableOptions } from '../../../nav';
 import { focusable } from '../../../focusable';import { useFocus } from '../../../FocusProvider';
 import { interestFromSummary } from '../../../utils/highlightInterest';
+import { useVideo } from '../../../contexts/VideoProvider';
+import SettingsMenu, { Menu } from '../../menus/Overlays/SettingsMenu';
+import Anchor, { AnchorStyle } from '../../../utility/Anchor';
+import { Portal } from 'solid-js/web';
+import { smartVideoMenuItems } from '../SmartVideoActions';
  void focusable;
 
 interface VideoProps {
@@ -33,6 +38,7 @@ interface VideoProps {
 
 const VideoThumbnailView: Component<VideoProps> = (props) => {
   const focus = useFocus();
+  const video = useVideo();
 
   var bestThumbnail$ = createMemo(()=>{
     return (props.video?.thumbnails?.sources?.length ?? 0 > 0) ? props.video?.thumbnails.sources[Math.max(0, props.video.thumbnails.sources.length - 1)] : null;
@@ -57,6 +63,11 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
 
   let refMoreButton: HTMLDivElement | undefined;
   let refAddToQueueButton: HTMLDivElement | undefined;
+  const [smartMenuShow$, setSmartMenuShow] = createSignal(false);
+  const smartMenuAnchor = new Anchor(null, smartMenuShow$, AnchorStyle.BottomRight);
+  const smartMenuItems$ = createMemo(() => smartVideoMenuItems(props.video, video));
+  const smartMenu$ = createMemo<Menu>(() => ({ title: '', items: smartMenuItems$() }));
+  const hasMoreActions$ = createMemo(() => !!props.onSettings || smartMenuItems$().length > 0);
 
   function startDrag(ev: any){
     ev.dataTransfer?.setData("text/uri-list", props.video?.url ?? ""); 
@@ -69,7 +80,14 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
   }
 
   function openMoreOverlay() {
-    props.onSettings?.(refMoreButton!, props.video!)
+    if (props.onSettings) {
+      props.onSettings(refMoreButton!, props.video!);
+      return;
+    }
+    if (smartMenuItems$().length > 0) {
+      smartMenuAnchor.setElement(refMoreButton!);
+      setSmartMenuShow(true);
+    }
   }
 
   const showAuthorThumbnail$ = createMemo(() => props.video?.author?.thumbnail && props.video?.author.thumbnail.length);
@@ -106,7 +124,7 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
               title={isIndexed(props.video?.url) ? "Smart highlights available" : undefined}
             >{toHumanTime(props.video?.duration ?? 0)}</div>
           </Show>
-          <Show when={props.settingsOnHover && props.onSettings && focus?.isControllerMode() !== true}>
+          <Show when={props.settingsOnHover && hasMoreActions$() && focus?.isControllerMode() !== true}>
             <div class={styles.settingsOverlay}>
               <IconButton icon={more} ref={refMoreButton} onClick={(e: MouseEvent) => { e.stopPropagation(); openMoreOverlay(); }} />
             </div>
@@ -139,10 +157,15 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
                 ref={refAddToQueueButton} onClick={() => props.onAddtoQueue?.(refAddToQueueButton!, props.video!)} />
             </Show>
 
-            <Show when={!props.settingsOnHover && props.onSettings && focus?.isControllerMode() !== true} fallback={<div class="menu-anchor"></div>}>
+            <Show when={!props.settingsOnHover && hasMoreActions$() && focus?.isControllerMode() !== true} fallback={<div class="menu-anchor"></div>}>
               <IconButton icon={more} ref={refMoreButton} onClick={() => openMoreOverlay()} />
             </Show>
         </div>
+        <Show when={smartMenuShow$()}>
+          <Portal>
+            <SettingsMenu menu={smartMenu$()} show={true} anchor={smartMenuAnchor} onHide={() => setSmartMenuShow(false)} />
+          </Portal>
+        </Show>
     </div>
   );
 };

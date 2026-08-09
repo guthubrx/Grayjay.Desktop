@@ -37,6 +37,7 @@ import ic_search from '../../assets/icons/search.svg';
 import { InputSource } from '../../nav';
 import HorizontalFlexibleArrayList from '../../components/containers/HorizontalFlexibleArrayList';
 import { useFocus } from '../../FocusProvider';
+import { smartVideoMenuItems } from '../../components/content/SmartVideoActions';
 
 const PlaylistsPage: Component = () => {
   let scrollContainerRef: HTMLDivElement | undefined;
@@ -57,6 +58,7 @@ const PlaylistsPage: Component = () => {
   });
 
   const addMediaMenuItems = (content: IPlatformVideo) => {
+    const smartItems = smartVideoMenuItems(content, video);
     return [
       new MenuItemButton("Add to queue", iconQueue, undefined, () => {
 
@@ -67,6 +69,7 @@ const PlaylistsPage: Component = () => {
       new MenuItemButton("Download", iconDownload, undefined, () => {
 
       }),
+      ...(smartItems.length > 0 ? [new MenuSeperator(), ...smartItems] : []),
       new MenuSeperator(),
       new MenuItemButton("Remove", iconTrash, undefined, async () => {
         await WatchLaterBackend.remove(content.url);
