@@ -35,6 +35,7 @@ import OverlayImage from "../overlays/OverlayImage";
 import IPluginPrompt from "../backend/models/plugin/IPluginPrompt";
 import StateGlobal from "./StateGlobal";
 import OverlayFilePicker, { PickerSelectionMode } from "../overlays/OverlayFilePicker";
+import OverlaySmartChaptersQueue from "../overlays/OverlaySmartChaptersQueue";
 
 export interface IExceptionDialogHandlers {
   back?: () => void,
@@ -53,6 +54,7 @@ export interface UIOverlay {
 
     dialog: (dialog: DialogDescriptor) => Promise<IDialogOutput>,
     overlay: (arg0: OverlayRequest) => void,
+    overlaySmartChaptersQueue: () => void,
     overlayError: (arg0: ExceptionModel)=>void,
     dismiss: ()=>void
   };
@@ -88,6 +90,13 @@ export interface UIOverlay {
       overlay(req: OverlayRequest): OverlayRequest {
         this.onOverlay.invoke(req);
         return req;
+      },
+      overlaySmartChaptersQueue() {
+        this.overlay({
+          custom: () => (
+            <OverlaySmartChaptersQueue />
+          )
+        });
       },
       overlayError(exceptionModel: ExceptionModel, handlers: IExceptionDialogHandlers | undefined = undefined) {
         this.overlay({

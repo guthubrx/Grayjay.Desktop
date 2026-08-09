@@ -1,0 +1,150 @@
+.root {
+    width: min(760px, calc(100vw - 64px));
+    max-height: min(760px, calc(100vh - 64px));
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    overflow: auto;
+}
+
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.title {
+    color: #F0F0F0;
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 32px;
+}
+
+.summary,
+.jobMeta,
+.jobAuthor,
+.empty,
+.errorDetail {
+    color: #8C8C8C;
+    font-size: 14px;
+    line-height: 20px;
+}
+
+.summary {
+    margin-top: 4px;
+}
+
+.closeButton {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: #2E2E2E;
+    cursor: pointer;
+}
+
+.closeButton img {
+    width: 24px;
+    height: 24px;
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sectionTitle {
+    color: #F0F0F0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+}
+
+.empty {
+    padding: 10px 0;
+}
+
+.job {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 76px;
+    padding: 10px 0;
+    border-bottom: 1px solid #2E2E2E;
+}
+
+.thumbnail,
+.thumbnailPlaceholder {
+    width: 100px;
+    height: 56px;
+    flex: 0 0 auto;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.thumbnailPlaceholder {
+    background: #2E2E2E;
+}
+
+.jobBody {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.jobTitle {
+    overflow: hidden;
+    color: #F0F0F0;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.jobAuthor {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.jobMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+}
+
+.error {
+    color: #F35B5B;
+}
+
+.errorDetail {
+    color: #F35B5B;
+    margin-top: 4px;
+}
+
+.actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+}
+
+@media (max-width: 700px) {
+    .root {
+        width: min(100vw - 32px, 760px);
+        max-height: calc(100vh - 32px);
+    }
+
+    .job {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .actions {
+        width: 100%;
+        margin-left: 112px;
+    }
+}

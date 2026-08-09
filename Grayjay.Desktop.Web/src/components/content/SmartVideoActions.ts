@@ -48,8 +48,8 @@ async function generateSmartChapters(video: IPlatformVideo) {
         return;
 
     try {
-        await indexVideo(video.url);
-        UIOverlay.toast("Smart chapters generation started...");
+        await indexVideo(video.url, video);
+        UIOverlay.toast("Added to Smart Chapters queue");
     } catch (error: any) {
         UIOverlay.toast("Generation failed: " + (error?.message ?? error));
     }

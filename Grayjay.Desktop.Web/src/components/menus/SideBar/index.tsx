@@ -18,6 +18,7 @@ import history from '../../../assets/icons/icon_nav_history.svg';
 import download from '../../../assets/icons/icon24_download.svg';
 import iconSync from '../../../assets/icons/ic_sync.svg';
 import iconWatchLater from '../../../assets/icons/icon24_watch_later.svg';
+import iconQueue from '../../../assets/icons/icon24_queue.svg';
 import iconSettings from '../../../assets/icons/ic_settings_color.svg';
 import iconBuy from '../../../assets/icons/ic_buy.svg';
 import iconLink from '../../../assets/icons/icon_link.svg';
@@ -41,6 +42,7 @@ import { Direction, FocusableOptions } from '../../../nav';
 import { focusScope } from '../../../focusScope'; void focusScope;
 import { focusable } from "../../../focusable"; void focusable;
 import { useFocus } from '../../../FocusProvider';
+import { pendingIndexJobCount } from '../../../state/StateHighlightsIndexer';
 
 export interface SideBarProps {
   alwaysMinimized?: boolean;
@@ -192,6 +194,15 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
     getSelected: createMemo(() => location.pathname === '/web/buy')
   };
   const settingsBtn: ButtonItem = { icon: iconSettings, name: 'Settings', action: () => UIOverlay.overlaySettings(), getSelected: createMemo(() => location.pathname === '/web/settings') };
+  const smartChaptersBtn$ = createMemo<ButtonItem>(() => {
+    const pending = pendingIndexJobCount();
+    return {
+      icon: iconQueue,
+      name: pending > 0 ? `Smart Chapters (${pending})` : 'Smart Chapters',
+      action: () => UIOverlay.overlaySmartChaptersQueue(),
+      getSelected: createMemo(() => false)
+    };
+  });
 
   const bottomButtons$ = createMemo(() => {
     const list: ButtonItem[] = [];
@@ -200,6 +211,7 @@ const SideBar: Component<SideBarProps> = (props: SideBarProps) => {
       list.push(buyBtn);
     }
   
+    list.push(smartChaptersBtn$());
     list.push(settingsBtn);
   
     return list;
