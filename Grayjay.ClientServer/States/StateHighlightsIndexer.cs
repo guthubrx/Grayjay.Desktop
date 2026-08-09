@@ -81,9 +81,6 @@ public static class StateHighlightsIndexer
     private const int ManualPriority = 2;
     private const int PlaybackPriority = 1;
 
-    // Garde-fou anti-injection : l'URL est interpolée dans une ligne shell,
-    // on refuse tout métacaractère shell.
-    private static readonly Regex _safeUrl = new(@"^https?://[^\s'""`;|&$<>(){}\\]+$", RegexOptions.Compiled);
     private static readonly Regex _safeLanguageCode = new(@"^[a-z]{2,3}(?:-[a-z]{4})?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static List<IndexJob> GetJobs()
@@ -161,7 +158,9 @@ public static class StateHighlightsIndexer
             throw new ArgumentException("No generator command configured");
 
         url = url.Trim();
-        if (!_safeUrl.IsMatch(url))
+        if (url.Any(char.IsControl) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var parsedUrl) ||
+            (parsedUrl.Scheme != Uri.UriSchemeHttp && parsedUrl.Scheme != Uri.UriSchemeHttps))
             throw new ArgumentException("Unsafe or invalid url");
     }
 
@@ -577,8 +576,9 @@ public static class StateHighlightsIndexer
 
     private static async Task RunCommand(string command, string url)
     {
-        // {url} est substitué si présent, sinon l'URL est ajoutée en dernier argument.
-        var commandLine = command.Contains("{url}") ? command.Replace("{url}", url) : $"{command} {url}";
+        // {url} est substitué comme argument shell sûr si présent, sinon l'URL est
+        // ajoutée en dernier argument. Les URLs YouTube comportent couramment '&'.
+        var commandLine = ReplaceUrlToken(command, url);
 
         // {subtitles} : remplacé par "--subtitle-file <vtt>" quand Grayjay a les
         // sous-titres, par une chaîne vide sinon (le générateur se débrouille).
@@ -647,5 +647,27 @@ public static class StateHighlightsIndexer
                 try { File.Delete(subtitleFile); } catch { /* best-effort cleanup */ }
             }
         }
+    }
+
+    private static string ReplaceUrlToken(string command, string url)
+    {
+        var quotedUrl = OperatingSystem.IsWindows() ? QuoteWindowsArgument(url) : QuotePosixArgument(url);
+        if (command.Contains("\"{url}\"", StringComparison.Ordinal))
+            return command.Replace("\"{url}\"", quotedUrl, StringComparison.Ordinal);
+        if (command.Contains("'{url}'", StringComparison.Ordinal))
+            return command.Replace("'{url}'", quotedUrl, StringComparison.Ordinal);
+        if (command.Contains("{url}", StringComparison.Ordinal))
+            return command.Replace("{url}", quotedUrl, StringComparison.Ordinal);
+        return $"{command} {quotedUrl}";
+    }
+
+    private static string QuotePosixArgument(string value)
+    {
+        return "'" + value.Replace("'", "'\"'\"'") + "'";
+    }
+
+    private static string QuoteWindowsArgument(string value)
+    {
+        return "\"" + value.Replace("%", "%%").Replace("\"", "\\\"") + "\"";
     }
 }
