@@ -66,23 +66,44 @@ public class HighlightsController : ControllerBase
     {
         public required string Url { get; set; }
         public required string Command { get; set; }
+        public StateHighlightsIndexer.IndexJobMetadata? Metadata { get; set; }
+        public string? Source { get; set; }
+    }
+
+    public class QueueJobRequest
+    {
+        public required string Url { get; set; }
     }
 
     [HttpPost]
     public ActionResult<StateHighlightsIndexer.IndexJob> Generate([FromBody] GenerateRequest request)
     {
-        return Ok(StateHighlightsIndexer.Enqueue(request.Url, request.Command));
+        return Ok(StateHighlightsIndexer.Enqueue(request.Url, request.Command, request.Metadata, request.Source));
     }
 
     [HttpPost]
     public ActionResult<StateHighlightsIndexer.IndexJob> GenerateIfNeeded([FromBody] GenerateRequest request)
     {
-        return Ok(StateHighlightsIndexer.EnqueueIfNeeded(request.Url, request.Command));
+        return Ok(StateHighlightsIndexer.EnqueueIfNeeded(request.Url, request.Command, request.Metadata));
     }
 
     [HttpGet]
     public ActionResult<List<StateHighlightsIndexer.IndexJob>> QueueStatus()
     {
         return Ok(StateHighlightsIndexer.GetJobs());
+    }
+
+    [HttpPost]
+    public ActionResult<StateHighlightsIndexer.IndexJob> Prioritize([FromBody] QueueJobRequest request)
+    {
+        var job = StateHighlightsIndexer.Prioritize(request.Url);
+        return job != null ? Ok(job) : NotFound();
+    }
+
+    [HttpPost]
+    public ActionResult<StateHighlightsIndexer.IndexJob> RemoveFromQueue([FromBody] QueueJobRequest request)
+    {
+        var job = StateHighlightsIndexer.Remove(request.Url);
+        return job != null ? Ok(job) : NotFound();
     }
 }

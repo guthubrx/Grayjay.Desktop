@@ -41,21 +41,44 @@ export abstract class HighlightsBackend {
         await Backend.DELETE("/highlights/Delete?url=" + encodeURIComponent(url));
     }
 
-    static async generate(url: string, command: string): Promise<IHighlightIndexJob> {
-        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command }), "application/json") as IHighlightIndexJob;
+    static async generate(url: string, command: string, metadata?: IHighlightIndexJobMetadata, source?: string): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/Generate", JSON.stringify({ url, command, metadata, source }), "application/json") as IHighlightIndexJob;
     }
 
-    static async generateIfNeeded(url: string, command: string): Promise<IHighlightIndexJob> {
-        return await Backend.POST("/highlights/GenerateIfNeeded", JSON.stringify({ url, command }), "application/json") as IHighlightIndexJob;
+    static async generateIfNeeded(url: string, command: string, metadata?: IHighlightIndexJobMetadata): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/GenerateIfNeeded", JSON.stringify({ url, command, metadata }), "application/json") as IHighlightIndexJob;
     }
 
     static async queueStatus(): Promise<IHighlightIndexJob[]> {
         return await Backend.GET("/highlights/QueueStatus") as IHighlightIndexJob[];
     }
+
+    static async prioritize(url: string): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/Prioritize", JSON.stringify({ url }), "application/json") as IHighlightIndexJob;
+    }
+
+    static async removeFromQueue(url: string): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/RemoveFromQueue", JSON.stringify({ url }), "application/json") as IHighlightIndexJob;
+    }
+}
+
+export interface IHighlightIndexJobMetadata {
+    title?: string;
+    author?: string;
+    thumbnail?: string;
 }
 
 export interface IHighlightIndexJob {
     url: string;
     status: "queued" | "running" | "done" | "error" | "skipped";
     error?: string;
+    title?: string;
+    author?: string;
+    thumbnail?: string;
+    source?: "manual" | "playback" | "precompute";
+    priority?: number;
+    position?: number;
+    queuedAt?: string;
+    startedAt?: string;
+    completedAt?: string;
 }
