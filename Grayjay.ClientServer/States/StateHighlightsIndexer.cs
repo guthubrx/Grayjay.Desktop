@@ -1,12 +1,18 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Grayjay.ClientServer.Constants;
+using Grayjay.ClientServer.Helpers;
+using Grayjay.ClientServer.Models.Downloads;
+using Grayjay.ClientServer.Parsers;
 using Grayjay.ClientServer.Models.Highlights;
 using Grayjay.ClientServer.Serializers;
 using Grayjay.ClientServer.Settings;
 using Grayjay.Desktop.POC;
 using Grayjay.Desktop.POC.Port.States;
 using Grayjay.Engine.Models.Detail;
+using Grayjay.Engine.Models.Video;
+using Grayjay.Engine.Models.Video.Sources;
+using Grayjay.Engine.Web;
 
 namespace Grayjay.ClientServer.States;
 
@@ -574,6 +580,100 @@ public static class StateHighlightsIndexer
         }
     }
 
+    private sealed class MaterializedMedia
+    {
+        public required string Path { get; init; }
+        public required string Directory { get; init; }
+    }
+
+    // Reutilise les sources deja resolues par le plugin Grayjay avant de
+    // demander a un outil externe de re-resoudre la plateforme.
+    private static async Task<MaterializedMedia?> MaterializeMedia(string url)
+    {
+        string? directory = null;
+        try
+        {
+            if (StatePlatform.GetContentDetails(url) is not PlatformVideoDetails details || details.Video == null)
+                return null;
+
+            directory = Path.Combine(Path.GetTempPath(), $"grayjay_smartchapters_media_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(directory);
+
+            VideoDownload? download = null;
+            if (details.Video is UnMuxedVideoDescriptor unmuxed)
+            {
+                var audio = VideoHelper.SelectBestAudioSource(
+                    (unmuxed.AudioSources ?? Array.Empty<IAudioSource>())
+                        .Where(x => x.IsDownloadable() && x is not HLSManifestAudioSource)
+                        .ToList(),
+                    new List<string>());
+                if (audio != null)
+                    download = new VideoDownload(details, audioSource: audio);
+            }
+            else
+            {
+                var videoSources = details.Video.VideoSources ?? Array.Empty<IVideoSource>();
+                var direct = VideoHelper.SelectBestVideoSource(
+                    videoSources.Where(x => x is VideoUrlSource || x is DashManifestRawSource).ToList(),
+                    0,
+                    new List<string>());
+                if (direct != null)
+                {
+                    download = new VideoDownload(details, videoSource: direct);
+                }
+                else
+                {
+                    var manifest = videoSources.OfType<HLSManifestSource>().FirstOrDefault();
+                    if (manifest != null)
+                    {
+                        var modifier = manifest.GetRequestModifier();
+                        var result = ModifierHttp.GetBytes(new ManagedHttpClient(), manifest.Url, modifier);
+                        if (result.IsOk)
+                        {
+                            var variants = HLS.ParseToVideoSources(manifest, System.Text.Encoding.UTF8.GetString(result.Bytes), result.FinalUrl);
+                            foreach (var variant in variants)
+                                variant.Modifier = modifier;
+                            var selected = VideoHelper.SelectBestVideoSource(variants.Cast<IVideoSource>().ToList(), 0, new List<string>());
+                            if (selected != null)
+                                download = new VideoDownload(details, videoSource: selected);
+                        }
+                    }
+                }
+            }
+
+            if (download == null)
+            {
+                Directory.Delete(directory, true);
+                return null;
+            }
+
+            download.DownloadDirectoryOverride = directory;
+            await download.Download(new ManagedHttpClient(), null);
+            var path = download.AudioFilePath ?? download.VideoFilePath;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path) || new FileInfo(path).Length == 0)
+            {
+                Directory.Delete(directory, true);
+                return null;
+            }
+
+            Logger.i(nameof(StateHighlightsIndexer), $"Provided resolved media for {url}: {new FileInfo(path).Length} bytes");
+            return new MaterializedMedia { Path = path, Directory = directory };
+        }
+        catch (Exception ex)
+        {
+            if (directory != null)
+            {
+                try { Directory.Delete(directory, true); } catch { /* best-effort cleanup */ }
+            }
+            Logger.w(nameof(StateHighlightsIndexer), $"Could not materialize Grayjay media for {url}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static bool IsSmartChaptersGenerator(string command)
+        => command.Contains("generate_smart_chapters.py", StringComparison.OrdinalIgnoreCase) ||
+            command.Contains("gen-chapters.sh", StringComparison.OrdinalIgnoreCase);
+
     private static async Task RunCommand(string command, string url)
     {
         // {url} est substitué comme argument shell sûr si présent, sinon l'URL est
@@ -588,6 +688,23 @@ public static class StateHighlightsIndexer
             subtitleFile = MaterializeSubtitle(url);
             commandLine = commandLine.Replace("{subtitles}",
                 subtitleFile != null ? $"--subtitle-file \"{subtitleFile}\"" : "");
+        }
+
+        // {media} : media resolu par le plugin. Sans token, on l'ajoute aussi
+        // aux wrappers connus seulement lorsqu'il manque des sous-titres.
+        MaterializedMedia? media = null;
+        if (command.Contains("{media}") || (subtitleFile == null && IsSmartChaptersGenerator(command)))
+        {
+            media = await MaterializeMedia(url);
+            if (command.Contains("{media}"))
+            {
+                commandLine = commandLine.Replace("{media}",
+                    media != null ? $"--media-file-for-url \"{media.Path}\"" : "");
+            }
+            else if (media != null)
+            {
+                commandLine += $" --media-file-for-url \"{media.Path}\"";
+            }
         }
 
         // {language} : langue de sortie choisie dans les réglages (Smart Analysis).
@@ -645,6 +762,10 @@ public static class StateHighlightsIndexer
             if (subtitleFile != null)
             {
                 try { File.Delete(subtitleFile); } catch { /* best-effort cleanup */ }
+            }
+            if (media != null)
+            {
+                try { Directory.Delete(media.Directory, true); } catch { /* best-effort cleanup */ }
             }
         }
     }

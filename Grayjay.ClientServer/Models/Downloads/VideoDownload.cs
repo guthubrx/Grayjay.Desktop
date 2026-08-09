@@ -91,6 +91,9 @@ namespace Grayjay.ClientServer.Models.Downloads
         public string? SubtitleFilePath { get; set; }
         public string? SubtitleFileName { get; set; }
 
+        [JsonIgnore]
+        public string? DownloadDirectoryOverride { get; set; }
+
         public string? GroupType { get; set; }
         public string? GroupID { get; set; }
 
@@ -322,7 +325,8 @@ namespace Grayjay.ClientServer.Models.Downloads
             Logger.i(nameof(VideoDownload), $"VideoDownload Download [{Video.Name}]");
             if (VideoDetails == null || (VideoSource == null && AudioSource == null))
                 throw new InvalidOperationException("Missing information for download to complete");
-            var downloadDir = StateDownloads.GetDownloadsDirectory();
+            var downloadDir = DownloadDirectoryOverride ?? StateDownloads.GetDownloadsDirectory();
+            Directory.CreateDirectory(downloadDir);
 
             Error = null;
 
@@ -480,7 +484,7 @@ namespace Grayjay.ClientServer.Models.Downloads
                     else
                     {
                         IRequestModifier modifier = null;
-                        if (VideoSourceToUse is JSSource jss)
+                        if (AudioSourceToUse is JSSource jss)
                             modifier = jss.GetRequestModifier();
 
                         switch (AudioSourceToUse.Container)

@@ -195,6 +195,7 @@ def parse_args() -> argparse.Namespace:
     targets = parser.add_argument_group("targets")
     targets.add_argument("--url", action="append", default=[], help="Video URL. Can be repeated.")
     targets.add_argument("--media-file", action="append", default=[], help="Local audio/video file. Can be repeated.")
+    targets.add_argument("--media-file-for-url", help="Local audio/video file to use for the single --url target. Keeps the output associated with that URL.")
     targets.add_argument("--urls-file", help="Text file containing one video URL per line.")
     targets.add_argument("--playlist", action="append", default=[], help="Grayjay playlist name, Id, or file id. Can be repeated.")
     targets.add_argument("--grayjay-video", action="append", default=[], help="Search local Grayjay videos by URL, YouTube id, or title substring.")
@@ -556,6 +557,17 @@ def resolve_tasks(args: argparse.Namespace) -> list[VideoTask]:
             tasks.append(grayjay_task)
         else:
             tasks.append(VideoTask(url=path.as_uri(), title=path.stem, local_file=str(path)))
+
+    if args.media_file_for_url:
+        if len(args.url) != 1:
+            raise ValueError("--media-file-for-url requires exactly one --url")
+        path = Path(args.media_file_for_url).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError(f"--media-file-for-url does not exist: {path}")
+        for task in tasks:
+            if task.url == canonical_url(args.url[0]):
+                task.local_file = str(path)
+                break
 
     if args.urls_file:
         for line in Path(args.urls_file).expanduser().read_text(encoding="utf-8").splitlines():

@@ -1866,8 +1866,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         if (!hasGeneratorCommand()) {
             UIOverlay.overlayTextPrompt(
                 "Configure smart chapters generator",
-                "External command that generates the smart highlights for a video. Use {url} for the video URL, {subtitles} to receive Grayjay's own subtitles (avoids re-scraping), and {language} for the chapter language chosen in Settings > Smart Analysis. Runs on your machine with its own dependencies.",
-                "e.g. python3 /path/to/generate_smart_chapters.py --url {url} {subtitles} {language} --overwrite",
+                "External command that generates the smart highlights for a video. Use {url} for the video URL, {subtitles} to receive Grayjay's own subtitles (avoids re-scraping), {media} for a temporary media file resolved by Grayjay, and {language} for the chapter language chosen in Settings > Smart Analysis. Runs on your machine with its own dependencies.",
+                "e.g. python3 /path/to/generate_smart_chapters.py --url {url} {subtitles} {media} {language} --overwrite",
                 "Save and run",
                 async (cmd) => {
                     await setGeneratorCommand(cmd);
