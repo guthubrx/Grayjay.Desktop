@@ -27,8 +27,9 @@ import Dropdown from '../basics/inputs/Dropdown';
 import ic_search from '../../assets/icons/search.svg';
 import { focusable } from '../../focusable'; void focusable;
 import { InputSource } from '../../nav';
-import { VideoState } from '../../contexts/VideoProvider';
+import { useVideo, VideoState } from '../../contexts/VideoProvider';
 import IconButton from '../buttons/IconButton';
+import { smartVideoMenuItems } from '../content/SmartVideoActions';
 
 interface PlaylistDetailViewProps {
   type: string;
@@ -47,6 +48,7 @@ interface PlaylistDetailViewProps {
 
 const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
   const navigate = useNavigate();
+  const video = useVideo();
 
   const [settingsContent$, setSettingsContent] = createSignal<IPlatformVideo>();
   const [settingsInputSource$, setSettingsInputSource] = createSignal<InputSource>();
@@ -65,6 +67,7 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
       };
     }
 
+    const smartItems = smartVideoMenuItems(content, video);
     return {
       title: "",
       items: [
@@ -73,6 +76,7 @@ const PlaylistDetailView: Component<PlaylistDetailViewProps> = (props) => {
           await UIOverlay.overlayAddToPlaylist(content, () => props.refetch?.());
         }),
         new MenuItemButton("Download", iconDownload, undefined, () => UIOverlay.overlayDownload(content.url)),
+        ...(smartItems.length > 0 ? [new MenuSeperator(), ...smartItems] : []),
         ... (isEditable$() ? [ 
           new MenuSeperator(),
           new MenuItemButton("Remove", iconTrash, undefined, () => props.onRemove(content)) 

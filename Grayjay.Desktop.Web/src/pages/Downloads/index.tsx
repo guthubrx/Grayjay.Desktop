@@ -53,6 +53,7 @@ import { WatchLaterBackend } from '../../backend/WatchLaterBackend';
 import { focusable } from '../../focusable'; void focusable;
 import Button from '../../components/buttons/Button';
 import { InputSource } from '../../nav';
+import { smartVideoMenuItems } from '../../components/content/SmartVideoActions';
 
 const DownloadsPage: Component = () => {
   const navigate = useNavigate();
@@ -267,6 +268,9 @@ const DownloadsPage: Component = () => {
   const [settingsInputSource$, setSettingsInputSource] = createSignal<InputSource>();
   const settingsMenu$ = createMemo(() => {
       const content = settingsContent$();        
+      const smartItems = content?.contentType === ContentType.MEDIA
+          ? smartVideoMenuItems(content.videoDetails, video)
+          : [];
       return {
           title: "",
           items: [
@@ -286,7 +290,8 @@ const DownloadsPage: Component = () => {
                   }),
                   new MenuItemButton("Add to playlist", iconAddToPlaylist, undefined, async () => {
                       await UIOverlay.overlayAddToPlaylist(content as any as IPlatformVideo);
-                  })
+                  }),
+                  ...(smartItems.length > 0 ? [new MenuSeperator(), ...smartItems] : [])
               ] : []),
               new MenuSeperator(),
               new MenuItemButton("Export", fileIcon, undefined, ()=>{

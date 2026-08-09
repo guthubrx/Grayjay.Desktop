@@ -40,6 +40,7 @@ import { LocalBackend } from "../../../backend/LocalBackend";
 import { Event0, Event1 } from "../../../utility/Event";
 import { focusable } from "../../../focusable";import { FocusableOptions, InputSource } from "../../../nav";
 import { useFocus } from "../../../FocusProvider";
+import { smartVideoMenuItems } from "../../content/SmartVideoActions";
  void focusable;
 
 export interface ContentGridProps {
@@ -82,6 +83,9 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
     const [settingsMenuInputSource$, setSettingsMenuInputSource] = createSignal<InputSource>();
     const settingsMenu$ = createMemo(() => {
         const content = settingsContent$();        
+        const smartItems = content?.contentType === ContentType.MEDIA
+            ? smartVideoMenuItems(content as IPlatformVideo, video)
+            : [];
         return {
             title: "",
             items: [
@@ -113,6 +117,7 @@ const ContentGrid: Component<ContentGridProps> = (props) => {
                     new MenuItemButton("Download video", iconDownload, undefined, ()=>{
                         UIOverlay.overlayDownload(content.url);
                     }),
+                    ...(smartItems.length > 0 ? [new MenuSeperator(), ...smartItems] : []),
                 ] : [
                     new MenuItemButton("Open channel", iconCreator, undefined, ()=>{
                         const author = content?.author;

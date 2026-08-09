@@ -24,7 +24,7 @@ import { IVideoHighlightSummary } from '../../backend/models/highlights/IVideoHi
 import { IVideoHighlightSet } from '../../backend/models/highlights/IVideoHighlightSet';
 import { IVideoHighlightSegment } from '../../backend/models/highlights/IVideoHighlightSegment';
 import { useVideo, VideoState, type VideoQueueItemMeta } from '../../contexts/VideoProvider';
-import SettingsMenu, { Menu, MenuItemButton } from '../../components/menus/Overlays/SettingsMenu';
+import SettingsMenu, { Menu, MenuItemButton, MenuSeperator } from '../../components/menus/Overlays/SettingsMenu';
 import Anchor, { AnchorStyle } from '../../utility/Anchor';
 import UIOverlay from '../../state/UIOverlay';
 import { interestScoreFromSummary } from '../../utils/highlightInterest';
@@ -37,6 +37,7 @@ import {
     type SmartTvTransition,
 } from '../../utils/smartTvSequencer';
 import { smartTvSettingsFromObject, type SmartTvResolvedSettings } from '../../utils/smartTvSettings';
+import { smartVideoMenuItems } from '../../components/content/SmartVideoActions';
 
 import { homeStyle$ } from '../../state/HomeStyleState';
 import iconHome from "../../assets/icons/icon_nav_home.svg";
@@ -938,6 +939,7 @@ const HomePage: Component = () => {
     const videoMenu$ = createMemo<Menu>(() => {
         const c = videoMenuContent$();
         const inQueue = c ? (video?.queue()?.some(x => x.url === c.url) ?? false) : false;
+        const smartItems = smartVideoMenuItems(c, video);
         return { title: '', items: c ? [
             new MenuItemButton('Open channel', iconCreator, undefined, () => {
                 if (c.author) nav('/web/channel?url=' + encodeURIComponent(c.author.url), { state: { author: c.author } });
@@ -954,6 +956,7 @@ const HomePage: Component = () => {
             new MenuItemButton('Watch later', iconWatchLaterMenu, undefined, () => WatchLaterBackend.add(c).catch(() => {})),
             new MenuItemButton('Add to playlist', iconAddToPlaylist, undefined, () => UIOverlay.overlayAddToPlaylist(c)),
             new MenuItemButton('Download video', iconDownload, undefined, () => UIOverlay.overlayDownload(c.url)),
+            ...(smartItems.length > 0 ? [new MenuSeperator(), ...smartItems] : []),
         ] : [] };
     });
 

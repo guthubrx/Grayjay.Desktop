@@ -114,6 +114,7 @@ import { SmartSearchBackend, type ISmartSearchSession } from "../../../backend/S
 import { smartDiscoveryPlan, smartDiscoveryQuery, smartDiscoveryVideos } from "../../../utils/smartDiscovery";
 import { smartTvSettingsFromObject } from "../../../utils/smartTvSettings";
 import { formatTranscriptForClipboard } from "../../../utils/transcriptClipboard";
+import { smartVideoMenuItems } from "../../content/SmartVideoActions";
 
 const SCOPE_ID = "video-detail-view";
 const SMART_TV_INTRO_MODES = ['hidden', 'sticky', 'timed'] as const;
@@ -2186,6 +2187,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const c = recMenuContent$();
         const inQueue = c ? (video?.queue()?.some(x => x.url === c.url) ?? false) : false;
         const inContinueWatching = c ? continueWatchingItems$().some(x => x.url === c.url) : false;
+        const smartItems = smartVideoMenuItems(c, video);
         return { title: "", items: c ? [
             new MenuItemButton("Open channel", iconCreator, undefined, () => { if (c.author) { minimize(); navigate("/web/channel?url=" + encodeURIComponent(c.author.url), { state: { author: c.author } }); } }),
             inQueue
@@ -2206,6 +2208,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                     setMarkedAsWatched(prev => new Set([...prev, c.url]));
                 })
             ] : []),
+            ...(smartItems.length > 0 ? [new MenuSeperator(), ...smartItems] : []),
         ] : [] };
     });
     const openRecMenu = (el: HTMLElement, c: IPlatformVideo) => {
