@@ -158,10 +158,17 @@ public static class StateHighlightsIndexer
             throw new ArgumentException("No generator command configured");
 
         url = url.Trim();
-        if (url.Any(char.IsControl) ||
-            !Uri.TryCreate(url, UriKind.Absolute, out var parsedUrl) ||
-            (parsedUrl.Scheme != Uri.UriSchemeHttp && parsedUrl.Scheme != Uri.UriSchemeHttps))
+        var hasControlCharacters = url.Any(char.IsControl);
+        var hasAbsoluteUri = Uri.TryCreate(url, UriKind.Absolute, out var parsedUrl);
+        var isHttpUrl = hasAbsoluteUri &&
+            (parsedUrl!.Scheme == Uri.UriSchemeHttp || parsedUrl.Scheme == Uri.UriSchemeHttps);
+        if (hasControlCharacters || !isHttpUrl)
+        {
+            var loggedUrl = url.Length > 512 ? url[..512] + "..." : url;
+            Logger.w(nameof(StateHighlightsIndexer),
+                $"Rejected Smart Chapters URL [{loggedUrl}] (controlCharacters={hasControlCharacters}, scheme={parsedUrl?.Scheme ?? "none"}).");
             throw new ArgumentException("Unsafe or invalid url");
+        }
     }
 
     private static IndexJob EnqueueValidated(string url, string command, IndexJobMetadata? metadata, string source, int priority)
