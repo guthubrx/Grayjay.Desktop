@@ -3235,7 +3235,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                 </div>
             </Show>
             <Portal>
-                <SettingsMenu menu={recMenu$()} show={recMenuShow$()} onHide={() => setRecMenuShow(false)} anchor={recMenuAnchor$()} />
+                <SettingsMenu menu={recMenu$()} show={recMenuShow$()} onHide={() => setRecMenuShow(false)} anchor={recMenuAnchor$()} style={{ "z-index": 30 }} />
             </Portal>
             <Show when={showNextUp$() && nextUpVideo$()}>
                 <NextUpOverlay
