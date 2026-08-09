@@ -5,4 +5,4 @@
 - [x] T003 Synchronize queue state through the existing frontend store and websocket event.
 - [x] T004 Add the global sidebar entry and queue panel.
 - [x] T005 Label scheduled work submitted through the BlueJay backend.
-- [ ] T006 Validate the integration build and delivered application.
+- [x] T006 Validate the integration build and delivered application.
