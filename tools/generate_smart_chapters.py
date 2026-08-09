@@ -227,7 +227,7 @@ def parse_args() -> argparse.Namespace:
     generation.add_argument("--min-segment-seconds", type=int, default=45, help="Preferred minimum segment duration.")
     generation.add_argument("--max-segment-seconds", type=int, default=360, help="Preferred maximum segment duration.")
     generation.add_argument("--max-transcript-chars", type=int, default=120000, help="Transcript character budget sent to LLM. Above this, cues are uniformly down-sampled across the whole duration (never dropping the middle).")
-    generation.add_argument("--language", default="fr", help="Preferred transcript/Whisper language.")
+    generation.add_argument("--language", default="auto", help="Spoken language passed to Whisper. Defaults to auto-detection and is independent from --output-language.")
     generation.add_argument("--output-language", default=None, help="Force the language of generated titles/summaries (e.g. French, English). Defaults to the video's own language.")
     generation.add_argument("--translate-subtitles", action="store_true", help="Generate timed translated subtitles in --output-language when it is set.")
     generation.add_argument("--translate-subtitles-from", default="", help="Comma-separated transcript language codes eligible for subtitle translation. Empty keeps explicit --translate-subtitles backward-compatible for every language.")
@@ -881,6 +881,16 @@ def load_cached_transcript(task: VideoTask, args: argparse.Namespace) -> list[Tr
         if start is None or end is None or not isinstance(text, str):
             continue
         cues.append(TranscriptCue(start=start, end=end, text=text))
+    source = data.get("source")
+    quality_issue = transcript_quality_issue(cues)
+    if isinstance(source, str) and source.startswith("whisper-") and quality_issue:
+        log(f"  transcript cache rejected: {quality_issue}")
+        try:
+            transcript_cache_path(task.url, args).unlink()
+        except OSError:
+            pass
+        return None
+
     title = data.get("title")
     if not task.title and isinstance(title, str) and title.strip():
         task.title = title.strip()
@@ -1001,10 +1011,10 @@ def get_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> 
     if args.no_whisper:
         raise RuntimeError("No YouTube transcript found and --no-whisper is set.")
 
-    cues = get_whisper_transcript(task, args, workdir)
+    cues, whisper_model = get_whisper_transcript(task, args, workdir)
     if cues:
-        log(f"  transcript: Whisper fallback ({len(cues)} cues)")
-        return _accept_transcript(task, cues, f"whisper-{args.whisper_model}", args)
+        log(f"  transcript: Whisper fallback ({len(cues)} cues, {whisper_model})")
+        return _accept_transcript(task, cues, f"whisper-{whisper_model}", args)
     raise RuntimeError("No transcript could be produced.")
 
 
@@ -1105,6 +1115,57 @@ def clean_caption_text(value: str) -> str:
     return value.strip()
 
 
+def transcript_quality_issue(cues: list[TranscriptCue]) -> str | None:
+    """Detecte les boucles de transcription avant mise en cache ou affichage.
+
+    Whisper peut halluciner une meme phrase pendant des minutes lorsque la piste
+    audio ou la langue est mauvaise. Les refrains normaux sont conserves : seul
+    un long bloc consecutif couvrant une part significative du transcript est
+    rejete.
+    """
+    speech_count = 0
+    longest_start: TranscriptCue | None = None
+    longest_end = 0.0
+    longest_length = 0
+    current_text: str | None = None
+    current_start: TranscriptCue | None = None
+    current_end = 0.0
+    current_length = 0
+    for cue in cues:
+        text = clean_caption_text(cue.text)
+        if not text or (text.startswith("[") and text.endswith("]")):
+            current_text = None
+            current_start = None
+            current_length = 0
+            continue
+        normalized = re.sub(r"[^\w]+", " ", text.casefold(), flags=re.UNICODE).strip()
+        if not normalized:
+            continue
+        speech_count += 1
+        if normalized == current_text and cue.start - current_end <= 5:
+            current_length += 1
+        else:
+            current_text = normalized
+            current_start = cue
+            current_length = 1
+        current_end = cue.end
+        if current_length > longest_length:
+            longest_start = current_start
+            longest_end = current_end
+            longest_length = current_length
+
+    if speech_count < 20 or longest_start is None:
+        return None
+
+    minimum_run = max(20, math.ceil(speech_count * 0.25))
+    if longest_length < minimum_run:
+        return None
+
+    if longest_end - longest_start.start < 60:
+        return None
+    return f"repeated cue loop ({longest_length}/{speech_count} speech cues over {format_time(longest_end - longest_start.start)}: {longest_start.text!r})"
+
+
 def merge_short_cues(cues: list[TranscriptCue], target_seconds: float = 18.0) -> list[TranscriptCue]:
     if not cues:
         return []
@@ -1148,8 +1209,8 @@ def resolve_whisper_cli(args: argparse.Namespace) -> str | None:
     return None
 
 
-def resolve_whisper_model(args: argparse.Namespace, cli_path: str | None) -> str | None:
-    name = f"ggml-{args.whisper_model}.bin"
+def resolve_whisper_model(args: argparse.Namespace, cli_path: str | None, model_name: str | None = None) -> str | None:
+    name = f"ggml-{model_name or args.whisper_model}.bin"
     dirs: list[Path] = []
     if args.whisper_models_dir:
         dirs.append(Path(args.whisper_models_dir).expanduser())
@@ -1246,7 +1307,7 @@ def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path
     return produced[0]
 
 
-def get_whisper_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> list[TranscriptCue]:
+def get_whisper_transcript(task: VideoTask, args: argparse.Namespace, workdir: Path) -> tuple[list[TranscriptCue], str]:
     # Override optionnel : script maison si explicitement fourni ET présent.
     if args.whisper_script:
         script = Path(args.whisper_script).expanduser()
@@ -1256,7 +1317,11 @@ def get_whisper_transcript(task: VideoTask, args: argparse.Namespace, workdir: P
                                 "--output", str(output), "--model", args.whisper_model], check=False)
             if proc.returncode != 0:
                 raise RuntimeError(f"Whisper script failed: {proc.stderr.strip() or proc.stdout.strip()}")
-            return parse_whisper_text(output.read_text(encoding="utf-8", errors="ignore"), task.duration)
+            cues = parse_whisper_text(output.read_text(encoding="utf-8", errors="ignore"), task.duration)
+            quality_issue = transcript_quality_issue(cues)
+            if quality_issue:
+                raise RuntimeError(f"Whisper transcript rejected: {quality_issue}")
+            return cues, args.whisper_model
         log(f"  whisper script introuvable, bascule sur whisper.cpp interne: {script}")
 
     # Chemin autonome : whisper.cpp détecté + glue interne.
@@ -1271,10 +1336,29 @@ def get_whisper_transcript(task: VideoTask, args: argparse.Namespace, workdir: P
             f"Modèle Whisper 'ggml-{args.whisper_model}.bin' introuvable. "
             "Passe --whisper-models-dir ou télécharge le modèle. Voir --check.")
     wav = _download_audio_wav(task, args, workdir)
-    proc = run_command([cli, "-m", model, "-f", str(wav), "-l", args.language], check=False)
-    if proc.returncode != 0:
-        raise RuntimeError(f"whisper-cli failed: {proc.stderr.strip() or proc.stdout.strip()}")
-    return parse_whisper_text(proc.stdout, task.duration)
+
+    def transcribe(model_path: str) -> list[TranscriptCue]:
+        proc = run_command([cli, "-m", model_path, "-f", str(wav), "-l", args.language], check=False)
+        if proc.returncode != 0:
+            raise RuntimeError(f"whisper-cli failed: {proc.stderr.strip() or proc.stdout.strip()}")
+        return parse_whisper_text(proc.stdout, task.duration)
+
+    cues = transcribe(model)
+    quality_issue = transcript_quality_issue(cues)
+    if not quality_issue:
+        return cues, args.whisper_model
+
+    fallback_model_name = "medium"
+    fallback_model = None if args.whisper_model == fallback_model_name else resolve_whisper_model(args, cli, fallback_model_name)
+    if fallback_model:
+        log(f"  whisper {args.whisper_model} rejected: {quality_issue}; retrying {fallback_model_name}")
+        fallback_cues = transcribe(fallback_model)
+        fallback_issue = transcript_quality_issue(fallback_cues)
+        if not fallback_issue:
+            return fallback_cues, fallback_model_name
+        quality_issue = fallback_issue
+
+    raise RuntimeError(f"Whisper transcript rejected: {quality_issue}")
 
 
 def parse_whisper_text(text: str, duration: float | None) -> list[TranscriptCue]:
@@ -1412,6 +1496,9 @@ def validate_translated_cues(raw: Any, source_cues: list[TranscriptCue]) -> list
         if not isinstance(text, str) or not text.strip():
             raise RuntimeError("Translated subtitle response contains an empty cue.")
         translated.append(TranscriptCue(source.start, source.end, clean_caption_text(text)))
+    quality_issue = transcript_quality_issue(translated)
+    if quality_issue:
+        raise RuntimeError(f"Translated subtitle response contains {quality_issue}.")
     return translated
 
 
@@ -1444,6 +1531,9 @@ def translate_cues(cues: list[TranscriptCue], language: str, args: argparse.Name
     translated: list[TranscriptCue] = []
     for start in range(0, len(cues), 12):
         translated.extend(translate_cue_batch(cues[start:start + 12], language, args))
+    quality_issue = transcript_quality_issue(translated)
+    if quality_issue:
+        raise RuntimeError(f"Translated subtitles contain {quality_issue}.")
     return translated
 
 
