@@ -3227,7 +3227,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                 </div>
             </Show>
             <Portal>
-                <SettingsMenu menu={subscriptionMenu$().menu} anchor={subscriptionMenuAnchor} show={showSubscriptionMenu$()} onHide={closeSubscriptionMenu} />
+                <SettingsMenu menu={subscriptionMenu$().menu} anchor={subscriptionMenuAnchor} show={showSubscriptionMenu$()} onHide={closeSubscriptionMenu} style={{ "z-index": 30 }} />
             </Portal>
             <Show when={video?.state() === VideoState.Maximized}>
                 <div style={{"position": "absolute", "bottom": "8px", "right": repliesPager$() ? "12px" : "20px", "z-index": mode() === VideoMode.Theatre ? 2 : undefined}}>
