@@ -3,6 +3,7 @@ using Grayjay.ClientServer.Controllers;
 using Grayjay.ClientServer.Database.Indexes;
 using Grayjay.ClientServer.Models;
 using Grayjay.ClientServer.Models.History;
+using Grayjay.ClientServer.Pagers;
 using Grayjay.ClientServer.Store;
 using Grayjay.ClientServer.Sync;
 using Grayjay.ClientServer.Sync.Models;
@@ -154,9 +155,19 @@ namespace Grayjay.ClientServer.States
         {
             return _history.Pager(10, x=>x.Object);
         }
-        public static IPager<HistoryVideo> GetHistorySearchPager(string query)
+        public static IPager<HistoryVideo> GetHistorySearchPager(string query, string creator)
         {
-            return _history.QueryLikePager(nameof(DBHistoryIndex.Name), $"%{query}%", 10, x => x.Object);
+            var pager = string.IsNullOrWhiteSpace(query)
+                ? GetHistoryPager()
+                : _history.QueryLikePager(nameof(DBHistoryIndex.Name), $"%{query}%", 10, x => x.Object);
+
+            if (!string.IsNullOrWhiteSpace(creator))
+            {
+                return new FilterPager<HistoryVideo>(pager, x =>
+                    x.Video?.Author?.Name?.Contains(creator, StringComparison.OrdinalIgnoreCase) == true);
+            }
+
+            return pager;
         }
 
         public static DBHistoryIndex GetHistoryByVideo(PlatformVideo video, bool create = false, DateTime watchDate = default(DateTime))
