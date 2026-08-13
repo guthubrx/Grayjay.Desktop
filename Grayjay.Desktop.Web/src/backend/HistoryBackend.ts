@@ -11,12 +11,12 @@ export abstract class HistoryBackend {
         return await Backend.GET("/history/HistoryLoad") as PagerResult<IHistoryVideo>;
     }
 
-    static async historyLoadSearch(query: string): Promise<PagerResult<IHistoryVideo>> {
-        return await Backend.GET("/history/HistoryLoadSearch?query=" + encodeURIComponent(query)) as PagerResult<IHistoryVideo>;
+    static async historyLoadSearch(query?: string, creator?: string): Promise<PagerResult<IHistoryVideo>> {
+        return await Backend.GET("/history/HistoryLoadSearch?query=" + encodeURIComponent(query ?? "") + "&creator=" + encodeURIComponent(creator ?? "")) as PagerResult<IHistoryVideo>;
     }
 
-    static async historySearchPager(query: string): Promise<Pager<IHistoryVideo>> {
-        return Pager.fromMethods<IHistoryVideo>(() => this.historyLoadSearch(query), this.historyNextPage);
+    static async historySearchPager(query?: string, creator?: string): Promise<Pager<IHistoryVideo>> {
+        return Pager.fromMethods<IHistoryVideo>(() => this.historyLoadSearch(query, creator), this.historyNextPage);
     }
 
     static async historyNextPage(): Promise<PagerResult<IHistoryVideo>> {

@@ -35,9 +35,9 @@ namespace Grayjay.ClientServer.Controllers
             return pager.AsPagerResult();
         }
         [HttpGet]
-        public PagerResult<HistoryVideo> HistoryLoadSearch(string query)
+        public PagerResult<HistoryVideo> HistoryLoadSearch(string query = null, string creator = null)
         {
-            var pager = StateHistory.GetHistorySearchPager(query);
+            var pager = StateHistory.GetHistorySearchPager(query, creator);
             this.State().HistoryState.HistoryPager = pager;
             return pager.AsPagerResult();
         }

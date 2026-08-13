@@ -9,6 +9,7 @@ import CustomButton from '../../components/buttons/CustomButton';
 import ic_trash from '../../assets/icons/icon_trash.svg';
 import ic_more from '../../assets/icons/icon_button_more.svg';
 import ic_search from '../../assets/icons/icon24_search.svg';
+import iconCreators from '../../assets/icons/icon_nav_creators.svg';
 import iconDownload from '../../assets/icons/icon24_download.svg';
 import iconQueue from '../../assets/icons/icon_add_to_queue.svg';
 import no_videos_in_history from '../../assets/no_videos_in_history.svg';
@@ -36,18 +37,19 @@ const HistoryPage: Component = () => {
   const video = useVideo();
 
   const [query$, setQuery] = createSignal<string>();
+  const [creatorQuery$, setCreatorQuery] = createSignal<string>();
   const [historyPager$, setHistoryPager] = createSignal<Pager<IHistoryVideo> | undefined>(undefined, { equals: false });
 
   let [initialLoadComplete$, setInitialLoadComplete] = createSignal(false);
   let [isLoading$, setIsLoading] = createSignal(false);
   let reqId = 0;
-  const updateHistoryPager = async (query?: string) => {
+  const updateHistoryPager = async (query?: string, creator?: string) => {
     const myId = ++reqId;
     setIsLoading(true);
 
     try {
-      const pager = query && query.length > 0
-        ? await HistoryBackend.historySearchPager(query)
+      const pager = (query && query.length > 0) || (creator && creator.length > 0)
+        ? await HistoryBackend.historySearchPager(query, creator)
         : await HistoryBackend.historyPager();
 
       if (myId !== reqId) return;
@@ -60,8 +62,8 @@ const HistoryPage: Component = () => {
     }
   };
 
-  createEffect(on(query$, (q) => {
-    void updateHistoryPager(q);
+  createEffect(on(() => [query$(), creatorQuery$()], ([query, creator]) => {
+    void updateHistoryPager(query, creator);
   }));
 
   async function onScrollEnd() {
@@ -84,7 +86,7 @@ const HistoryPage: Component = () => {
     UIOverlay.overlayConfirm({
       yes: async () => {
         await HistoryBackend.removeHistoryRange(timeMinutes);
-        updateHistoryPager();
+        updateHistoryPager(query$(), creatorQuery$());
       }
     }, promptText);
   };
@@ -185,11 +187,11 @@ const HistoryPage: Component = () => {
           <div style="display: flex; flex-direction: row; width: 100%; align-items: center; margin-top: 40px; margin-bottom: 40px;">
             <div class={styles.title}>Watch History</div>
             <div style="flex-grow: 1;"></div>
-            <InputText 
+            <InputText
               placeholder='Search through history'
               small={true}
               style={{
-                "width": "300px",
+                "width": "240px",
               }} inputContainerStyle={{
                 "background-color": "#212121"
               }}
@@ -203,8 +205,27 @@ const HistoryPage: Component = () => {
                 groupType: 'horizontal',
                 groupEscapeTo: { up: ['nav-bar'] }
               }} />
+            <InputText
+              placeholder='Filter by creator'
+              small={true}
+              style={{
+                "width": "240px",
+                "margin-left": "8px",
+              }} inputContainerStyle={{
+                "background-color": "#212121"
+              }}
+              onTextChanged={(newVal) => setCreatorQuery(newVal)}
+              icon={iconCreators}
+              showClearButton={true}
+              focusable={true}
+              focusableGroupOpts={{
+                groupId: 'history-filters',
+                groupIndices: [1],
+                groupType: 'horizontal',
+                groupEscapeTo: { up: ['nav-bar'] }
+              }} />
 
-              <CustomButton 
+              <CustomButton
                 icon={ic_trash}
                 text='Clear history'
                 style={{
@@ -220,7 +241,7 @@ const HistoryPage: Component = () => {
                   });
                 }} focusableOpts={{
                   groupId: 'history-filters',
-                  groupIndices: [1],
+                  groupIndices: [2],
                   groupType: 'horizontal',
                   groupEscapeTo: { up: ['nav-bar'] },
                   onPress: (el) => {
