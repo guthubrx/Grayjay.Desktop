@@ -1,6 +1,5 @@
 import { createContext, useContext, JSX, ParentComponent, createSignal, Accessor, batch, createMemo, createEffect, onMount } from "solid-js";
 import StateGlobal from "../state/StateGlobal";
-import { range, shuffleArray } from "../utility";
 import { IOrderedPlatformVideo, WatchLaterBackend } from "../backend/WatchLaterBackend";
 import { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
 import { IPlatformContent } from "../backend/models/content/IPlatformContent";
@@ -47,6 +46,7 @@ export interface VideoContextState {
 };
 
 export interface VideoContextValue {
+    id: string;
     state: Accessor<VideoState>;
     index: Accessor<number | undefined>;
     queue: Accessor<IPlatformVideo[] | undefined>;
@@ -60,7 +60,8 @@ export interface VideoContextValue {
     theatrePinned: Accessor<boolean>;
     volume: Accessor<number>;
     bingeChannelUrl: Accessor<string | undefined>;
-    //queueType watch later, playlist en queue of undefined
+    minimizedVideos: Accessor<VideoContextValue[]>;
+    activePlaybackVideoId: Accessor<string | undefined>;
     actions: {
         openVideo: (video: IPlatformVideo, time?: Duration, videoState?: VideoState) => void;
         openVideoByUrl: (url: string, time?: Duration, videoState?: VideoState) => void;
@@ -80,6 +81,7 @@ export interface VideoContextValue {
         setStartTime: (startTime: Duration | undefined) => void;
         startBinge: (channelUrl: string, videos: IPlatformVideo[], pager: Pager<IPlatformContent>) => void;
         stopBinge: () => void;
+        requestPlayback: () => void;
     }
 };
 
@@ -88,127 +90,35 @@ export interface VideoContextProps {
     children: JSX.Element;
 };
 
+const noopBingeChannelUrl: Accessor<string | undefined> = () => undefined;
+
 export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
-    const [queue, setQueue] = createSignal<IPlatformVideo[] | undefined>();
-    const [queueStartTimes, setQueueStartTimes] = createSignal<(Duration | undefined)[] | undefined>();
-    const [queueMetadata, setQueueMetadata] = createSignal<(VideoQueueItemMeta | undefined)[] | undefined>();
-    const [index, setIndex] = createSignal<number | undefined>();
-    const [startTime, setStartTime] = createSignal<Duration | undefined>();
-    const [state, setState] = createSignal<VideoState>(VideoState.Closed);
-    const [repeat, setRepeat] = createSignal<boolean>(false);
-    const [shuffle, setShuffle] = createSignal<boolean>(false);
-    const [desiredMode, setDesiredModeInternal] = createSignal<VideoMode>(VideoMode.Theatre);
-    const [theatrePinned, setTheatrePinnedInternal] = createSignal<boolean>(true);
-    const [volume, setVolumeInternal] = createSignal<number>(1);
+    const [watchLater, setWatchLater] = createSignal<IOrderedPlatformVideo[]>();
+    const [minimizedVideos, setMinimizedVideos] = createSignal<VideoContextValue[]>([]);
+    const [activePlaybackVideoId, setActivePlaybackVideoId] = createSignal<string | undefined>();
     const [bingePager, setBingePager] = createSignal<Pager<IPlatformContent> | undefined>();
     const [bingeChannelUrl, setBingeChannelUrl] = createSignal<string | undefined>();
     const [bingeLoading, setBingeLoading] = createSignal<boolean>(false);
     let bingePagerConsumed = 0;
-    const video = createMemo(() => {
-        const q = queue();
-        const i = index();
-        if (!q || i === undefined || i < 0 || i >= q.length) {
-            return undefined;
-        }
+    let minimizedVideoId = 0;
+    let mainVideo: VideoContextValue;
+    let extendMainQueue: ((videos: IPlatformVideo[]) => void) | undefined;
 
-        return q[i];
-    })
+    const contextInternals = new Map<string, {
+        queueStartTimes: Accessor<(Duration | undefined)[] | undefined>;
+    }>();
 
-    const openVideo = (v: IPlatformVideo, time?: Duration, videoState?: VideoState) => {
-        if (WindowBackend.consumeCmdClick() && v.url) {
-            WindowBackend.openInNewWindow({ url: v.url })
-                .catch(e => console.warn("Failed to open video in new window", e));
-            return;
-        }
-        const desiredVideoState = videoState ?? VideoState.Maximized;
-        batch(() => {
-            setIndex(0);
-            setStartTime(time);
-            setQueueStartTimes(time ? [time] : undefined);
-            setQueueMetadata(undefined);
-            setQueue([ v ]);
-            if (state() !== desiredVideoState)
-                setState(desiredVideoState);
-        });
+    const refetchWatchLater = async () => {
+        const videos = await WatchLaterBackend.getAll();
+        setWatchLater(videos);
     };
-    const openVideoByUrl = async (url: string, time?: Duration, videoState?: VideoState) => {
-        if (WindowBackend.consumeCmdClick() && url) {
-            WindowBackend.openInNewWindow({ url })
-                .catch(e => console.warn("Failed to open video in new window", e));
-            return;
-        }
-        const desiredVideoState = videoState ?? VideoState.Maximized;
-        if (state() !== desiredVideoState)
-            setState(desiredVideoState);
-        const videoLoadResult = await DetailsBackend.videoLoad(url);
-        batch(() => {
-            setIndex(0);
-            setStartTime(time);
-            setQueueStartTimes(time ? [time] : undefined);
-            setQueueMetadata(undefined);
-            setQueue([ videoLoadResult.video ]);
 
-        });
-    };
-    const sq = (index: number, queue: IPlatformVideo[], repeat?: boolean, shuffle?: boolean, videoState?: VideoState, time?: Duration, startTimes?: (Duration | undefined)[], metadata?: (VideoQueueItemMeta | undefined)[]) => {
-        if (index < 0 || index >= queue.length) {
-            console.error("index not valid for queue", {index, queue});
-            return;
+    const removeMinimizedVideo = (id: string) => {
+        setMinimizedVideos(videos => videos.filter(v => v.id !== id));
+        contextInternals.delete(id);
+        if (activePlaybackVideoId() === id) {
+            setActivePlaybackVideoId(undefined);
         }
-
-        const desiredVideoState = videoState ?? VideoState.Maximized;
-        const normalizedStartTimes = startTimes?.slice(0, queue.length);
-        const normalizedMetadata = metadata?.slice(0, queue.length);
-        batch(() => {
-            setIndex(index);
-            setQueue(queue);
-            setQueueStartTimes(normalizedStartTimes);
-            setQueueMetadata(normalizedMetadata);
-            setStartTime(normalizedStartTimes?.[index] ?? time);
-            if (repeat !== undefined)
-                setRepeat(repeat);
-            if (shuffle !== undefined)
-                setShuffle(shuffle);
-            if (state() !== desiredVideoState)
-                setState(desiredVideoState);
-        });
-    };
-    const addToQueue = (video: IPlatformVideo) => { 
-        if (index() === undefined) {
-            openVideo(video);
-            return;
-        }
-
-        batch(() => {
-            setQueue([ ... (queue() ?? []), video ]);
-            setQueueStartTimes(prev => prev ? [...prev, undefined] : undefined);
-            setQueueMetadata(prev => prev ? [...prev, undefined] : undefined);
-        });
-    };
-    const replaceSmartMixTail = (sessionId: string, nextQueue: IPlatformVideo[], nextMetadata: (VideoQueueItemMeta | undefined)[]) => {
-        const replacement = replaceUnplayedSmartMixTail(queue(), queueMetadata(), index(), sessionId, nextQueue, nextMetadata);
-        if (!replacement) return false;
-        batch(() => {
-            setQueue(replacement.queue);
-            setQueueMetadata(replacement.metadata);
-        });
-        return true;
-    };
-    const consumeAndSetIndex = (targetIndex: number) => {
-        const currentIndex = index();
-        const currentQueue = queue();
-        if (currentIndex === undefined || !currentQueue || targetIndex === currentIndex) return;
-        const newQueue = currentQueue.filter((_, i) => i !== currentIndex);
-        const newIndex = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
-        const newStartTimes = queueStartTimes()?.filter((_, i) => i !== currentIndex);
-        const newMetadata = queueMetadata()?.filter((_, i) => i !== currentIndex);
-        batch(() => {
-            setQueue(newQueue);
-            setIndex(Math.max(0, Math.min(newIndex, newQueue.length - 1)));
-            setQueueStartTimes(newStartTimes);
-            setQueueMetadata(newMetadata);
-            setStartTime(newStartTimes?.[Math.max(0, Math.min(newIndex, newQueue.length - 1))]);
-        });
     };
 
     const stopBinge = () => {
@@ -219,22 +129,342 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         bingePagerConsumed = 0;
     };
 
-    const startBinge = (channelUrl: string, videos: IPlatformVideo[], pager: Pager<IPlatformContent>) => {
-        if (videos.length === 0) return;
-        bingePagerConsumed = pager.data.length;
-        batch(() => {
-            setBingeChannelUrl(channelUrl);
-            setBingePager(pager);
-            sq(0, videos);
+    const createVideoContext = (options: {
+        id: string;
+        initialState?: VideoState;
+        initialIndex?: number;
+        initialQueue?: IPlatformVideo[];
+        initialStartTime?: Duration;
+        initialQueueStartTimes?: (Duration | undefined)[];
+        initialQueueMetadata?: (VideoQueueItemMeta | undefined)[];
+        initialRepeat?: boolean;
+        initialShuffle?: boolean;
+        initialDesiredMode?: VideoMode;
+        initialTheatrePinned?: boolean;
+        initialVolume?: number;
+        beforeReplace?: () => void;
+        onClose?: (id: string) => void;
+        onSetState?: (id: string, videoState: VideoState) => boolean;
+        persistSettings?: boolean;
+        isMain?: boolean;
+    }): VideoContextValue => {
+        const [queue, setQueue] = createSignal<IPlatformVideo[] | undefined>(options.initialQueue);
+        const [queueStartTimes, setQueueStartTimes] = createSignal<(Duration | undefined)[] | undefined>(options.initialQueueStartTimes);
+        const [queueMetadata, setQueueMetadata] = createSignal<(VideoQueueItemMeta | undefined)[] | undefined>(options.initialQueueMetadata);
+        const [index, setIndex] = createSignal<number | undefined>(options.initialIndex);
+        const [startTime, setStartTime] = createSignal<Duration | undefined>(options.initialStartTime);
+        const [state, setState] = createSignal<VideoState>(options.initialState ?? VideoState.Closed);
+        const [repeat, setRepeat] = createSignal<boolean>(options.initialRepeat ?? false);
+        const [shuffle, setShuffle] = createSignal<boolean>(options.initialShuffle ?? false);
+        const [desiredMode, setDesiredModeInternal] = createSignal<VideoMode>(options.initialDesiredMode ?? VideoMode.Theatre);
+        const [theatrePinned, setTheatrePinnedInternal] = createSignal<boolean>(options.initialTheatrePinned ?? true);
+        const [volume, setVolumeInternal] = createSignal<number>(options.initialVolume ?? 1);
+
+        contextInternals.set(options.id, { queueStartTimes });
+
+        const video = createMemo(() => {
+            const q = queue();
+            const i = index();
+            if (!q || i === undefined || i < 0 || i >= q.length) {
+                return undefined;
+            }
+
+            return q[i];
         });
+
+        const setVideoState = (videoState: VideoState) => {
+            if (options.onSetState?.(options.id, videoState)) {
+                return;
+            }
+
+            setState(videoState);
+        };
+
+        const openVideo = (v: IPlatformVideo, time?: Duration, videoState?: VideoState) => {
+            if (WindowBackend.consumeCmdClick() && v.url) {
+                WindowBackend.openInNewWindow({ url: v.url })
+                    .catch(e => console.warn("Failed to open video in new window", e));
+                return;
+            }
+            options.beforeReplace?.();
+            const desiredVideoState = videoState ?? VideoState.Maximized;
+            batch(() => {
+                setIndex(0);
+                setStartTime(time);
+                setQueueStartTimes(time ? [time] : undefined);
+                setQueueMetadata(undefined);
+                setQueue([ v ]);
+                if (state() !== desiredVideoState)
+                    setVideoState(desiredVideoState);
+            });
+        };
+
+        const openVideoByUrl = async (url: string, time?: Duration, videoState?: VideoState) => {
+            if (WindowBackend.consumeCmdClick() && url) {
+                WindowBackend.openInNewWindow({ url })
+                    .catch(e => console.warn("Failed to open video in new window", e));
+                return;
+            }
+            options.beforeReplace?.();
+            const desiredVideoState = videoState ?? VideoState.Maximized;
+            if (state() !== desiredVideoState)
+                setVideoState(desiredVideoState);
+            const videoLoadResult = await DetailsBackend.videoLoad(url);
+            batch(() => {
+                setIndex(0);
+                setStartTime(time);
+                setQueueStartTimes(time ? [time] : undefined);
+                setQueueMetadata(undefined);
+                setQueue([ videoLoadResult.video ]);
+            });
+        };
+
+        const sq = (targetIndex: number, nextQueue: IPlatformVideo[], nextRepeat?: boolean, nextShuffle?: boolean, videoState?: VideoState, time?: Duration, startTimes?: (Duration | undefined)[], metadata?: (VideoQueueItemMeta | undefined)[]) => {
+            if (targetIndex < 0 || targetIndex >= nextQueue.length) {
+                console.error("index not valid for queue", { index: targetIndex, queue: nextQueue });
+                return;
+            }
+
+            options.beforeReplace?.();
+            const desiredVideoState = videoState ?? VideoState.Maximized;
+            const normalizedStartTimes = startTimes?.slice(0, nextQueue.length);
+            const normalizedMetadata = metadata?.slice(0, nextQueue.length);
+            batch(() => {
+                setIndex(targetIndex);
+                setQueue(nextQueue);
+                setQueueStartTimes(normalizedStartTimes);
+                setQueueMetadata(normalizedMetadata);
+                setStartTime(normalizedStartTimes?.[targetIndex] ?? time);
+                if (nextRepeat !== undefined)
+                    setRepeat(nextRepeat);
+                if (nextShuffle !== undefined)
+                    setShuffle(nextShuffle);
+                if (state() !== desiredVideoState)
+                    setVideoState(desiredVideoState);
+            });
+        };
+
+        const addToQueue = (nextVideo: IPlatformVideo) => {
+            if (index() === undefined) {
+                openVideo(nextVideo);
+                return;
+            }
+
+            batch(() => {
+                setQueue([ ... (queue() ?? []), nextVideo ]);
+                setQueueStartTimes(prev => prev ? [...prev, undefined] : undefined);
+                setQueueMetadata(prev => prev ? [...prev, undefined] : undefined);
+            });
+        };
+
+        const replaceSmartMixTail = (sessionId: string, nextQueue: IPlatformVideo[], nextMetadata: (VideoQueueItemMeta | undefined)[]) => {
+            const replacement = replaceUnplayedSmartMixTail(queue(), queueMetadata(), index(), sessionId, nextQueue, nextMetadata);
+            if (!replacement) return false;
+            batch(() => {
+                setQueue(replacement.queue);
+                setQueueMetadata(replacement.metadata);
+            });
+            return true;
+        };
+
+        const consumeAndSetIndex = (targetIndex: number) => {
+            const currentIndex = index();
+            const currentQueue = queue();
+            if (currentIndex === undefined || !currentQueue || targetIndex === currentIndex) return;
+            const newQueue = currentQueue.filter((_, i) => i !== currentIndex);
+            const newIndex = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
+            const newStartTimes = queueStartTimes()?.filter((_, i) => i !== currentIndex);
+            const newMetadata = queueMetadata()?.filter((_, i) => i !== currentIndex);
+            const resolvedIndex = Math.max(0, Math.min(newIndex, newQueue.length - 1));
+            batch(() => {
+                setQueue(newQueue);
+                setIndex(resolvedIndex);
+                setQueueStartTimes(newStartTimes);
+                setQueueMetadata(newMetadata);
+                setStartTime(newStartTimes?.[resolvedIndex]);
+            });
+        };
+
+        const closeVideo = () => {
+            batch(() => {
+                setIndex(undefined);
+                setQueue(undefined);
+                setQueueStartTimes(undefined);
+                setQueueMetadata(undefined);
+                setStartTime(undefined);
+                setState(VideoState.Closed);
+                if (activePlaybackVideoId() === options.id) {
+                    setActivePlaybackVideoId(undefined);
+                }
+                if (options.isMain) {
+                    stopBinge();
+                }
+                options.onClose?.(options.id);
+            });
+        };
+
+        const setDesiredMode = (mode: VideoMode) => {
+            setDesiredModeInternal(mode);
+            if (options.persistSettings) {
+                SettingsBackend.persistSet("desiredMode", mode);
+            }
+        };
+
+        const setTheatrePinned = (pinned: boolean) => {
+            setTheatrePinnedInternal(pinned);
+            if (options.persistSettings) {
+                SettingsBackend.persistSet("theatrePinned", pinned);
+            }
+        };
+
+        const setVolume = (nextVolume: number) => {
+            setVolumeInternal(nextVolume);
+            if (options.persistSettings) {
+                SettingsBackend.persistSet("volume", nextVolume);
+            }
+        };
+
+        const startBinge = (channelUrl: string, videos: IPlatformVideo[], pager: Pager<IPlatformContent>) => {
+            if (!options.isMain || videos.length === 0) return;
+            bingePagerConsumed = pager.data.length;
+            batch(() => {
+                setBingeChannelUrl(channelUrl);
+                setBingePager(pager);
+                sq(0, videos);
+            });
+        };
+
+        if (options.isMain) {
+            extendMainQueue = (videos: IPlatformVideo[]) => {
+                batch(() => {
+                    setQueue(prev => [ ...(prev ?? []), ...videos ]);
+                    setQueueStartTimes(prev => prev ? [ ...prev, ...videos.map(() => undefined) ] : undefined);
+                    setQueueMetadata(prev => prev ? [ ...prev, ...videos.map(() => undefined) ] : undefined);
+                });
+            };
+        }
+
+        return {
+            id: options.id,
+            index,
+            queue,
+            queueMetadata,
+            watchLater,
+            state,
+            repeat,
+            shuffle,
+            video,
+            startTime,
+            desiredMode,
+            theatrePinned,
+            volume,
+            bingeChannelUrl: options.isMain ? bingeChannelUrl : noopBingeChannelUrl,
+            minimizedVideos,
+            activePlaybackVideoId,
+            actions: {
+                setIndex: (i: number) => {
+                    batch(() => {
+                        setIndex(i);
+                        setStartTime(queueStartTimes()?.[i]);
+                    });
+                },
+                consumeAndSetIndex,
+                openVideo,
+                openVideoByUrl,
+                setQueue: sq,
+                closeVideo,
+                addToQueue,
+                replaceUnplayedSmartMixTail: replaceSmartMixTail,
+                setState: setVideoState,
+                setRepeat,
+                setShuffle,
+                setDesiredMode,
+                setTheatrePinned,
+                setVolume,
+                refetchWatchLater,
+                setStartTime,
+                startBinge,
+                stopBinge: options.isMain ? stopBinge : () => {},
+                requestPlayback: () => setActivePlaybackVideoId(options.id)
+            }
+        };
     };
 
-    // Auto-extend the queue when fewer than 5 videos remain ahead in a binge session.
-    // Tracks consumed pager offset separately from queue length so non-video items (posts,
-    // playlists) filtered out of the queue do not corrupt subsequent slice boundaries.
+    const promoteMinimizedVideo = (id: string, videoState: VideoState) => {
+        const minimizedVideo = minimizedVideos().find(v => v.id === id);
+        const q = minimizedVideo?.queue();
+        const i = minimizedVideo?.index();
+        if (!minimizedVideo || !q || i === undefined) {
+            return false;
+        }
+
+        const internals = contextInternals.get(id);
+        batch(() => {
+            mainVideo.actions.setDesiredMode(minimizedVideo.desiredMode());
+            mainVideo.actions.setTheatrePinned(minimizedVideo.theatrePinned());
+            mainVideo.actions.setVolume(minimizedVideo.volume());
+            mainVideo.actions.setQueue(
+                i,
+                q,
+                minimizedVideo.repeat(),
+                minimizedVideo.shuffle(),
+                videoState,
+                minimizedVideo.startTime(),
+                internals?.queueStartTimes(),
+                minimizedVideo.queueMetadata()
+            );
+            removeMinimizedVideo(id);
+        });
+        return true;
+    };
+
+    const archiveMainVideoIfMinimized = () => {
+        if (!mainVideo || mainVideo.state() !== VideoState.Minimized) {
+            return;
+        }
+
+        const q = mainVideo.queue();
+        const i = mainVideo.index();
+        if (!q || i === undefined) {
+            return;
+        }
+
+        const mainInternals = contextInternals.get("main");
+        const id = `minimized-${++minimizedVideoId}`;
+        const minimizedVideo = createVideoContext({
+            id,
+            initialState: VideoState.Minimized,
+            initialIndex: i,
+            initialQueue: [ ... q ],
+            initialStartTime: mainVideo.startTime(),
+            initialQueueStartTimes: mainInternals?.queueStartTimes() ? [ ... mainInternals.queueStartTimes()! ] : undefined,
+            initialQueueMetadata: mainVideo.queueMetadata() ? [ ... mainVideo.queueMetadata()! ] : undefined,
+            initialRepeat: mainVideo.repeat(),
+            initialShuffle: mainVideo.shuffle(),
+            initialDesiredMode: mainVideo.desiredMode(),
+            initialTheatrePinned: mainVideo.theatrePinned(),
+            initialVolume: mainVideo.volume(),
+            onClose: removeMinimizedVideo,
+            onSetState: (minimizedId, nextState) => {
+                if (nextState === VideoState.Maximized || nextState === VideoState.Fullscreen) {
+                    return promoteMinimizedVideo(minimizedId, nextState);
+                }
+                return false;
+            }
+        });
+        setMinimizedVideos(videos => [ ... videos, minimizedVideo ]);
+    };
+
+    mainVideo = createVideoContext({
+        id: "main",
+        beforeReplace: archiveMainVideoIfMinimized,
+        persistSettings: true,
+        isMain: true
+    });
+
     createEffect(() => {
-        const q = queue();
-        const i = index();
+        const q = mainVideo.queue();
+        const i = mainVideo.index();
         const pager = bingePager();
         if (!q || i === undefined || !pager || bingeLoading()) return;
         if (q.length - 1 - i >= 5) return;
@@ -243,133 +473,54 @@ export const VideoProvider: ParentComponent<VideoContextProps> = (props) => {
         const beforeLength = pager.data.length;
         pager.nextPage()
             .then(() => {
-                // The user may have closed the video or started a different binge while the
-                // page was loading. In both cases the captured pager is no longer current.
-                if (bingePager() !== pager || queue() === undefined) return;
+                if (bingePager() !== pager || mainVideo.queue() === undefined) return;
                 const newItems = (pager.data as IPlatformContent[]).slice(bingePagerConsumed);
                 bingePagerConsumed = pager.data.length;
                 if (pager.data.length === beforeLength) return;
                 const videos = newItems.filter((v): v is IPlatformVideo => v?.contentType === ContentType.MEDIA);
                 if (videos.length > 0) {
-                    setQueue([...(queue() ?? []), ...videos]);
+                    extendMainQueue?.(videos);
                 }
             })
             .catch(() => {})
             .finally(() => setBingeLoading(false));
     });
 
-
-    const closeVideo = () => {
-        batch(()=>{
-            setIndex(undefined);
-            setQueue(undefined);
-            setQueueStartTimes(undefined);
-            setQueueMetadata(undefined);
-            setStartTime(undefined);
-            setState(VideoState.Closed);
-            setBingeChannelUrl(undefined);
-            setBingePager(undefined);
-        });
-    };
-
-    const refetchWatchLater = async () => {
-        const videos = await WatchLaterBackend.getAll();
-        setWatchLater(videos);
-    }
-    const [watchLater, setWatchLater] = createSignal<IOrderedPlatformVideo[]>();
     onMount(async () => {
         await refetchWatchLater();
     });
 
-    const setDesiredMode = (mode: VideoMode) => {
-        setDesiredModeInternal(mode);
-        SettingsBackend.persistSet("desiredMode", mode);
-    };
-
-    const setTheatrePinned = (pinned: boolean) => {
-        setTheatrePinnedInternal(pinned);
-        SettingsBackend.persistSet("theatrePinned", pinned);
-    };
-
-    const setVolume = (volume: number) => {
-        setVolumeInternal(volume);
-        SettingsBackend.persistSet("volume", volume);
-    };
-
-    StateWebsocket.registerHandlerNew("WatchLaterChanged", (packet)=>{
+    StateWebsocket.registerHandlerNew("WatchLaterChanged", () => {
         refetchWatchLater();
     }, "videoProvider");
-    
-    const value: VideoContextValue = {
-        index,
-        queue,
-        queueMetadata,
-        watchLater,
-        state,
-        repeat,
-        shuffle,
-        video,
-        startTime,
-        desiredMode,
-        theatrePinned,
-        volume,
-        bingeChannelUrl,
-        actions: {
-            setIndex: (i: number) => {
-                batch(() => {
-                    setIndex(i);
-                    setStartTime(queueStartTimes()?.[i]);
-                });
-            },
-            consumeAndSetIndex,
-            openVideo,
-            openVideoByUrl,
-            setQueue: sq,
-            closeVideo,
-            addToQueue,
-            replaceUnplayedSmartMixTail: replaceSmartMixTail,
-            setState: (videoState: VideoState) => {
-                setState(videoState);
-            },
-            setRepeat,
-            setShuffle,
-            setDesiredMode,
-            setTheatrePinned,
-            setVolume,
-            refetchWatchLater,
-            setStartTime,
-            startBinge,
-            stopBinge
-        }
-    };
 
-    SettingsBackend.persistGet("desiredMode", VideoMode.Theatre).then((r: VideoMode) => setDesiredModeInternal(r)).catch(e => console.error("Failed to get persistent setting 'desiredMode'.", e));
-    SettingsBackend.persistGet("theatrePinned", true).then((r: boolean) => setTheatrePinnedInternal(r)).catch(e => console.error("Failed to get persistent setting 'theatrePinned'.", e));
-    SettingsBackend.persistGet("volume", 1).then((r: number) => setVolumeInternal(r)).catch(e => console.error("Failed to get persistent setting 'volume'.", e));
+    SettingsBackend.persistGet("desiredMode", VideoMode.Theatre).then((r: VideoMode) => mainVideo.actions.setDesiredMode(r)).catch(e => console.error("Failed to get persistent setting 'desiredMode'.", e));
+    SettingsBackend.persistGet("theatrePinned", true).then((r: boolean) => mainVideo.actions.setTheatrePinned(r)).catch(e => console.error("Failed to get persistent setting 'theatrePinned'.", e));
+    SettingsBackend.persistGet("volume", 1).then((r: number) => mainVideo.actions.setVolume(r)).catch(e => console.error("Failed to get persistent setting 'volume'.", e));
 
     SettingsBackend.persistGet("playQueue", null).then((r: any) => {
         if (StateGlobal.settings$()?.object?.playback?.persistQueue === false) return;
         if (!r || !Array.isArray(r.queue) || r.queue.length === 0) return;
-        batch(() => {
-            setQueue(r.queue);
-            setIndex(typeof r.index === 'number' ? r.index : 0);
-            if (typeof r.repeat === 'boolean') setRepeat(r.repeat);
-            if (typeof r.shuffle === 'boolean') setShuffle(r.shuffle);
-        });
+        mainVideo.actions.setQueue(
+            typeof r.index === 'number' ? r.index : 0,
+            r.queue,
+            typeof r.repeat === 'boolean' ? r.repeat : undefined,
+            typeof r.shuffle === 'boolean' ? r.shuffle : undefined
+        );
     }).catch(e => console.error("Failed to get persistent setting 'playQueue'.", e));
 
     createEffect(() => {
-        const q = queue();
-        const i = index();
-        const r = repeat();
-        const s = shuffle();
+        const q = mainVideo.queue();
+        const i = mainVideo.index();
+        const r = mainVideo.repeat();
+        const s = mainVideo.shuffle();
         if (StateGlobal.settings$()?.object?.playback?.persistQueue === false) return;
         const payload = (q && q.length > 0) ? { queue: q, index: i, repeat: r, shuffle: s } : null;
         SettingsBackend.persistSet("playQueue", payload).catch(e => console.warn("Failed to persist playQueue", e));
     });
 
     return (
-        <VideoContext.Provider value={value}>
+        <VideoContext.Provider value={mainVideo}>
             {props.children}
         </VideoContext.Provider>
     );

@@ -81,6 +81,7 @@ interface VideoProps {
     translatedSubtitleEnabled?: boolean;
     minimized?: boolean;
     onReady?: (handle: VideoPlayerViewHandle) => void;
+    shouldPause?: boolean;
 }
 
 export type VideoPlayerViewHandle = {
@@ -844,6 +845,12 @@ const VideoPlayerView: Component<VideoProps> = (props) => {
             videoElement?.pause();
         }
     };
+
+    createEffect(() => {
+        if (props.shouldPause && isPlaying()) {
+            pause();
+        }
+    });
 
     const setVolume = async (value: number) => {
         if (isCasting()) {
