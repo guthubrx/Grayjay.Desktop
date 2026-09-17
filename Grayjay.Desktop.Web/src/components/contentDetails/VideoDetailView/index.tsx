@@ -967,6 +967,13 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             hideReplies();
             repositionMinimize();
         }
+        return updated;
+    });
+    createEffect(() => {
+        if (video?.state() === VideoState.Minimized) {
+            minimizedStackIndex();
+            repositionMinimize();
+        }
     });
 
     const toggleMinimize = () => {
@@ -1041,6 +1048,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         console.log("isMinimized", res);
         return res;
     });
+    // Declared before memos that call mode() — createMemo evaluates eagerly (TDZ otherwise).
+    const mode = createMemo(() => isMinimized() ? VideoMode.Theatre : (video?.desiredMode() ?? VideoMode.Theatre));
 
     const shouldPauseForInactivePlayback = createMemo(() => {
         const activeVideoId = video?.activePlaybackVideoId();
@@ -1113,7 +1122,6 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
     const showVerticalQueue$ = createMemo(() => shouldShowQueue() && !queueHorizontal$() && !shouldHideSideBar());
     const anyHorizontalCarousel$ = createMemo(() => showHorizontalRecommendations$() || showHorizontalContinueWatching$() || showHorizontalQueue$());
 
-    const mode = createMemo(() => isMinimized() ? VideoMode.Theatre : (video?.desiredMode() ?? VideoMode.Theatre));
     const eventMoved = new Event0();
     const eventRestart = new Event0();
     const maximumColumnWidth = createMemo(() => {
@@ -2329,7 +2337,8 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             "width": isMinimized() ? `${minimizedWidth()}px` : undefined,
             //"transition": transition(),
             "display": video?.state() === VideoState.Maximized || video?.state() === VideoState.Minimized || video?.state() === VideoState.Fullscreen ? "flex" : "none",
-            "flex-direction": "row"
+            "flex-direction": "row",
+            "z-index": isMinimized() ? 20 + minimizedStackIndex() : undefined
         }} classList={{ [styles.minimized]: isMinimized() }} use:focusScope={{
             id: SCOPE_ID,
             initialMode: 'off',
