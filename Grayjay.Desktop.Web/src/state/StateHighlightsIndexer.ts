@@ -1,7 +1,7 @@
 import { createSignal } from 'solid-js';
 import { Backend } from '../backend/Backend';
 import { SettingsBackend } from '../backend/SettingsBackend';
-import { HighlightsBackend, IHighlightIndexJob } from '../backend/HighlightsBackend';
+import { HighlightPrefillPriority, HighlightsBackend, IHighlightIndexJob } from '../backend/HighlightsBackend';
 import StateWebsocket from './StateWebsocket';
 
 // Chemin (template) de la commande externe de génération. Vide = feature inactive.
@@ -60,5 +60,23 @@ export async function ensureVideoIndexed(url: string, translationSourceLanguages
         return undefined;
     const job = await HighlightsBackend.generateIfNeeded(url, command, translationSourceLanguages);
     setIndexJobs(prev => ({ ...prev, [url]: job }));
+    return job;
+}
+
+export async function configurePrefillParallelism(parallelism: number, maxQueuedJobs: number): Promise<void> {
+    await HighlightsBackend.configurePrefill(parallelism, maxQueuedJobs);
+}
+
+export async function prefillVideo(
+    url: string,
+    priority: HighlightPrefillPriority,
+    source: string,
+    translationSourceLanguages: string[] = [],
+): Promise<IHighlightIndexJob | undefined> {
+    const command = generatorCommand$().trim();
+    if (!command)
+        return undefined;
+    const job = await HighlightsBackend.generatePrefill(url, command, priority, source, translationSourceLanguages);
+    setIndexJobs(previous => ({ ...previous, [url]: job }));
     return job;
 }

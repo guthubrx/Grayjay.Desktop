@@ -51,6 +51,7 @@ import Anchor, { AnchorStyle } from "../../../utility/Anchor";
 import DragArea from "../../basics/DragArea";
 import ResizeHandle from "../../basics/ResizeHandle";
 import { IVideoLocal } from "../../../backend/models/downloads/IVideoLocal";
+import { IVideoHighlightSummary } from "../../../backend/models/highlights/IVideoHighlightSummary";
 import { DateTime, Duration } from "luxon";
 import { decode } from "html-entities";
 import NavigationBar from "../../topbars/NavigationBar";
@@ -113,6 +114,7 @@ import { interestDetailText, interestFromSet, starsText } from "../../../utils/h
 import { SmartSearchBackend, type ISmartSearchSession } from "../../../backend/SmartSearchBackend";
 import { smartDiscoveryPlan, smartDiscoveryQuery, smartDiscoveryVideos } from "../../../utils/smartDiscovery";
 import { smartTvSettingsFromObject } from "../../../utils/smartTvSettings";
+import { prefillPlaybackWindow, smartMixCandidateScanLimit, subtitleQualifiedSmartMixVideos } from "../../../state/StateSmartPrefill";
 
 const SCOPE_ID = "video-detail-view";
 const SMART_TV_INTRO_MODES = ['hidden', 'sticky', 'timed'] as const;
@@ -385,17 +387,27 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         return jobs.find(job => job.status === "queued" || job.status === "running" || job.status === "error") ?? jobs[0];
     });
     const smartChapterJobLabel$ = createMemo(() => {
-        const status = currentSmartChapterJob$()?.status;
-        if (status === "queued") return "Queued";
-        if (status === "running") return "Analyzing";
+        const job = currentSmartChapterJob$();
+        const source = job?.source === "smart-mix" ? "Smart Mix"
+            : job?.source === "next-in-queue" ? "next in queue"
+            : job?.source === "smart-tv" ? "Smart TV"
+            : job?.source === "watch-now" ? "Watch now"
+            : job?.source === "priority-group" ? "subscription group"
+            : undefined;
+        if (job?.status === "queued") return source ? `Queued from ${source}` : "Queued";
+        if (job?.status === "running") return source ? `Analyzing for ${source}` : "Analyzing";
+        const status = job?.status;
         if (status === "done") return "Ready";
         if (status === "error") return "Failed";
         return undefined;
     });
     const videoInterest$ = createMemo(() => interestFromSet(videoHighlights$(), videoLoaded$() ?? currentVideo$()));
     // Reload highlights when the indexer has generated new data.
+    let activeSmartMixId: string | undefined;
+    let refreshActiveSmartMix: (() => void) | undefined;
     StateWebsocket.registerHandlerNew("HighlightsChanged", () => {
         videoHighlightsResource.refetch();
+        refreshActiveSmartMix?.();
     }, "videoDetailHighlights");
     let lastAutomaticIndexUrl: string | undefined;
     createEffect(() => {
@@ -619,6 +631,20 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
         const next = queue[nextIndex];
         const nextUrl = next?.backendUrl ?? next?.url;
         return nextUrl && nextUrl !== currentVideoUrl$() ? nextUrl : undefined;
+    });
+
+    createEffect(() => {
+        const nextUrl = nextPrefetchUrl$();
+        const index = video?.index();
+        const queue = video?.queue();
+        if (!nextUrl || index === undefined || !queue) return;
+
+        let nextIndex = index + 1;
+        if (nextIndex >= queue.length) {
+            if (!video?.repeat()) return;
+            nextIndex = 0;
+        }
+        void prefillPlaybackWindow("next-in-queue", queue, index);
     });
 
     createEffect(() => {
@@ -1854,6 +1880,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             const smartTvSettings = smartTvSettingsFromObject(StateGlobal.settings$()?.object);
             UIOverlay.toast("Searching the web for related videos...");
             const sessionId = `smart-mix-${Date.now().toString(36)}`;
+            activeSmartMixId = sessionId;
             let session = await SmartSearchBackend.load({
                 sessionId,
                 query,
@@ -1866,8 +1893,20 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
             let started = false;
             let remainingStages = discovery ? 2 : 0;
             let nextStageAt = Date.now() + SMART_DISCOVERY_STAGE_DELAY_MS;
-            const updateQueue = (nextSession: ISmartSearchSession): 'inactive' | 'none' | 'updated' => {
-                const videos = smartDiscoveryVideos(nextSession, sourceVideo.url, smartTvSettings.maxVideos);
+            let refreshTimer: number | undefined;
+            let refreshInFlight = false;
+            const updateQueue = async (nextSession: ISmartSearchSession, summaries: IVideoHighlightSummary[] = []): Promise<'inactive' | 'none' | 'updated'> => {
+                if (activeSmartMixId !== sessionId)
+                    return 'inactive';
+                const candidates = smartDiscoveryVideos(
+                    nextSession,
+                    sourceVideo.url,
+                    smartMixCandidateScanLimit(smartTvSettings.maxVideos),
+                    summaries,
+                );
+                const videos = (await subtitleQualifiedSmartMixVideos(candidates)).slice(0, smartTvSettings.maxVideos);
+                if (activeSmartMixId !== sessionId)
+                    return 'inactive';
                 if (videos.length === 0) return 'none';
                 const metadata: VideoQueueItemMeta[] = videos.map(result => ({
                     source: 'smart-mix',
@@ -1893,26 +1932,55 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
                         undefined,
                         metadata,
                     );
+                    void prefillPlaybackWindow("smart-mix", videos, 0);
                     started = true;
                     return 'updated';
                 }
                 return video?.actions.replaceUnplayedSmartMixTail(sessionId, videos, metadata) === true ? 'updated' : 'inactive';
             };
+            refreshActiveSmartMix = () => {
+                if (refreshTimer !== undefined || refreshInFlight || !started || activeSmartMixId !== sessionId)
+                    return;
+                refreshTimer = window.setTimeout(async () => {
+                    refreshTimer = undefined;
+                    refreshInFlight = true;
+                    try {
+                        const [latestSession, summaries] = await Promise.all([
+                            SmartSearchBackend.get(sessionId),
+                            HighlightsBackend.getAll(),
+                        ]);
+                        if (await updateQueue(latestSession, summaries) === 'inactive')
+                            refreshActiveSmartMix = undefined;
+                    } catch (error) {
+                        console.warn("Could not refresh Smart Mix rankings", error);
+                    } finally {
+                        refreshInFlight = false;
+                    }
+                }, 250);
+            };
             for (let attempt = 0; attempt < SMART_DISCOVERY_POLL_ATTEMPTS; attempt++) {
                 if (attempt > 0)
                     await new Promise<void>(resolve => window.setTimeout(resolve, SMART_DISCOVERY_POLL_INTERVAL_MS));
                 session = await SmartSearchBackend.get(sessionId);
-                const queueStatus = updateQueue(session);
+                const queueStatus = await updateQueue(session);
                 if (queueStatus === 'inactive')
+                {
+                    if (activeSmartMixId === sessionId)
+                        refreshActiveSmartMix = undefined;
                     return;
+                }
 
                 if (remainingStages > 0 && (started || Date.now() >= nextStageAt)) {
                     session = await SmartSearchBackend.startNextDiscoveryStage(sessionId);
                     remainingStages--;
                     nextStageAt = Date.now() + SMART_DISCOVERY_STAGE_DELAY_MS;
-                    const stagedQueueStatus = updateQueue(session);
+                    const stagedQueueStatus = await updateQueue(session);
                     if (stagedQueueStatus === 'inactive')
+                    {
+                        if (activeSmartMixId === sessionId)
+                            refreshActiveSmartMix = undefined;
                         return;
+                    }
                 }
             }
             if (!started)

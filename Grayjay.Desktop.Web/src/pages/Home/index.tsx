@@ -37,6 +37,7 @@ import {
     type SmartTvTransition,
 } from '../../utils/smartTvSequencer';
 import { smartTvSettingsFromObject, type SmartTvResolvedSettings } from '../../utils/smartTvSettings';
+import { prefillVideos } from '../../state/StateSmartPrefill';
 
 import { homeStyle$ } from '../../state/HomeStyleState';
 import iconHome from "../../assets/icons/icon_nav_home.svg";
@@ -803,6 +804,7 @@ const HomePage: Component = () => {
     function playSmartTvSession(key: string, session: SmartTvSession) {
         const entries = remainingSessionEntries(session);
         if (entries.length === 0) return;
+        void prefillVideos('smart-tv', entries.map(entry => entry.video));
         const metadata: VideoQueueItemMeta[] = entries.map((entry, index) => ({
             source: 'smart-tv',
             sessionTitle: session.title,
@@ -1084,6 +1086,27 @@ const HomePage: Component = () => {
             ...smartChapterSmartTvSources(),
         ]).slice(0, smartTvSettings().candidateVideos));
     const globalSmartTvStats = createMemo(() => smartTvStats(globalSmartTvSources()));
+
+    const watchNowPrefillCandidates = createMemo(() => {
+        const byKey = new Map<string, IPlatformVideo>();
+        const add = (video: IPlatformVideo) => {
+            if (hasWatchedUrl(video.url)) return;
+            const key = normalizeUrlKey(video.url) ?? video.url;
+            if (!byKey.has(key)) byKey.set(key, video);
+        };
+        for (const video of heroVideos()) add(video);
+        for (const video of groupCarousels().flatMap(group => group.videos)) add(video);
+        for (const video of recommendedItems()) add(video);
+        return rankVideosForRecommendation([...byKey.values()]);
+    });
+
+    createEffect(() => {
+        void prefillVideos('watch-now', watchNowPrefillCandidates());
+    });
+
+    createEffect(() => {
+        void prefillVideos('priority-group', groupCarousels().flatMap(group => group.videos));
+    });
 
     return (
         <div class={styles.container}>

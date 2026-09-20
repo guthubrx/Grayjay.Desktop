@@ -62,6 +62,32 @@ test('prefers a core result when metadata signals are otherwise equal', () => {
     ]);
 });
 
+test('uses completed Smart Chapter interest to rerank a discovery tail', () => {
+    const session = {
+        sessionId: 'test',
+        variants: [{ language: 'en', axis: 'core', query: 'query', status: 'ready', results: [
+            { key: 'unscored', content: { url: 'https://www.youtube.com/watch?v=unscored', viewCount: 100, dateTime: '2026-07-01', duration: 1200 } },
+            { key: 'scored', content: { url: 'https://www.youtube.com/watch?v=scored', viewCount: 100, dateTime: '2026-07-01', duration: 1200 } },
+        ] }]
+    } as unknown as ISmartSearchSession;
+
+    assert.deepEqual(smartDiscoveryVideos(session, 'https://youtu.be/source', 2, [{
+        videoUrl: 'https://youtu.be/scored',
+        source: 'external',
+        updatedAt: '2026-07-13',
+        segmentCount: 4,
+        totalDuration: 900,
+        interestingDuration: 850,
+        averageScore: 0.96,
+        topScore: 0.98,
+        strongSegmentCount: 4,
+        excellentSegmentCount: 3,
+    }]).map(video => video.url), [
+        'https://www.youtube.com/watch?v=scored',
+        'https://www.youtube.com/watch?v=unscored',
+    ]);
+});
+
 test('normalizes browser language tags used by discovery stages', () => {
     assert.equal(smartDiscoveryUserLanguage('zh-TW'), 'zh-Hant');
     assert.equal(smartDiscoveryUserLanguage('fr-FR'), 'fr');

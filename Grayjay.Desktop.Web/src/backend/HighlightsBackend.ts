@@ -40,6 +40,18 @@ export abstract class HighlightsBackend {
         return await Backend.POST("/highlights/GenerateIfNeeded", JSON.stringify({ url, command, translationSourceLanguages }), "application/json") as IHighlightIndexJob;
     }
 
+    static async generatePrefill(url: string, command: string, priority: HighlightPrefillPriority, source: string, translationSourceLanguages: string[] = []): Promise<IHighlightIndexJob> {
+        return await Backend.POST("/highlights/GeneratePrefill", JSON.stringify({ url, command, priority, source, translationSourceLanguages }), "application/json") as IHighlightIndexJob;
+    }
+
+    static async configurePrefill(parallelism: number, maxQueuedJobs: number): Promise<void> {
+        await Backend.POST("/highlights/ConfigurePrefill", JSON.stringify({ parallelism, maxQueuedJobs }), "application/json");
+    }
+
+    static async probeSubtitles(urls: string[]): Promise<IHighlightSubtitleAvailability[]> {
+        return await Backend.POST("/highlights/ProbeSubtitles", JSON.stringify({ urls }), "application/json") as IHighlightSubtitleAvailability[];
+    }
+
     static async queueStatus(): Promise<IHighlightIndexJob[]> {
         return await Backend.GET("/highlights/QueueStatus") as IHighlightIndexJob[];
     }
@@ -49,4 +61,14 @@ export interface IHighlightIndexJob {
     url: string;
     status: "queued" | "running" | "done" | "error" | "skipped";
     error?: string;
+    priority?: HighlightPrefillPriority;
+    source?: string;
+    nextAttemptAt?: string;
 }
+
+export interface IHighlightSubtitleAvailability {
+    url: string;
+    available: boolean;
+}
+
+export type HighlightPrefillPriority = "manual" | "current-video" | "next-in-queue" | "smart-mix" | "smart-tv" | "watch-now" | "priority-group" | "catalog";

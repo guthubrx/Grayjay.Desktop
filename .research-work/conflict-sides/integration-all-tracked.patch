@@ -1,0 +1,1106 @@
+diff --git a/Grayjay.ClientServer/Controllers/HighlightsController.cs b/Grayjay.ClientServer/Controllers/HighlightsController.cs
+index e63dec30..0e08cb52 100644
+--- a/Grayjay.ClientServer/Controllers/HighlightsController.cs
++++ b/Grayjay.ClientServer/Controllers/HighlightsController.cs
+@@ -57,6 +57,23 @@ public class HighlightsController : ControllerBase
+         public List<string>? TranslationSourceLanguages { get; set; }
+     }
+ 
++    public class GeneratePrefillRequest : GenerateRequest
++    {
++        public required string Priority { get; set; }
++        public string? Source { get; set; }
++    }
++
++    public class ConfigurePrefillRequest
++    {
++        public int Parallelism { get; set; }
++        public int? MaxQueuedJobs { get; set; }
++    }
++
++    public class SubtitleProbeRequest
++    {
++        public List<string> Urls { get; set; } = [];
++    }
++
+     [HttpPost]
+     public ActionResult<StateHighlightsIndexer.IndexJob> Generate([FromBody] GenerateRequest request)
+     {
+@@ -69,6 +86,49 @@ public class HighlightsController : ControllerBase
+         return Ok(StateHighlightsIndexer.EnqueueIfNeeded(request.Url, request.Command, request.TranslationSourceLanguages));
+     }
+ 
++    [HttpPost]
++    public ActionResult<StateHighlightsIndexer.IndexJob> GeneratePrefill([FromBody] GeneratePrefillRequest request)
++    {
++        return Ok(StateHighlightsIndexer.EnqueuePrefill(
++            request.Url,
++            request.Command,
++            request.Priority,
++            request.Source,
++            request.TranslationSourceLanguages));
++    }
++
++    [HttpPost]
++    public ActionResult<object> ConfigurePrefill([FromBody] ConfigurePrefillRequest request)
++    {
++        var configuration = StateHighlightsIndexer.ConfigurePrefill(request.Parallelism, request.MaxQueuedJobs);
++        return Ok(new { configuration.Parallelism, configuration.MaxQueuedJobs });
++    }
++
++    [HttpPost]
++    public async Task<ActionResult<List<StateHighlightsIndexer.SubtitleAvailability>>> ProbeSubtitles([FromBody] SubtitleProbeRequest request, CancellationToken cancellationToken)
++    {
++        var urls = request.Urls
++            .Where(url => !string.IsNullOrWhiteSpace(url))
++            .Select(url => url.Trim())
++            .Distinct(StringComparer.Ordinal)
++            .Take(100)
++            .ToList();
++        using var limiter = new SemaphoreSlim(Math.Min(8, Math.Max(1, urls.Count)));
++        var tasks = urls.Select(async url =>
++        {
++            await limiter.WaitAsync(cancellationToken);
++            try
++            {
++                return await Task.Run(() => StateHighlightsIndexer.ProbeSubtitle(url), cancellationToken);
++            }
++            finally
++            {
++                limiter.Release();
++            }
++        });
++        return Ok((await Task.WhenAll(tasks)).ToList());
++    }
++
+     [HttpGet]
+     public ActionResult<List<StateHighlightsIndexer.IndexJob>> QueueStatus()
+     {
+diff --git a/Grayjay.ClientServer/States/StateHighlightsIndexer.cs b/Grayjay.ClientServer/States/StateHighlightsIndexer.cs
+index 06f57515..b4e53024 100644
+--- a/Grayjay.ClientServer/States/StateHighlightsIndexer.cs
++++ b/Grayjay.ClientServer/States/StateHighlightsIndexer.cs
+@@ -6,6 +6,7 @@ using Grayjay.ClientServer.Settings;
+ using Grayjay.Desktop.POC;
+ using Grayjay.Desktop.POC.Port.States;
+ using Grayjay.Engine.Models.Detail;
++using Grayjay.Engine.Models.Subtitles;
+ 
+ namespace Grayjay.ClientServer.States;
+ 
+@@ -22,16 +23,69 @@ public static class StateHighlightsIndexer
+         public required string Url { get; set; }
+         public required string Status { get; set; } // queued | running | done | error | skipped
+         public string? Error { get; set; }
++        public string? Priority { get; set; }
++        public string? Source { get; set; }
++        public DateTime? NextAttemptAt { get; set; }
++    }
++
++    public class SubtitleAvailability
++    {
++        public required string Url { get; set; }
++        public required bool Available { get; set; }
++    }
++
++    private enum HighlightJobPriority
++    {
++        Manual,
++        CurrentVideo,
++        NextInQueue,
++        SmartMix,
++        SmartTv,
++        WatchNow,
++        PriorityGroup,
++        Catalog,
++    }
++
++    private sealed class QueuedIndexJob
++    {
++        public required string Url { get; init; }
++        public required string Command { get; init; }
++        public required string[] TranslationSourceLanguages { get; init; }
++        public required HighlightJobPriority Priority { get; set; }
++        public required string Source { get; set; }
++        public required bool Automatic { get; set; }
++        public required bool RequirePlatformSubtitles { get; init; }
++        public required long Sequence { get; init; }
++    }
++
++    private sealed class SubtitleAvailabilityEntry
++    {
++        public required bool Available { get; init; }
++        public required DateTime ExpiresAt { get; init; }
++    }
++
++    private sealed class SubtitleUnavailableException : Exception
++    {
++        public SubtitleUnavailableException(string message) : base(message) { }
+     }
+ 
+     private static readonly object _lock = new();
+     private static readonly Dictionary<string, IndexJob> _jobs = new();
+-    private static readonly Queue<(string Url, string Command, string[] TranslationSourceLanguages)> _priorityQueue = new();
+-    private static readonly Queue<(string Url, string Command, string[] TranslationSourceLanguages)> _queue = new();
++    private static readonly List<QueuedIndexJob> _queue = new();
++    private static readonly Dictionary<string, DateTime> _automaticRetryAt = new();
++    private static readonly Dictionary<string, SubtitleAvailabilityEntry> _subtitleAvailability = new(StringComparer.Ordinal);
+     private static int _activeWorkers = 0;
++    private static int? _configuredParallelism;
++    private static int? _configuredMaxQueuedJobs;
++    private static long _nextSequence;
+     private const int DefaultParallelism = 1;
+-    private const int MaxParallelism = 24;
++    private const int MaxParallelism = 32;
++    private const int DefaultMaxQueuedJobs = 24;
++    private const int MaxQueuedJobs = 500;
+     private const string ParallelismFileName = "smart-chapters-parallelism";
++    private static readonly TimeSpan AutomaticRetryDelay = TimeSpan.FromMinutes(15);
++    private static readonly TimeSpan SubtitleAvailableCacheDuration = TimeSpan.FromHours(6);
++    private static readonly TimeSpan SubtitleUnavailableCacheDuration = TimeSpan.FromHours(1);
+ 
+     // Garde-fou anti-injection : l'URL est interpolée dans une ligne shell,
+     // on refuse tout métacaractère shell.
+@@ -41,13 +95,23 @@ public static class StateHighlightsIndexer
+     public static List<IndexJob> GetJobs()
+     {
+         lock (_lock)
+-            return _jobs.Values.ToList();
++            return _jobs.Values
++                .OrderBy(job => ParsePriority(job.Priority))
++                .ThenBy(job => job.Url, StringComparer.Ordinal)
++                .ToList();
+     }
+ 
+     public static IndexJob Enqueue(string url, string command, IEnumerable<string>? translationSourceLanguages = null)
+     {
+         ValidateRequest(ref url, command);
+-        return EnqueueValidated(url, command, NormalizeLanguageCodes(translationSourceLanguages), priority: false);
++        return EnqueueValidated(
++            url,
++            command,
++            NormalizeLanguageCodes(translationSourceLanguages),
++            HighlightJobPriority.Manual,
++            "manual",
++            automatic: false,
++            requirePlatformSubtitles: true);
+     }
+ 
+     public static IndexJob EnqueueIfNeeded(string url, string command, IEnumerable<string>? translationSourceLanguages = null)
+@@ -55,9 +119,90 @@ public static class StateHighlightsIndexer
+         ValidateRequest(ref url, command);
+         var normalizedLanguages = NormalizeLanguageCodes(translationSourceLanguages);
+         if (!GrayjaySettings.Instance.XrayPanel.AutoGenerateOnVideoOpen || HasRequiredOutput(StateHighlights.Get(url), normalizedLanguages))
+-            return new IndexJob { Url = url, Status = "skipped" };
++            return new IndexJob { Url = url, Status = "skipped", Priority = PriorityName(HighlightJobPriority.CurrentVideo), Source = "auto-open" };
++
++        return EnqueueValidated(
++            url,
++            command,
++            normalizedLanguages,
++            HighlightJobPriority.CurrentVideo,
++            "auto-open",
++            automatic: true,
++            requirePlatformSubtitles: true);
++    }
++
++    public static IndexJob EnqueuePrefill(string url, string command, string? priority, string? source, IEnumerable<string>? translationSourceLanguages = null)
++    {
++        ValidateRequest(ref url, command);
++        var parsedPriority = ParsePriority(priority);
++        if (parsedPriority == HighlightJobPriority.Manual)
++            throw new ArgumentException("Invalid prefill priority");
++
++        var normalizedLanguages = NormalizeLanguageCodes(translationSourceLanguages);
++        var normalizedSource = string.IsNullOrWhiteSpace(source) ? PriorityName(parsedPriority) : source.Trim();
++        if (HasRequiredOutput(StateHighlights.Get(url), normalizedLanguages))
++        {
++            return new IndexJob
++            {
++                Url = url,
++                Status = "skipped",
++                Priority = PriorityName(parsedPriority),
++                Source = normalizedSource,
++            };
++        }
++
++        return EnqueueValidated(
++            url,
++            command,
++            normalizedLanguages,
++            parsedPriority,
++            normalizedSource,
++            automatic: true,
++            requirePlatformSubtitles: true);
++    }
++
++    public static (int Parallelism, int MaxQueuedJobs) ConfigurePrefill(int parallelism, int? maxQueuedJobs = null)
++    {
++        lock (_lock)
++        {
++            _configuredParallelism = ClampParallelism(parallelism);
++            if (maxQueuedJobs.HasValue)
++                _configuredMaxQueuedJobs = ClampMaxQueuedJobs(maxQueuedJobs.Value);
++            EnsureWorkersLocked();
++            return (_configuredParallelism.Value, DesiredMaxQueuedJobs());
++        }
++    }
+ 
+-        return EnqueueValidated(url, command, normalizedLanguages, priority: true);
++    public static List<SubtitleAvailability> ProbeSubtitles(IEnumerable<string>? urls)
++    {
++        return (urls ?? [])
++            .Where(url => !string.IsNullOrWhiteSpace(url))
++            .Select(url => url.Trim())
++            .Distinct(StringComparer.Ordinal)
++            .Take(100)
++            .Select(ProbeSubtitle)
++            .ToList();
++    }
++
++    public static SubtitleAvailability ProbeSubtitle(string url)
++    {
++        lock (_lock)
++        {
++            if (_subtitleAvailability.TryGetValue(url, out var cached) && cached.ExpiresAt > DateTime.UtcNow)
++                return new SubtitleAvailability { Url = url, Available = cached.Available };
++        }
++
++        var available = false;
++        try
++        {
++            available = StatePlatform.GetContentDetails(url) is PlatformVideoDetails details && SelectUsableSubtitle(details) != null;
++        }
++        catch (Exception ex)
++        {
++            Logger.w(nameof(StateHighlightsIndexer), $"Could not probe subtitles for {url}: {ex.Message}");
++        }
++        CacheSubtitleAvailability(url, available);
++        return new SubtitleAvailability { Url = url, Available = available };
+     }
+ 
+     private static void ValidateRequest(ref string url, string command)
+@@ -72,30 +217,139 @@ public static class StateHighlightsIndexer
+             throw new ArgumentException("Unsafe or invalid url");
+     }
+ 
+-    private static IndexJob EnqueueValidated(string url, string command, string[] translationSourceLanguages, bool priority)
++    private static IndexJob EnqueueValidated(
++        string url,
++        string command,
++        string[] translationSourceLanguages,
++        HighlightJobPriority priority,
++        string source,
++        bool automatic,
++        bool requirePlatformSubtitles)
+     {
++        IndexJob job;
++        IndexJob? evicted = null;
+         lock (_lock)
+         {
+             if (_jobs.TryGetValue(url, out var existing) &&
+                 (existing.Status == "queued" || existing.Status == "running"))
+-                return existing;
+-
+-            var job = new IndexJob { Url = url, Status = "queued" };
+-            _jobs[url] = job;
+-            if (priority)
+-                _priorityQueue.Enqueue((url, command, translationSourceLanguages));
++            {
++                if (existing.Status == "queued" && priority < ParsePriority(existing.Priority))
++                {
++                    existing.Priority = PriorityName(priority);
++                    existing.Source = source;
++                    var queued = _queue.FirstOrDefault(item => item.Url == url);
++                    if (queued != null)
++                    {
++                        queued.Priority = priority;
++                        queued.Source = source;
++                        queued.Automatic = automatic;
++                    }
++                }
++                job = existing;
++            }
++            else if (automatic && _automaticRetryAt.TryGetValue(url, out var retryAt) && retryAt > DateTime.UtcNow)
++            {
++                if (existing != null)
++                {
++                    existing.NextAttemptAt = retryAt;
++                    job = existing;
++                }
++                else
++                {
++                    job = new IndexJob
++                    {
++                        Url = url,
++                        Status = "skipped",
++                        Error = "Automatic retry is temporarily delayed.",
++                        Priority = PriorityName(priority),
++                        Source = source,
++                        NextAttemptAt = retryAt,
++                    };
++                }
++            }
+             else
+-                _queue.Enqueue((url, command, translationSourceLanguages));
+-            StateWebsocket.HighlightsIndexChanged(job);
+-            EnsureWorkersLocked();
+-            return job;
++            {
++                if (!automatic)
++                    _automaticRetryAt.Remove(url);
++
++                if (automatic && !ReserveAutomaticQueueSlotLocked(priority, out evicted))
++                {
++                    job = new IndexJob
++                    {
++                        Url = url,
++                        Status = "skipped",
++                        Error = "Smart Prefill queue is full.",
++                        Priority = PriorityName(priority),
++                        Source = source,
++                    };
++                    _jobs[url] = job;
++                }
++                else
++                {
++                    job = new IndexJob
++                    {
++                        Url = url,
++                        Status = "queued",
++                        Priority = PriorityName(priority),
++                        Source = source,
++                    };
++                    _jobs[url] = job;
++                    _queue.Add(new QueuedIndexJob
++                    {
++                        Url = url,
++                        Command = command,
++                        TranslationSourceLanguages = translationSourceLanguages,
++                        Priority = priority,
++                        Source = source,
++                        Automatic = automatic,
++                        RequirePlatformSubtitles = requirePlatformSubtitles,
++                        Sequence = _nextSequence++,
++                    });
++                    EnsureWorkersLocked();
++                }
++            }
++
+         }
++        StateWebsocket.HighlightsIndexChanged(job);
++        if (evicted != null)
++            StateWebsocket.HighlightsIndexChanged(evicted);
++        return job;
++    }
++
++    private static bool ReserveAutomaticQueueSlotLocked(HighlightJobPriority incomingPriority, out IndexJob? evicted)
++    {
++        evicted = null;
++        if (_queue.Count(item => item.Automatic) < DesiredMaxQueuedJobs())
++            return true;
++
++        var replacementIndex = -1;
++        for (var index = 0; index < _queue.Count; index++)
++        {
++            var candidate = _queue[index];
++            if (!candidate.Automatic || candidate.Priority <= incomingPriority)
++                continue;
++            if (replacementIndex < 0 || candidate.Priority > _queue[replacementIndex].Priority ||
++                (candidate.Priority == _queue[replacementIndex].Priority && candidate.Sequence > _queue[replacementIndex].Sequence))
++                replacementIndex = index;
++        }
++        if (replacementIndex < 0)
++            return false;
++
++        var replacement = _queue[replacementIndex];
++        _queue.RemoveAt(replacementIndex);
++        if (_jobs.TryGetValue(replacement.Url, out var replacedJob))
++        {
++            replacedJob.Status = "skipped";
++            replacedJob.Error = "Superseded by a higher-priority prefill.";
++            evicted = replacedJob;
++        }
++        return true;
+     }
+ 
+     private static void EnsureWorkersLocked()
+     {
+         var desired = DesiredParallelism();
+-        while ((_priorityQueue.Count > 0 || _queue.Count > 0) && _activeWorkers < desired)
++        while (_queue.Count > 0 && _activeWorkers < desired)
+         {
+             _activeWorkers++;
+             _ = Task.Run(WorkerLoop);
+@@ -104,6 +358,9 @@ public static class StateHighlightsIndexer
+ 
+     private static int DesiredParallelism()
+     {
++        if (_configuredParallelism.HasValue)
++            return _configuredParallelism.Value;
++
+         var fromFile = ReadParallelismFile();
+         if (fromFile.HasValue)
+             return ClampParallelism(fromFile.Value);
+@@ -137,36 +394,58 @@ public static class StateHighlightsIndexer
+         return Math.Clamp(value, 1, MaxParallelism);
+     }
+ 
++    private static int DesiredMaxQueuedJobs()
++    {
++        return _configuredMaxQueuedJobs ?? DefaultMaxQueuedJobs;
++    }
++
++    private static int ClampMaxQueuedJobs(int value)
++    {
++        return Math.Clamp(value, 1, MaxQueuedJobs);
++    }
++
+     private static async Task WorkerLoop()
+     {
+         while (true)
+         {
+-            (string Url, string Command, string[] TranslationSourceLanguages) item;
++            QueuedIndexJob item;
+             IndexJob job;
+             lock (_lock)
+             {
+-                if ((_priorityQueue.Count == 0 && _queue.Count == 0) || _activeWorkers > DesiredParallelism())
++                if (_queue.Count == 0 || _activeWorkers > DesiredParallelism())
+                 {
+                     _activeWorkers = Math.Max(0, _activeWorkers - 1);
+                     return;
+                 }
+-                item = _priorityQueue.Count > 0 ? _priorityQueue.Dequeue() : _queue.Dequeue();
++                item = DequeueNextLocked();
+                 job = _jobs[item.Url];
+                 job.Status = "running";
+                 job.Error = null;
++                job.NextAttemptAt = null;
+             }
+             StateWebsocket.HighlightsIndexChanged(job);
+ 
+             try
+             {
+-                await RunCommand(item.Command, item.Url, item.TranslationSourceLanguages);
++                await RunCommand(item.Command, item.Url, item.TranslationSourceLanguages, item.RequirePlatformSubtitles);
+                 lock (_lock)
+                 {
+                     job.Status = "done";
++                    _automaticRetryAt.Remove(item.Url);
+                     EnsureWorkersLocked();
+                 }
+                 StateWebsocket.HighlightsChanged(item.Url);
+             }
++            catch (SubtitleUnavailableException ex)
++            {
++                lock (_lock)
++                {
++                    job.Status = "skipped";
++                    job.Error = ex.Message;
++                    _automaticRetryAt.Remove(item.Url);
++                    EnsureWorkersLocked();
++                }
++            }
+             catch (Exception ex)
+             {
+                 Logger.w(nameof(StateHighlightsIndexer), $"Indexing failed for {item.Url}: {ex.Message}");
+@@ -174,6 +453,12 @@ public static class StateHighlightsIndexer
+                 {
+                     job.Status = "error";
+                     job.Error = UserFacingError(ex.Message);
++                    if (item.Automatic)
++                    {
++                        var retryAt = DateTime.UtcNow.Add(AutomaticRetryDelay);
++                        _automaticRetryAt[item.Url] = retryAt;
++                        job.NextAttemptAt = retryAt;
++                    }
+                     EnsureWorkersLocked();
+                 }
+             }
+@@ -181,6 +466,54 @@ public static class StateHighlightsIndexer
+         }
+     }
+ 
++    private static QueuedIndexJob DequeueNextLocked()
++    {
++        var index = 0;
++        for (var i = 1; i < _queue.Count; i++)
++        {
++            var candidate = _queue[i];
++            var best = _queue[index];
++            if (candidate.Priority < best.Priority ||
++                (candidate.Priority == best.Priority && candidate.Sequence < best.Sequence))
++                index = i;
++        }
++
++        var item = _queue[index];
++        _queue.RemoveAt(index);
++        return item;
++    }
++
++    private static HighlightJobPriority ParsePriority(string? value)
++    {
++        return value?.Trim().ToLowerInvariant().Replace('_', '-') switch
++        {
++            "current-video" => HighlightJobPriority.CurrentVideo,
++            "next-in-queue" => HighlightJobPriority.NextInQueue,
++            "smart-mix" => HighlightJobPriority.SmartMix,
++            "smart-tv" => HighlightJobPriority.SmartTv,
++            "watch-now" => HighlightJobPriority.WatchNow,
++            "priority-group" => HighlightJobPriority.PriorityGroup,
++            "catalog" => HighlightJobPriority.Catalog,
++            "manual" => HighlightJobPriority.Manual,
++            _ => HighlightJobPriority.Manual,
++        };
++    }
++
++    private static string PriorityName(HighlightJobPriority priority)
++    {
++        return priority switch
++        {
++            HighlightJobPriority.CurrentVideo => "current-video",
++            HighlightJobPriority.NextInQueue => "next-in-queue",
++            HighlightJobPriority.SmartMix => "smart-mix",
++            HighlightJobPriority.SmartTv => "smart-tv",
++            HighlightJobPriority.WatchNow => "watch-now",
++            HighlightJobPriority.PriorityGroup => "priority-group",
++            HighlightJobPriority.Catalog => "catalog",
++            _ => "manual",
++        };
++    }
++
+     private static bool HasRequiredOutput(VideoHighlightSet? highlights, IReadOnlyCollection<string> translationSourceLanguages)
+     {
+         if ((highlights?.Segments.Count ?? 0) == 0)
+@@ -263,57 +596,88 @@ public static class StateHighlightsIndexer
+         return clean.Length > 240 ? clean[..237] + "..." : clean;
+     }
+ 
++    private static SubtitleSource? SelectUsableSubtitle(PlatformVideoDetails details)
++    {
++        var subtitles = details.Subtitles;
++        if (subtitles == null || subtitles.Length == 0)
++            return null;
++
++        bool IsVtt(string? value) => value != null && value.Contains("vtt", StringComparison.OrdinalIgnoreCase);
++        bool NameHas(string? name, string language) => name != null && name.Contains(language, StringComparison.OrdinalIgnoreCase);
++        return subtitles.FirstOrDefault(subtitle => IsVtt(subtitle.Format) && NameHas(subtitle.Name, "fr"))
++            ?? subtitles.FirstOrDefault(subtitle => IsVtt(subtitle.Format) && NameHas(subtitle.Name, "en"))
++            ?? subtitles.FirstOrDefault(subtitle => IsVtt(subtitle.Format))
++            ?? subtitles.FirstOrDefault(subtitle => IsVtt(subtitle.Url));
++    }
++
++    private static void CacheSubtitleAvailability(string url, bool available)
++    {
++        lock (_lock)
++        {
++            _subtitleAvailability[url] = new SubtitleAvailabilityEntry
++            {
++                Available = available,
++                ExpiresAt = DateTime.UtcNow.Add(available ? SubtitleAvailableCacheDuration : SubtitleUnavailableCacheDuration),
++            };
++        }
++    }
++
+     // Récupère les sous-titres de la vidéo via le moteur Grayjay (plugin) et les
+-    // écrit dans un VTT temporaire. Évite de re-scraper YouTube côté générateur
+-    // quand Grayjay a déjà les sous-titres. Retourne null si indisponible : le
+-    // générateur retombe alors sur son propre chemin (yt-dlp / Whisper).
++    // écrit dans un VTT temporaire. Les jobs BlueJay exigent ce fichier afin de
++    // garantir qu'ils ne retombent jamais sur yt-dlp ou Whisper.
+     private static string? MaterializeSubtitle(string url)
+     {
+         try
+         {
+             if (StatePlatform.GetContentDetails(url) is not PlatformVideoDetails details)
++            {
++                CacheSubtitleAvailability(url, false);
+                 return null;
+-            var subs = details.Subtitles;
+-            if (subs == null || subs.Length == 0)
+-                return null;
+-
+-            // Préférence : VTT, langue fr puis en, sinon n'importe quel VTT.
+-            bool IsVtt(string? f) => f != null && f.Contains("vtt", StringComparison.OrdinalIgnoreCase);
+-            bool NameHas(string? n, string lang) => n != null && n.Contains(lang, StringComparison.OrdinalIgnoreCase);
+-            var chosen = subs.FirstOrDefault(s => IsVtt(s.Format) && NameHas(s.Name, "fr"))
+-                ?? subs.FirstOrDefault(s => IsVtt(s.Format) && NameHas(s.Name, "en"))
+-                ?? subs.FirstOrDefault(s => IsVtt(s.Format))
+-                ?? subs.FirstOrDefault(s => IsVtt(s.Url));
++            }
++            var chosen = SelectUsableSubtitle(details);
+             if (chosen == null)
++            {
++                CacheSubtitleAvailability(url, false);
+                 return null;
++            }
+ 
+             var content = chosen.ToRaw().GetSubtitles();
+             if (string.IsNullOrWhiteSpace(content))
++            {
++                CacheSubtitleAvailability(url, false);
+                 return null;
++            }
+ 
+             var path = Path.Combine(Path.GetTempPath(), $"grayjay_smartchapters_{Guid.NewGuid():N}.vtt");
+             File.WriteAllText(path, content);
++            CacheSubtitleAvailability(url, true);
+             Logger.i(nameof(StateHighlightsIndexer), $"Provided subtitles for {url}: {chosen.Name} ({content.Length} chars)");
+             return path;
+         }
+         catch (Exception ex)
+         {
++            CacheSubtitleAvailability(url, false);
+             Logger.w(nameof(StateHighlightsIndexer), $"Could not fetch Grayjay subtitles for {url}: {ex.Message}");
+             return null;
+         }
+     }
+ 
+-    private static async Task RunCommand(string command, string url, IReadOnlyCollection<string> translationSourceLanguages)
++    private static async Task RunCommand(string command, string url, IReadOnlyCollection<string> translationSourceLanguages, bool requirePlatformSubtitles)
+     {
+         // {url} est substitué si présent, sinon l'URL est ajoutée en dernier argument.
+         var commandLine = command.Contains("{url}") ? command.Replace("{url}", url) : $"{command} {url}";
+ 
++        if (requirePlatformSubtitles && !command.Contains("{subtitles}", StringComparison.Ordinal))
++            throw new SubtitleUnavailableException("Smart analysis requires a generator command with {subtitles}.");
++
+         // {subtitles} : remplacé par "--subtitle-file <vtt>" quand Grayjay a les
+-        // sous-titres, par une chaîne vide sinon (le générateur se débrouille).
++        // sous-titres. Aucun job BlueJay ne laisse le générateur choisir Whisper.
+         string? subtitleFile = null;
+         if (command.Contains("{subtitles}"))
+         {
+             subtitleFile = MaterializeSubtitle(url);
++            if (requirePlatformSubtitles && subtitleFile == null)
++                throw new SubtitleUnavailableException("No usable platform subtitles were found.");
+             commandLine = commandLine.Replace("{subtitles}",
+                 subtitleFile != null ? $"--subtitle-file \"{subtitleFile}\"" : "");
+         }
+diff --git a/Grayjay.Desktop.Web/src/backend/HighlightsBackend.ts b/Grayjay.Desktop.Web/src/backend/HighlightsBackend.ts
+index 8ee3da03..339fc41e 100644
+--- a/Grayjay.Desktop.Web/src/backend/HighlightsBackend.ts
++++ b/Grayjay.Desktop.Web/src/backend/HighlightsBackend.ts
+@@ -40,6 +40,18 @@ export abstract class HighlightsBackend {
+         return await Backend.POST("/highlights/GenerateIfNeeded", JSON.stringify({ url, command, translationSourceLanguages }), "application/json") as IHighlightIndexJob;
+     }
+ 
++    static async generatePrefill(url: string, command: string, priority: HighlightPrefillPriority, source: string, translationSourceLanguages: string[] = []): Promise<IHighlightIndexJob> {
++        return await Backend.POST("/highlights/GeneratePrefill", JSON.stringify({ url, command, priority, source, translationSourceLanguages }), "application/json") as IHighlightIndexJob;
++    }
++
++    static async configurePrefill(parallelism: number, maxQueuedJobs: number): Promise<void> {
++        await Backend.POST("/highlights/ConfigurePrefill", JSON.stringify({ parallelism, maxQueuedJobs }), "application/json");
++    }
++
++    static async probeSubtitles(urls: string[]): Promise<IHighlightSubtitleAvailability[]> {
++        return await Backend.POST("/highlights/ProbeSubtitles", JSON.stringify({ urls }), "application/json") as IHighlightSubtitleAvailability[];
++    }
++
+     static async queueStatus(): Promise<IHighlightIndexJob[]> {
+         return await Backend.GET("/highlights/QueueStatus") as IHighlightIndexJob[];
+     }
+@@ -49,4 +61,14 @@ export interface IHighlightIndexJob {
+     url: string;
+     status: "queued" | "running" | "done" | "error" | "skipped";
+     error?: string;
++    priority?: HighlightPrefillPriority;
++    source?: string;
++    nextAttemptAt?: string;
+ }
++
++export interface IHighlightSubtitleAvailability {
++    url: string;
++    available: boolean;
++}
++
++export type HighlightPrefillPriority = "manual" | "current-video" | "next-in-queue" | "smart-mix" | "smart-tv" | "watch-now" | "priority-group" | "catalog";
+diff --git a/Grayjay.Desktop.Web/src/components/contentDetails/VideoDetailView/index.tsx b/Grayjay.Desktop.Web/src/components/contentDetails/VideoDetailView/index.tsx
+index 26c976bc..d05e3ec6 100644
+--- a/Grayjay.Desktop.Web/src/components/contentDetails/VideoDetailView/index.tsx
++++ b/Grayjay.Desktop.Web/src/components/contentDetails/VideoDetailView/index.tsx
+@@ -51,6 +51,7 @@ import Anchor, { AnchorStyle } from "../../../utility/Anchor";
+ import DragArea from "../../basics/DragArea";
+ import ResizeHandle from "../../basics/ResizeHandle";
+ import { IVideoLocal } from "../../../backend/models/downloads/IVideoLocal";
++import { IVideoHighlightSummary } from "../../../backend/models/highlights/IVideoHighlightSummary";
+ import { DateTime, Duration } from "luxon";
+ import { decode } from "html-entities";
+ import NavigationBar from "../../topbars/NavigationBar";
+@@ -113,6 +114,7 @@ import { interestDetailText, interestFromSet, starsText } from "../../../utils/h
+ import { SmartSearchBackend, type ISmartSearchSession } from "../../../backend/SmartSearchBackend";
+ import { smartDiscoveryPlan, smartDiscoveryQuery, smartDiscoveryVideos } from "../../../utils/smartDiscovery";
+ import { smartTvSettingsFromObject } from "../../../utils/smartTvSettings";
++import { prefillPlaybackWindow, smartMixCandidateScanLimit, subtitleQualifiedSmartMixVideos } from "../../../state/StateSmartPrefill";
+ 
+ const SCOPE_ID = "video-detail-view";
+ const SMART_TV_INTRO_MODES = ['hidden', 'sticky', 'timed'] as const;
+@@ -385,17 +387,27 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
+         return jobs.find(job => job.status === "queued" || job.status === "running" || job.status === "error") ?? jobs[0];
+     });
+     const smartChapterJobLabel$ = createMemo(() => {
+-        const status = currentSmartChapterJob$()?.status;
+-        if (status === "queued") return "Queued";
+-        if (status === "running") return "Analyzing";
++        const job = currentSmartChapterJob$();
++        const source = job?.source === "smart-mix" ? "Smart Mix"
++            : job?.source === "next-in-queue" ? "next in queue"
++            : job?.source === "smart-tv" ? "Smart TV"
++            : job?.source === "watch-now" ? "Watch now"
++            : job?.source === "priority-group" ? "subscription group"
++            : undefined;
++        if (job?.status === "queued") return source ? `Queued from ${source}` : "Queued";
++        if (job?.status === "running") return source ? `Analyzing for ${source}` : "Analyzing";
++        const status = job?.status;
+         if (status === "done") return "Ready";
+         if (status === "error") return "Failed";
+         return undefined;
+     });
+     const videoInterest$ = createMemo(() => interestFromSet(videoHighlights$(), videoLoaded$() ?? currentVideo$()));
+     // Reload highlights when the indexer has generated new data.
++    let activeSmartMixId: string | undefined;
++    let refreshActiveSmartMix: (() => void) | undefined;
+     StateWebsocket.registerHandlerNew("HighlightsChanged", () => {
+         videoHighlightsResource.refetch();
++        refreshActiveSmartMix?.();
+     }, "videoDetailHighlights");
+     let lastAutomaticIndexUrl: string | undefined;
+     createEffect(() => {
+@@ -621,6 +633,20 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
+         return nextUrl && nextUrl !== currentVideoUrl$() ? nextUrl : undefined;
+     });
+ 
++    createEffect(() => {
++        const nextUrl = nextPrefetchUrl$();
++        const index = video?.index();
++        const queue = video?.queue();
++        if (!nextUrl || index === undefined || !queue) return;
++
++        let nextIndex = index + 1;
++        if (nextIndex >= queue.length) {
++            if (!video?.repeat()) return;
++            nextIndex = 0;
++        }
++        void prefillPlaybackWindow("next-in-queue", queue, index);
++    });
++
+     createEffect(() => {
+         const enabled = StateGlobal.settings$()?.object?.playback?.prefetchNextVideo !== false;
+         const currentUrl = currentVideoUrl$();
+@@ -1854,6 +1880,7 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
+             const smartTvSettings = smartTvSettingsFromObject(StateGlobal.settings$()?.object);
+             UIOverlay.toast("Searching the web for related videos...");
+             const sessionId = `smart-mix-${Date.now().toString(36)}`;
++            activeSmartMixId = sessionId;
+             let session = await SmartSearchBackend.load({
+                 sessionId,
+                 query,
+@@ -1866,8 +1893,20 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
+             let started = false;
+             let remainingStages = discovery ? 2 : 0;
+             let nextStageAt = Date.now() + SMART_DISCOVERY_STAGE_DELAY_MS;
+-            const updateQueue = (nextSession: ISmartSearchSession): 'inactive' | 'none' | 'updated' => {
+-                const videos = smartDiscoveryVideos(nextSession, sourceVideo.url, smartTvSettings.maxVideos);
++            let refreshTimer: number | undefined;
++            let refreshInFlight = false;
++            const updateQueue = async (nextSession: ISmartSearchSession, summaries: IVideoHighlightSummary[] = []): Promise<'inactive' | 'none' | 'updated'> => {
++                if (activeSmartMixId !== sessionId)
++                    return 'inactive';
++                const candidates = smartDiscoveryVideos(
++                    nextSession,
++                    sourceVideo.url,
++                    smartMixCandidateScanLimit(smartTvSettings.maxVideos),
++                    summaries,
++                );
++                const videos = (await subtitleQualifiedSmartMixVideos(candidates)).slice(0, smartTvSettings.maxVideos);
++                if (activeSmartMixId !== sessionId)
++                    return 'inactive';
+                 if (videos.length === 0) return 'none';
+                 const metadata: VideoQueueItemMeta[] = videos.map(result => ({
+                     source: 'smart-mix',
+@@ -1893,26 +1932,55 @@ const VideoDetailView: Component<VideoDetailsProps> = (props) => {
+                         undefined,
+                         metadata,
+                     );
++                    void prefillPlaybackWindow("smart-mix", videos, 0);
+                     started = true;
+                     return 'updated';
+                 }
+                 return video?.actions.replaceUnplayedSmartMixTail(sessionId, videos, metadata) === true ? 'updated' : 'inactive';
+             };
++            refreshActiveSmartMix = () => {
++                if (refreshTimer !== undefined || refreshInFlight || !started || activeSmartMixId !== sessionId)
++                    return;
++                refreshTimer = window.setTimeout(async () => {
++                    refreshTimer = undefined;
++                    refreshInFlight = true;
++                    try {
++                        const [latestSession, summaries] = await Promise.all([
++                            SmartSearchBackend.get(sessionId),
++                            HighlightsBackend.getAll(),
++                        ]);
++                        if (await updateQueue(latestSession, summaries) === 'inactive')
++                            refreshActiveSmartMix = undefined;
++                    } catch (error) {
++                        console.warn("Could not refresh Smart Mix rankings", error);
++                    } finally {
++                        refreshInFlight = false;
++                    }
++                }, 250);
++            };
+             for (let attempt = 0; attempt < SMART_DISCOVERY_POLL_ATTEMPTS; attempt++) {
+                 if (attempt > 0)
+                     await new Promise<void>(resolve => window.setTimeout(resolve, SMART_DISCOVERY_POLL_INTERVAL_MS));
+                 session = await SmartSearchBackend.get(sessionId);
+-                const queueStatus = updateQueue(session);
++                const queueStatus = await updateQueue(session);
+                 if (queueStatus === 'inactive')
++                {
++                    if (activeSmartMixId === sessionId)
++                        refreshActiveSmartMix = undefined;
+                     return;
++                }
+ 
+                 if (remainingStages > 0 && (started || Date.now() >= nextStageAt)) {
+                     session = await SmartSearchBackend.startNextDiscoveryStage(sessionId);
+                     remainingStages--;
+                     nextStageAt = Date.now() + SMART_DISCOVERY_STAGE_DELAY_MS;
+-                    const stagedQueueStatus = updateQueue(session);
++                    const stagedQueueStatus = await updateQueue(session);
+                     if (stagedQueueStatus === 'inactive')
++                    {
++                        if (activeSmartMixId === sessionId)
++                            refreshActiveSmartMix = undefined;
+                         return;
++                    }
+                 }
+             }
+             if (!started)
+diff --git a/Grayjay.Desktop.Web/src/pages/Home/index.tsx b/Grayjay.Desktop.Web/src/pages/Home/index.tsx
+index be441d77..cf9acffa 100644
+--- a/Grayjay.Desktop.Web/src/pages/Home/index.tsx
++++ b/Grayjay.Desktop.Web/src/pages/Home/index.tsx
+@@ -37,6 +37,7 @@ import {
+     type SmartTvTransition,
+ } from '../../utils/smartTvSequencer';
+ import { smartTvSettingsFromObject, type SmartTvResolvedSettings } from '../../utils/smartTvSettings';
++import { prefillVideos } from '../../state/StateSmartPrefill';
+ 
+ import { homeStyle$ } from '../../state/HomeStyleState';
+ import iconHome from "../../assets/icons/icon_nav_home.svg";
+@@ -803,6 +804,7 @@ const HomePage: Component = () => {
+     function playSmartTvSession(key: string, session: SmartTvSession) {
+         const entries = remainingSessionEntries(session);
+         if (entries.length === 0) return;
++        void prefillVideos('smart-tv', entries.map(entry => entry.video));
+         const metadata: VideoQueueItemMeta[] = entries.map((entry, index) => ({
+             source: 'smart-tv',
+             sessionTitle: session.title,
+@@ -1085,6 +1087,27 @@ const HomePage: Component = () => {
+         ]).slice(0, smartTvSettings().candidateVideos));
+     const globalSmartTvStats = createMemo(() => smartTvStats(globalSmartTvSources()));
+ 
++    const watchNowPrefillCandidates = createMemo(() => {
++        const byKey = new Map<string, IPlatformVideo>();
++        const add = (video: IPlatformVideo) => {
++            if (hasWatchedUrl(video.url)) return;
++            const key = normalizeUrlKey(video.url) ?? video.url;
++            if (!byKey.has(key)) byKey.set(key, video);
++        };
++        for (const video of heroVideos()) add(video);
++        for (const video of groupCarousels().flatMap(group => group.videos)) add(video);
++        for (const video of recommendedItems()) add(video);
++        return rankVideosForRecommendation([...byKey.values()]);
++    });
++
++    createEffect(() => {
++        void prefillVideos('watch-now', watchNowPrefillCandidates());
++    });
++
++    createEffect(() => {
++        void prefillVideos('priority-group', groupCarousels().flatMap(group => group.videos));
++    });
++
+     return (
+         <div class={styles.container}>
+             <NavigationBar isRoot={true} childrenAfter={
+diff --git a/Grayjay.Desktop.Web/src/pages/Settings/index.tsx b/Grayjay.Desktop.Web/src/pages/Settings/index.tsx
+index 013af699..17624c28 100644
+--- a/Grayjay.Desktop.Web/src/pages/Settings/index.tsx
++++ b/Grayjay.Desktop.Web/src/pages/Settings/index.tsx
+@@ -22,6 +22,7 @@ import { applyHomeStyleFromSettings } from '../../state/HomeStyleState';
+ import { applyXRayFromSettings } from '../../state/StateXRay';
+ import SmartSearchSettings from '../../components/settings/SmartSearchSettings';
+ import SmartMixSettings from '../../components/settings/SmartMixSettings';
++import SmartPrefillSettings from '../../components/settings/SmartPrefillSettings';
+ 
+ 
+ export interface SettingsPageProps {
+@@ -34,6 +35,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
+ 
+   const smartSearchGroup = "smart-search";
+   const smartMixGroup = "smart-mix";
++  const smartPrefillGroup = "smart-prefill";
+ 
+   const [filterGroup$, setFilterGroup] = createSignal<string | undefined>();
+   const [settings$] = createResourceDefault(async () => [], async () => await SettingsBackend.settings());
+@@ -133,6 +135,16 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
+               }}>
+                 Smart Mix
+               </div>
++              <div classList={{[styles.settingsMenuItem]: true, [styles.active]: filterGroup$() === smartPrefillGroup}} onClick={()=>setFilterGroup(smartPrefillGroup)} use:focusable={{
++                onPress: () => setFilterGroup(smartPrefillGroup),
++                onBack: globalBack,
++                groupRememberLast: true,
++                groupType: 'vertical',
++                groupId: 'settings-filters',
++                groupIndices: [3]
++              }}>
++                Smart Prefill
++              </div>
+               <For each={settings$()?.fields?.filter(x=>x.type == 'group') ?? []}>{(item, i) => 
+                 <div classList={{[styles.settingsMenuItem]: true, [styles.active]: item.property == filterGroup$()}} onClick={()=>setFilterGroup(item.property)} use:focusable={{
+                   onPress: () => setFilterGroup(item.property),
+@@ -140,7 +152,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
+                   groupRememberLast: true,
+                   groupType: 'vertical',
+                   groupId: 'settings-filters',
+-                  groupIndices: [3 + i()]
++                  groupIndices: [4 + i()]
+                 }}>
+                   {item.title}
+                 </div>
+@@ -177,7 +189,11 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
+       <div class={styles.settingsContainer} style={props.settingsContainerStyle}>
+         <ScrollContainer>
+           <Show when={filterGroup$() === smartSearchGroup} fallback={
+-            <Show when={filterGroup$() === smartMixGroup} fallback={<SettingsContainer settings={settings$()} showAdvanced={showAdvanced$()} filterGroup={filterGroup$()} onFieldChanged={onFieldChanged} onBack={globalBack} />}>
++            <Show when={filterGroup$() === smartMixGroup} fallback={
++              <Show when={filterGroup$() === smartPrefillGroup} fallback={<SettingsContainer settings={settings$()} showAdvanced={showAdvanced$()} filterGroup={filterGroup$()} onFieldChanged={onFieldChanged} onBack={globalBack} />}>
++                <SmartPrefillSettings />
++              </Show>
++            }>
+               <SmartMixSettings />
+             </Show>
+           }>
+diff --git a/Grayjay.Desktop.Web/src/state/StateHighlightsIndexer.ts b/Grayjay.Desktop.Web/src/state/StateHighlightsIndexer.ts
+index 9d6e9995..9b3b54b4 100644
+--- a/Grayjay.Desktop.Web/src/state/StateHighlightsIndexer.ts
++++ b/Grayjay.Desktop.Web/src/state/StateHighlightsIndexer.ts
+@@ -1,7 +1,7 @@
+ import { createSignal } from 'solid-js';
+ import { Backend } from '../backend/Backend';
+ import { SettingsBackend } from '../backend/SettingsBackend';
+-import { HighlightsBackend, IHighlightIndexJob } from '../backend/HighlightsBackend';
++import { HighlightPrefillPriority, HighlightsBackend, IHighlightIndexJob } from '../backend/HighlightsBackend';
+ import StateWebsocket from './StateWebsocket';
+ 
+ // Chemin (template) de la commande externe de génération. Vide = feature inactive.
+@@ -62,3 +62,21 @@ export async function ensureVideoIndexed(url: string, translationSourceLanguages
+     setIndexJobs(prev => ({ ...prev, [url]: job }));
+     return job;
+ }
++
++export async function configurePrefillParallelism(parallelism: number, maxQueuedJobs: number): Promise<void> {
++    await HighlightsBackend.configurePrefill(parallelism, maxQueuedJobs);
++}
++
++export async function prefillVideo(
++    url: string,
++    priority: HighlightPrefillPriority,
++    source: string,
++    translationSourceLanguages: string[] = [],
++): Promise<IHighlightIndexJob | undefined> {
++    const command = generatorCommand$().trim();
++    if (!command)
++        return undefined;
++    const job = await HighlightsBackend.generatePrefill(url, command, priority, source, translationSourceLanguages);
++    setIndexJobs(previous => ({ ...previous, [url]: job }));
++    return job;
++}
+diff --git a/Grayjay.Desktop.Web/src/utils/smartDiscovery.test.ts b/Grayjay.Desktop.Web/src/utils/smartDiscovery.test.ts
+index d150ebd3..c5062402 100644
+--- a/Grayjay.Desktop.Web/src/utils/smartDiscovery.test.ts
++++ b/Grayjay.Desktop.Web/src/utils/smartDiscovery.test.ts
+@@ -62,6 +62,32 @@ test('prefers a core result when metadata signals are otherwise equal', () => {
+     ]);
+ });
+ 
++test('uses completed Smart Chapter interest to rerank a discovery tail', () => {
++    const session = {
++        sessionId: 'test',
++        variants: [{ language: 'en', axis: 'core', query: 'query', status: 'ready', results: [
++            { key: 'unscored', content: { url: 'https://www.youtube.com/watch?v=unscored', viewCount: 100, dateTime: '2026-07-01', duration: 1200 } },
++            { key: 'scored', content: { url: 'https://www.youtube.com/watch?v=scored', viewCount: 100, dateTime: '2026-07-01', duration: 1200 } },
++        ] }]
++    } as unknown as ISmartSearchSession;
++
++    assert.deepEqual(smartDiscoveryVideos(session, 'https://youtu.be/source', 2, [{
++        videoUrl: 'https://youtu.be/scored',
++        source: 'external',
++        updatedAt: '2026-07-13',
++        segmentCount: 4,
++        totalDuration: 900,
++        interestingDuration: 850,
++        averageScore: 0.96,
++        topScore: 0.98,
++        strongSegmentCount: 4,
++        excellentSegmentCount: 3,
++    }]).map(video => video.url), [
++        'https://www.youtube.com/watch?v=scored',
++        'https://www.youtube.com/watch?v=unscored',
++    ]);
++});
++
+ test('normalizes browser language tags used by discovery stages', () => {
+     assert.equal(smartDiscoveryUserLanguage('zh-TW'), 'zh-Hant');
+     assert.equal(smartDiscoveryUserLanguage('fr-FR'), 'fr');
+diff --git a/Grayjay.Desktop.Web/src/utils/smartDiscovery.ts b/Grayjay.Desktop.Web/src/utils/smartDiscovery.ts
+index f45a4b23..61ed3fe0 100644
+--- a/Grayjay.Desktop.Web/src/utils/smartDiscovery.ts
++++ b/Grayjay.Desktop.Web/src/utils/smartDiscovery.ts
+@@ -2,6 +2,8 @@ import type { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
+ import type { ISmartSearchDiscoveryRequest, ISmartSearchSession } from "../backend/SmartSearchBackend";
+ import type { IVideoHighlightDiscoveryProfile } from "../backend/models/highlights/IVideoHighlightDiscoveryProfile";
+ import type { IVideoHighlightMixProfile } from "../backend/models/highlights/IVideoHighlightMixProfile";
++import type { IVideoHighlightSummary } from "../backend/models/highlights/IVideoHighlightSummary";
++import { interestScoreFromSummary } from "./highlightInterest";
+ import { rankRecommendationCandidates } from "./recommendationRanking";
+ 
+ const DISCOVERY_AXIS_IDS = ["core", "context", "impact", "debate"] as const;
+@@ -77,14 +79,25 @@ export function smartDiscoveryPlan(profile: IVideoHighlightDiscoveryProfile | un
+     };
+ }
+ 
+-export function smartDiscoveryVideos(session: ISmartSearchSession, sourceUrl: string, maxVideos: number): IPlatformVideo[] {
++export function smartDiscoveryVideos(
++    session: ISmartSearchSession,
++    sourceUrl: string,
++    maxVideos: number,
++    summaries: IVideoHighlightSummary[] = [],
++): IPlatformVideo[] {
+     const sourceKey = normalizedUrl(sourceUrl);
++    const summaryByUrl = new Map<string, IVideoHighlightSummary>();
++    for (const summary of summaries) {
++        const key = normalizedUrl(summary.videoUrl ?? summary.video?.url);
++        if (key) summaryByUrl.set(key, summary);
++    }
+     const candidates = new Map<string, {
+         key: string;
+         fallbackOrder: number;
+         publishedAt?: string;
+         viewCount?: number;
+         semanticRelevance?: number;
++        contentInterest?: number;
+         video: IPlatformVideo;
+     }>();
+     let fallbackOrder = 0;
+@@ -105,6 +118,7 @@ export function smartDiscoveryVideos(session: ISmartSearchSession, sourceUrl: st
+                 publishedAt: video.dateTime,
+                 viewCount: video.viewCount,
+                 semanticRelevance: relevance,
++                contentInterest: interestScoreFromSummary(summaryByUrl.get(key), video),
+                 video,
+             });
+         }

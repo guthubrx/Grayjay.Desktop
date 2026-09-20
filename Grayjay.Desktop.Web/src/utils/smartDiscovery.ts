@@ -2,6 +2,8 @@ import type { IPlatformVideo } from "../backend/models/content/IPlatformVideo";
 import type { ISmartSearchDiscoveryRequest, ISmartSearchSession } from "../backend/SmartSearchBackend";
 import type { IVideoHighlightDiscoveryProfile } from "../backend/models/highlights/IVideoHighlightDiscoveryProfile";
 import type { IVideoHighlightMixProfile } from "../backend/models/highlights/IVideoHighlightMixProfile";
+import type { IVideoHighlightSummary } from "../backend/models/highlights/IVideoHighlightSummary";
+import { interestScoreFromSummary } from "./highlightInterest";
 import { rankRecommendationCandidates } from "./recommendationRanking";
 
 const DISCOVERY_AXIS_IDS = ["core", "context", "impact", "debate"] as const;
@@ -77,14 +79,25 @@ export function smartDiscoveryPlan(profile: IVideoHighlightDiscoveryProfile | un
     };
 }
 
-export function smartDiscoveryVideos(session: ISmartSearchSession, sourceUrl: string, maxVideos: number): IPlatformVideo[] {
+export function smartDiscoveryVideos(
+    session: ISmartSearchSession,
+    sourceUrl: string,
+    maxVideos: number,
+    summaries: IVideoHighlightSummary[] = [],
+): IPlatformVideo[] {
     const sourceKey = normalizedUrl(sourceUrl);
+    const summaryByUrl = new Map<string, IVideoHighlightSummary>();
+    for (const summary of summaries) {
+        const key = normalizedUrl(summary.videoUrl ?? summary.video?.url);
+        if (key) summaryByUrl.set(key, summary);
+    }
     const candidates = new Map<string, {
         key: string;
         fallbackOrder: number;
         publishedAt?: string;
         viewCount?: number;
         semanticRelevance?: number;
+        contentInterest?: number;
         video: IPlatformVideo;
     }>();
     let fallbackOrder = 0;
@@ -105,6 +118,7 @@ export function smartDiscoveryVideos(session: ISmartSearchSession, sourceUrl: st
                 publishedAt: video.dateTime,
                 viewCount: video.viewCount,
                 semanticRelevance: relevance,
+                contentInterest: interestScoreFromSummary(summaryByUrl.get(key), video),
                 video,
             });
         }
