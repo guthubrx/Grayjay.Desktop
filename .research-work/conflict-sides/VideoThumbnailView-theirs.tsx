@@ -8,7 +8,6 @@ import { dateFromAny, toHumanNowDiffString, toHumanNumber, toHumanTime } from '.
 import { DateTime } from 'luxon';
 import { useNavigate } from '@solidjs/router';
 import StateGlobal from '../../../state/StateGlobal';
-import { isIndexed } from '../../../state/StateIndexedHighlights';
 import { IPlatformVideo } from '../../../backend/models/content/IPlatformVideo';
 import AnimatedImage from '../../basics/AnimatedImage';
 import { FocusableOptions } from '../../../nav';
@@ -24,8 +23,6 @@ interface VideoProps {
   imageStyle?: JSX.CSSProperties;
   useCache?: boolean;
   focusableOpts?: FocusableOptions;
-  hideAddToQueue?: boolean;
-  settingsOnHover?: boolean;
 }
 
 const VideoThumbnailView: Component<VideoProps> = (props) => {
@@ -88,22 +85,8 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
           <Show when={props.video?.isLive && dateFromAny(props.video?.dateTime, DateTime.min())! > DateTime.now()}>
             <div class={styles.isPlanned}>PLANNED</div>
           </Show>
-<<<<<<< HEAD
-          <Show when={!props.video?.isLive}>
-            <div
-              class={styles.duration}
-              classList={{ [styles.durationIndexed]: isIndexed(props.video?.url) }}
-              title={isIndexed(props.video?.url) ? "Smart highlights available" : undefined}
-            >{toHumanTime(props.video?.duration ?? 0)}</div>
-          </Show>
-          <Show when={props.settingsOnHover && props.onSettings && focus?.isControllerMode() !== true}>
-            <div class={styles.settingsOverlay}>
-              <IconButton icon={more} ref={refMoreButton} onClick={(e: MouseEvent) => { e.stopPropagation(); openMoreOverlay(); }} />
-            </div>
-=======
           <Show when={!props.video?.isLive && (props.video?.duration ?? 0) > 0}>
             <div class={styles.duration}>{toHumanTime(props.video?.duration ?? 0)}</div>
->>>>>>> futo/fix-websocket-send-backpressure
           </Show>
             <div class={styles.progressBar}>
               <div class={styles.progressBarProgress} style={{width: (progress$() * 100) + "%"}}>
@@ -126,14 +109,14 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
             </div>
             
 
-            <Show when={!props.hideAddToQueue && props.onAddtoQueue && focus?.isControllerMode() !== true}>
-              <IconButton icon={addToQueueIcon}
+            <Show when={props.onAddtoQueue && focus?.isControllerMode() !== true}>
+              <IconButton icon={addToQueueIcon} 
                 style={{"margin-right": "7px", "margin-top": "4px"}}
                 iconPadding='4px'
                 ref={refAddToQueueButton} onClick={() => props.onAddtoQueue?.(refAddToQueueButton!, props.video!)} />
             </Show>
-
-            <Show when={!props.settingsOnHover && props.onSettings && focus?.isControllerMode() !== true} fallback={<div class="menu-anchor"></div>}>
+            
+            <Show when={props.onSettings && focus?.isControllerMode() !== true} fallback={<div class="menu-anchor"></div>}>
               <IconButton icon={more} ref={refMoreButton} onClick={() => openMoreOverlay()} />
             </Show>
         </div>

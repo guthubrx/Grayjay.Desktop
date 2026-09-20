@@ -1,0 +1,246 @@
+diff --git a/Grayjay.ClientServer/WebSockets/WebSocketEndpoint.cs b/Grayjay.ClientServer/WebSockets/WebSocketEndpoint.cs
+index 2c7b809f..bceaaffd 100644
+--- a/Grayjay.ClientServer/WebSockets/WebSocketEndpoint.cs
++++ b/Grayjay.ClientServer/WebSockets/WebSocketEndpoint.cs
+@@ -5,6 +5,7 @@ using System.Net.Sockets;
+ using System.Net.WebSockets;
+ using System.Text;
+ using System.Text.Json;
++using System.Threading.Channels;
+ using System.Xml;
+ 
+ namespace Grayjay.ClientServer.WebSockets
+@@ -100,44 +101,62 @@ namespace Grayjay.ClientServer.WebSockets
+ 
+     public class WebSocketClient: IDisposable
+     {
++        private const int OutgoingMessageCapacity = 32;
++
+         public string ID { get; private set; } = Guid.NewGuid().ToString();
+         public WebSocket Socket { get; private set; }
+         public bool Active { get; private set; } = true;
+         public event Action<WebSocketClient> OnClose;
+         public event Action<WebSocketClient, WebSocketPacket> OnPacket;
+ 
++        private readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
++        private readonly Channel<byte[]> _outgoing = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(OutgoingMessageCapacity)
++        {
++            SingleReader = true,
++            SingleWriter = false
++        });
++        private readonly Task _sendTask;
++        private int _closed;
++        private int _droppedMessages;
++
+         public WebSocketClient(WebSocket socket)
+         {
+             Socket = socket;
++            _sendTask = HandleOutgoing();
+         }
+ 
+         public async Task Handle()
+         {
+             byte[] buffer = new byte[64 * 1024];
+-            Send("Connected", "Status");
+-
+-            while (Socket.State == WebSocketState.Open && Active)
++            try
+             {
+-                var result = await Socket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+-                if (result.MessageType == WebSocketMessageType.Close)
++                await Send("Connected", "Status");
++
++                while (Socket.State == WebSocketState.Open && Active)
+                 {
+-                    break;
++                    var result = await Socket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
++                    if (result.MessageType == WebSocketMessageType.Close)
++                    {
++                        break;
++                    }
+                 }
+-            }
+ 
+-            try
+-            {
+-                await Socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
++                try
++                {
++                    await Socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
++                }
++                catch (Exception ex)
++                {
++                    Logger.e(nameof(WebSocketEndpoint), "Failed to close socket", ex);
++                }
+             }
+-            catch (Exception ex)
++            finally
+             {
+-                Logger.e(nameof(WebSocketEndpoint), "Failed to close socket", ex);
++                Close();
+             }
+-            
+-            OnClose?.Invoke(this);
+         }
+ 
+-        public async void Send(object data, string? type = null, string? id = null)
++        public Task Send(object data, string? type = null, string? id = null)
+         {
+             var obj = new WebSocketPacket()
+             {
+@@ -145,21 +164,66 @@ namespace Grayjay.ClientServer.WebSockets
+                 ID = id,
+                 Type = type
+             };
+-            await Send(obj);
++            return Send(obj);
+         }
+-        public async Task Send(WebSocketPacket packet)
++        public Task Send(WebSocketPacket packet)
+         {
+-            await SendRaw(packet.ToPacket());
++            return SendRaw(packet.ToPacket());
+         }
+-        public async Task SendRaw(byte[] bytes)
++        public Task SendRaw(byte[] bytes)
+         {
+-            await Socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
++            if (!Active)
++                return Task.CompletedTask;
++
++            if (_outgoing.Writer.TryWrite(bytes))
++            {
++                Interlocked.Exchange(ref _droppedMessages, 0);
++                return Task.CompletedTask;
++            }
++
++            if (Interlocked.Increment(ref _droppedMessages) == 1)
++                Logger.w(nameof(WebSocketEndpoint), "Dropping outbound messages for backpressured client " + ID);
++            return Task.CompletedTask;
+         }
+ 
+         public void Dispose()
+         {
++            Close();
++        }
++
++        private async Task HandleOutgoing()
++        {
++            try
++            {
++                await foreach (var message in _outgoing.Reader.ReadAllAsync(_cancellation.Token))
++                    await Socket.SendAsync(message, WebSocketMessageType.Text, true, _cancellation.Token);
++            }
++            catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
++            {
++            }
++            catch (Exception ex)
++            {
++                Logger.e(nameof(WebSocketEndpoint), "Failed to send message to client " + ID, ex);
++                Close();
++            }
++        }
++
++        private void Close()
++        {
++            if (Interlocked.Exchange(ref _closed, 1) != 0)
++                return;
++
+             Active = false;
+-            Socket.Dispose();
++            _outgoing.Writer.TryComplete();
++            _cancellation.Cancel();
++            try
++            {
++                Socket.Dispose();
++            }
++            catch
++            {
++            }
++            OnClose?.Invoke(this);
+         }
+     }
+ 
+diff --git a/Grayjay.Desktop.Tests/WebSocketTests.cs b/Grayjay.Desktop.Tests/WebSocketTests.cs
+new file mode 100644
+index 00000000..507470d1
+--- /dev/null
++++ b/Grayjay.Desktop.Tests/WebSocketTests.cs
+@@ -0,0 +1,76 @@
++using System.Net.WebSockets;
++using System.Text;
++using Grayjay.ClientServer.WebSockets;
++
++namespace Grayjay.Desktop.Tests;
++
++[TestClass]
++public class WebSocketTests
++{
++    private sealed class BlockingWebSocket : WebSocket
++    {
++        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
++
++        public TaskCompletionSource FirstSendStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
++        public int SendCount { get; private set; }
++
++        public override WebSocketCloseStatus? CloseStatus => null;
++        public override string? CloseStatusDescription => null;
++        public override WebSocketState State => WebSocketState.Open;
++        public override string SubProtocol => string.Empty;
++
++        public override void Abort()
++        {
++            _release.TrySetCanceled();
++        }
++
++        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
++        {
++            return Task.CompletedTask;
++        }
++
++        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
++        {
++            return Task.CompletedTask;
++        }
++
++        public override void Dispose()
++        {
++            _release.TrySetCanceled();
++        }
++
++        public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
++        {
++            return Task.FromResult(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
++        }
++
++        public override async Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
++        {
++            SendCount++;
++            FirstSendStarted.TrySetResult();
++            await _release.Task.WaitAsync(cancellationToken);
++        }
++
++        public void Release()
++        {
++            _release.TrySetResult();
++        }
++    }
++
++    [TestMethod]
++    public async Task WebSocketClient_DropsMessagesWhenClientIsBackpressured()
++    {
++        using var socket = new BlockingWebSocket();
++        using var client = new WebSocketClient(socket);
++        var message = Encoding.UTF8.GetBytes("message");
++
++        for (var i = 0; i < 128; i++)
++            await client.SendRaw(message);
++
++        await socket.FirstSendStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
++        socket.Release();
++        await Task.Delay(100);
++
++        Assert.IsTrue(socket.SendCount <= 32, "A blocked client must not retain an unbounded number of messages.");
++    }
++}
+* Unmerged path Grayjay.Desktop.Web/src/components/content/VideoThumbnailView/index.tsx

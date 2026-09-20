@@ -88,7 +88,6 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
           <Show when={props.video?.isLive && dateFromAny(props.video?.dateTime, DateTime.min())! > DateTime.now()}>
             <div class={styles.isPlanned}>PLANNED</div>
           </Show>
-<<<<<<< HEAD
           <Show when={!props.video?.isLive}>
             <div
               class={styles.duration}
@@ -100,10 +99,6 @@ const VideoThumbnailView: Component<VideoProps> = (props) => {
             <div class={styles.settingsOverlay}>
               <IconButton icon={more} ref={refMoreButton} onClick={(e: MouseEvent) => { e.stopPropagation(); openMoreOverlay(); }} />
             </div>
-=======
-          <Show when={!props.video?.isLive && (props.video?.duration ?? 0) > 0}>
-            <div class={styles.duration}>{toHumanTime(props.video?.duration ?? 0)}</div>
->>>>>>> futo/fix-websocket-send-backpressure
           </Show>
             <div class={styles.progressBar}>
               <div class={styles.progressBarProgress} style={{width: (progress$() * 100) + "%"}}>

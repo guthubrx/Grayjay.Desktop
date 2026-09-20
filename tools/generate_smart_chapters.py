@@ -189,7 +189,7 @@ def parse_args() -> argparse.Namespace:
     fallback.add_argument("--whisper-cli", default=None, help="Path to the whisper.cpp 'whisper-cli' binary. Auto-detected if omitted.")
     fallback.add_argument("--whisper-models-dir", default=None, help="Directory containing ggml-<model>.bin files. Auto-detected if omitted.")
     fallback.add_argument("--whisper-model", default="base", help="Whisper model name (e.g. base, small, large-v3).")
-    fallback.add_argument("--cookies-from-browser", help="Pass browser cookies to yt-dlp (e.g. firefox) to avoid HTTP 429 on subtitles.")
+    fallback.add_argument("--cookies-from-browser", help="Optional browser cookies for yt-dlp fallback (e.g. firefox). YouTube access tries anonymously first; cookies are only a retry.")
 
     output = parser.add_argument_group("output")
     output.add_argument("--grayjay-dir", default=str(DEFAULT_GRAYJAY_DIR), help="Grayjay application data directory.")
@@ -582,6 +582,21 @@ def ytdlp_cookie_args(args: argparse.Namespace) -> list[str]:
     return ["--cookies-from-browser", args.cookies_from_browser] if getattr(args, "cookies_from_browser", None) else []
 
 
+def ytdlp_cookie_session_blocked(detail: str) -> bool:
+    """YouTube refuse souvent la session cookies navigateur (player UNPLAYABLE)."""
+    text = (detail or "").lower()
+    return "the page needs to be reloaded" in text or "unplayable" in text
+
+
+def ytdlp_cookie_modes(args: argparse.Namespace) -> list[bool]:
+    """Anonymous d'abord : les cookies Firefox cassent actuellement le player YouTube.
+    Les cookies restent un repli utile si l'anonyme rate (ex. HTTP 429 sous-titres)."""
+    modes = [False]
+    if ytdlp_cookie_args(args):
+        modes.append(True)
+    return modes
+
+
 def fetch_video_metadata(task: VideoTask, args: argparse.Namespace) -> VideoTask:
     if task.title and task.duration:
         return task
@@ -591,13 +606,29 @@ def fetch_video_metadata(task: VideoTask, args: argparse.Namespace) -> VideoTask
     if not ytdlp:
         log("  metadata warning: yt-dlp introuvable (voir --check)")
         return task
-    try:
-        proc = run_command([ytdlp, "--dump-json", "--skip-download", *ytdlp_runtime_args(), *ytdlp_cookie_args(args), task.url], check=True)
-        data = json.loads(proc.stdout)
-        task.title = task.title or data.get("title")
-        task.duration = task.duration or to_float(data.get("duration"))
-    except Exception as exc:
-        log(f"  metadata warning: {exc}")
+    last_error: Exception | None = None
+    for use_cookies in ytdlp_cookie_modes(args):
+        cookie_args = ytdlp_cookie_args(args) if use_cookies else []
+        try:
+            proc = run_command(
+                [ytdlp, "--dump-json", "--skip-download", *ytdlp_runtime_args(), *cookie_args, task.url],
+                check=True,
+            )
+            data = json.loads(proc.stdout)
+            task.title = task.title or data.get("title")
+            task.duration = task.duration or to_float(data.get("duration"))
+            return task
+        except Exception as exc:
+            last_error = exc
+            detail = command_failure_tail(exc) if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+            if (not use_cookies) and ytdlp_cookie_args(args):
+                log("  metadata: anonymous lookup failed; retrying with browser cookies")
+                continue
+            if use_cookies and ytdlp_cookie_session_blocked(detail):
+                log("  metadata: browser cookies also refused by YouTube")
+            break
+    if last_error is not None:
+        log(f"  metadata warning: {last_error}")
     return task
 
 
@@ -743,40 +774,64 @@ def get_youtube_subtitle_transcript(url: str, args: argparse.Namespace, workdir:
     ytdlp = resolve_binary("yt-dlp")
     if not ytdlp:
         return []
-    before = set(workdir.glob("*"))
-    cmd = [
-        ytdlp,
-        "--skip-download",
-        "--write-subs",
-        "--write-auto-subs",
-        "--sub-langs",
-        args.sub_langs,
-        "--sub-format",
-        "vtt/best",
-        "-o",
-        "%(id)s.%(ext)s",
-        # Attenuer le rate-limit YouTube (HTTP 429) sur les sous-titres.
-        "--retries", "3",
-        "--sleep-subtitles", "1",
-        *ytdlp_runtime_args(),
-        *ytdlp_cookie_args(args),
-        url,
-    ]
-    # On ignore le returncode : yt-dlp peut echouer sur une langue (ex 429 sur
-    # fr) tout en ayant ecrit une autre (en). On se fie aux .vtt reellement
-    # produits.
-    run_command(cmd, cwd=workdir, check=False)
 
-    candidates = [path for path in workdir.glob("*.vtt") if path not in before]
-    candidates += [path for path in workdir.glob("*.vtt") if path not in candidates]
-    if not candidates:
-        return []
+    def download_subs(*, use_cookies: bool) -> tuple[list[TranscriptCue], str]:
+        before = set(workdir.glob("*"))
+        cookie_args = ytdlp_cookie_args(args) if use_cookies else []
+        cmd = [
+            ytdlp,
+            "--skip-download",
+            "--write-subs",
+            "--write-auto-subs",
+            "--sub-langs",
+            args.sub_langs,
+            "--sub-format",
+            "vtt/best",
+            "-o",
+            "%(id)s.%(ext)s",
+            # Attenuer le rate-limit YouTube (HTTP 429) sur les sous-titres.
+            "--retries", "3",
+            "--sleep-subtitles", "1",
+            *ytdlp_runtime_args(),
+            *cookie_args,
+            url,
+        ]
+        # On ignore le returncode : yt-dlp peut echouer sur une langue (ex 429 sur
+        # fr) tout en ayant ecrit une autre (en). On se fie aux .vtt reellement
+        # produits.
+        proc = run_command(cmd, cwd=workdir, check=False)
+        detail = "\n".join(part for part in [proc.stderr, proc.stdout] if part).strip()
+        candidates = [path for path in workdir.glob("*.vtt") if path not in before]
+        candidates += [path for path in workdir.glob("*.vtt") if path not in candidates]
+        if not candidates:
+            return [], detail
+        candidates.sort(key=lambda path: subtitle_priority(path.name))
+        for path in candidates:
+            cues = parse_vtt(path.read_text(encoding="utf-8", errors="ignore"))
+            if cues:
+                return cues, detail
+        return [], detail
 
-    candidates.sort(key=lambda path: subtitle_priority(path.name))
-    for path in candidates:
-        cues = parse_vtt(path.read_text(encoding="utf-8", errors="ignore"))
+    last_detail = ""
+    for use_cookies in ytdlp_cookie_modes(args):
+        cues, detail = download_subs(use_cookies=use_cookies)
+        last_detail = detail
         if cues:
+            if use_cookies:
+                log("  transcript: recovered YouTube subtitles with browser cookies")
             return cues
+        if (not use_cookies) and ytdlp_cookie_args(args):
+            if "HTTP Error 429" in detail or "Too Many Requests" in detail:
+                log("  transcript: anonymous subtitle fetch rate-limited; retrying with browser cookies")
+            elif ytdlp_cookie_session_blocked(detail):
+                log("  transcript: anonymous subtitle fetch blocked; retrying with browser cookies")
+            else:
+                log("  transcript: no usable anonymous subtitles; retrying with browser cookies")
+            continue
+        if use_cookies and ytdlp_cookie_session_blocked(detail):
+            log("  transcript: browser cookies also refused by YouTube")
+    if last_detail and ytdlp_cookie_session_blocked(last_detail):
+        log("  transcript: YouTube subtitle session blocked after anonymous/cookie retries")
     return []
 
 
@@ -920,7 +975,11 @@ def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path
             except OSError:
                 pass
 
-    def download_with_format(format_selector: str | None = None) -> None:
+    def download_with_format(format_selector: str | None = None, *, use_cookies: bool = False) -> None:
+        # Les cookies navigateur restent utiles pour les sous-titres, mais
+        # YouTube renvoie souvent UNPLAYABLE / "page needs to be reloaded"
+        # quand on les passe au téléchargement audio de Whisper.
+        cookie_args = ytdlp_cookie_args(args) if use_cookies else []
         cmd = [ytdlp]
         if format_selector:
             cmd.extend(["-f", format_selector])
@@ -929,12 +988,14 @@ def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path
             "-x", "--audio-format", "wav", "--audio-quality", "0",
             "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000",
             "-o", str(workdir / "audio.%(ext)s"),
-            *ytdlp_runtime_args(), *ytdlp_cookie_args(args), task.url,
+            *ytdlp_runtime_args(), *cookie_args, task.url,
         ])
         run_command(cmd, check=True)
 
     try:
-        download_with_format()
+        # Audio Whisper sans cookies : avec cookies Firefox, YouTube répond
+        # souvent UNPLAYABLE / "The page needs to be reloaded".
+        download_with_format(use_cookies=False)
     except subprocess.CalledProcessError as exc:
         detail = command_failure_tail(exc)
         if "HTTP Error 403" not in detail or not extract_youtube_id(task.url):
@@ -945,7 +1006,7 @@ def _download_audio_wav(task: VideoTask, args: argparse.Namespace, workdir: Path
         for format_selector in ["91", "92", "93", "94", "95", "96"]:
             cleanup_audio_outputs()
             try:
-                download_with_format(format_selector)
+                download_with_format(format_selector, use_cookies=False)
                 log(f"  HLS fallback succeeded with format {format_selector}")
                 break
             except subprocess.CalledProcessError as fallback_exc:
@@ -1149,6 +1210,7 @@ def build_prompt(task: VideoTask, cues: list[TranscriptCue], args: argparse.Name
     - COVER THE ENTIRE VIDEO: the sections must be CONTIGUOUS and span the full duration, from 0 to the end. Each section's start must equal the previous section's end. No gaps, no overlaps. Do not skip "boring" parts: include them as their own low-score sections.
     - Keep around {args.max_segments} sections (merge flat stretches into longer sections rather than dropping them).
     - Prefer sections between {args.min_segment_seconds} and {args.max_segment_seconds} seconds, but extend low-interest stretches into longer sections so the whole video stays covered.
+    - Every boundary is a cut between spoken units. Place starts and ends after a complete sentence or a clearly completed thought, never in the middle of a sentence. The timestamps are approximate: prefer the nearest natural transcript boundary over a round duration or an arbitrary timestamp.
     - DISTRIBUTE sections EVENLY across the ENTIRE timeline: the density of sections must stay similar from the first minute to the last. The FINAL section MUST NOT be a catch-all. If the last part of the transcript (e.g. the final 10-20 minutes) still contains speech, split it into several sections exactly like the earlier parts. A single section longer than {args.max_segment_seconds}s is allowed ONLY when the transcript for that whole span is genuinely empty of speech.
     - score = how VALUABLE this section is TO A VIEWER, based on information density, insight, specificity and memorability. It is NOT about whether it proves a thesis. A gripping personal story, a concrete example, a piece of advice, a governance detail or a strong opinion can score HIGH even if it matches no thesis.
       * >= 0.90: high insight — a key idea, striking fact, concrete example, strong argument or memorable takeaway
@@ -1350,73 +1412,147 @@ def validate_segments(data: dict[str, Any], duration: float | None, args: argpar
 
 # Ponctuation de fin de phrase (point, ?, !, points de suspension), avec
 # guillemets/parenthèses fermantes éventuels juste après.
-_SENTENCE_END_RE = re.compile(r"[.!?…][\"'»)\]]*\s*$")
+_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?…]+[\"'»)\]]*(?=\s|$)")
+_UPPERCASE_OR_NUMBER_RE = re.compile(r"^[A-ZÀ-ÖØ-Þ0-9«“]")
 
 
-def sentence_start_times(cues: list[TranscriptCue], min_pause: float = 0.45) -> list[float]:
-    """Instants où commence une nouvelle phrase, dérivés des cues fines.
+def _is_sentence_boundary(text: str, match: re.Match[str]) -> bool:
+    """Évite de prendre un point d'abréviation pour une fin de phrase."""
+    punctuation = match.group(0).lstrip()[:1]
+    if punctuation in "!?…":
+        return True
+    following = text[match.end():].lstrip()
+    if not following:
+        return True
+    return bool(_UPPERCASE_OR_NUMBER_RE.match(following))
 
-    Une cue amorce une phrase si la précédente se termine par une ponctuation
-    forte (transcripts ponctués : Whisper, sous-titres manuels) OU si une pause
-    nette la précède (auto-captions sans ponctuation). La première cue amorce
-    toujours une phrase. Complexité O(n) sur le nombre de cues."""
-    starts: list[float] = []
-    prev_end: float | None = None
-    starts_new = True
-    for cue in cues:
-        pause = (cue.start - prev_end) if prev_end is not None else 0.0
-        if starts_new or pause >= min_pause:
-            starts.append(round(cue.start, 3))
-        prev_end = cue.end
-        starts_new = bool(_SENTENCE_END_RE.search(cue.text.rstrip()))
-    # Dédoublonne en gardant l'ordre croissant (cues potentiellement chevauchantes).
+
+def _deduplicate_times(values: list[float], tolerance: float = 0.05) -> list[float]:
     unique: list[float] = []
-    for value in sorted(starts):
-        if not unique or value > unique[-1] + 1e-3:
-            unique.append(value)
+    for value in sorted(values):
+        if not unique or value > unique[-1] + tolerance:
+            unique.append(round(value, 3))
     return unique
 
 
-def _nearest_within(sorted_values: list[float], target: float, window: float) -> float | None:
-    """Valeur la plus proche de target dans sorted_values, si à moins de window. O(log n)."""
+def sentence_boundary_times(cues: list[TranscriptCue], min_pause: float = 0.45) -> list[float]:
+    """Retourne les frontières temporelles où une coupe est naturellement sûre.
+
+    Les sous-titres peuvent contenir plusieurs phrases dans une seule cue. Dans
+    ce cas, la position de la ponctuation interne est estimée à l'intérieur de
+    la cue, au prorata des mots. Ce n'est pas une nouvelle transcription : c'est
+    une interpolation déterministe des timestamps déjà présents.
+
+    Quand la ponctuation manque (auto-captions), une pause entre deux cues est
+    utilisée comme frontière de repli. La première cue est toujours une
+    frontière. Les valeurs retournées servent à la fois pour les débuts et les
+    fins, puisque les chapitres sont rendus contigus ensuite.
+    """
+    if not cues:
+        return []
+
+    ordered = sorted(cues, key=lambda cue: (cue.start, cue.end))
+    boundaries: list[float] = [ordered[0].start]
+    previous_end: float | None = None
+    for cue in ordered:
+        if previous_end is not None and cue.start - previous_end >= min_pause:
+            boundaries.append(cue.start)
+
+        word_count = max(1, len(re.findall(r"\S+", cue.text)))
+        for match in _SENTENCE_BOUNDARY_RE.finditer(cue.text):
+            if not _is_sentence_boundary(cue.text, match):
+                continue
+            words_until = len(re.findall(r"\S+", cue.text[:match.end()]))
+            ratio = min(1.0, max(0.0, words_until / word_count))
+            estimated = cue.start + (cue.end - cue.start) * ratio
+            boundaries.append(estimated)
+
+        previous_end = max(previous_end or cue.end, cue.end)
+
+    return _deduplicate_times(boundaries)
+
+
+def sentence_start_times(cues: list[TranscriptCue], min_pause: float = 0.45) -> list[float]:
+    """Compatibilité avec l'ancien nom : les frontières servent aux deux bornes."""
+    return sentence_boundary_times(cues, min_pause=min_pause)
+
+
+def cue_boundary_times(cues: list[TranscriptCue]) -> list[float]:
+    """Frontières de repli quand les cues ne portent aucune ponctuation."""
+    if not cues:
+        return []
+    return _deduplicate_times([cue.start for cue in sorted(cues, key=lambda cue: cue.start)])
+
+
+def _nearest_within(sorted_values: list[float], target: float, window: float,
+                    minimum: float | None = None, maximum: float | None = None) -> float | None:
+    """Valeur la plus proche dans une fenêtre et un intervalle optionnel."""
     if not sorted_values:
         return None
-    idx = bisect.bisect_left(sorted_values, target)
+    lower = target - window
+    upper = target + window
+    if minimum is not None:
+        lower = max(lower, minimum)
+    if maximum is not None:
+        upper = min(upper, maximum)
+    if lower > upper:
+        return None
+
+    start = bisect.bisect_left(sorted_values, lower)
+    stop = bisect.bisect_right(sorted_values, upper)
     best: float | None = None
     best_dist: float | None = None
-    for j in (idx - 1, idx):
-        if 0 <= j < len(sorted_values):
-            dist = abs(sorted_values[j] - target)
-            if dist <= window and (best_dist is None or dist < best_dist):
-                best, best_dist = sorted_values[j], dist
+    for value in sorted_values[start:stop]:
+        dist = abs(value - target)
+        if best_dist is None or dist < best_dist:
+            best, best_dist = value, dist
     return best
 
 
 def snap_segments_to_sentences(segments: list[dict[str, Any]], cues: list[TranscriptCue],
                                max_shift: float = 8.0) -> list[dict[str, Any]]:
-    """Recale le DÉBUT de chaque chapitre sur l'amorce de phrase la plus proche.
+    """Recale chaque frontière de chapitre sur une limite de phrase proche.
 
     Le LLM décide OÙ sont les sujets (bien) ; le début exact est confié à une
     règle déterministe basée sur les vrais temps de parole, pour ne pas tomber
-    en milieu ou en fin de phrase. On ne déplace une borne que si un début de
-    phrase existe dans une fenêtre de ``max_shift`` secondes, sinon on garde la
-    valeur du LLM. Le premier chapitre n'est pas déplacé (couverture depuis le
-    début). Les fins sont réalignées sur le début suivant pour garder des
-    chapitres contigus, sans trou ni chevauchement."""
+    en milieu ou en fin de phrase. Les frontières viennent de la ponctuation
+    interne des cues et des pauses quand la ponctuation manque. Le premier
+    chapitre n'est pas déplacé (couverture depuis le début). Les fins sont
+    réalignées sur les débuts corrigés pour garder des chapitres contigus, sans
+    trou ni chevauchement."""
     if len(segments) < 2:
         return segments
-    starts = sentence_start_times(cues)
-    if not starts:
+    boundaries = sentence_boundary_times(cues)
+    fallback_boundaries = cue_boundary_times(cues)
+    if not boundaries and not fallback_boundaries:
         return segments
 
     result = [dict(seg) for seg in segments]
-    prev_start = result[0]["start"]
+    previous_boundary = float(result[0]["start"])
     for seg in result[1:]:
-        snapped = _nearest_within(starts, seg["start"], max_shift)
-        # Ne recale que si ça reste après le chapitre précédent (ordre + longueur mini).
-        if snapped is not None and snapped > prev_start + 1.0:
+        original_start = float(seg["start"])
+        minimum = previous_boundary + 1.0
+        maximum = max(minimum, float(seg["end"]) - 1.0)
+        snapped = _nearest_within(
+            boundaries,
+            original_start,
+            max_shift,
+            minimum=minimum,
+            maximum=maximum,
+        )
+        if snapped is None:
+            snapped = _nearest_within(
+                fallback_boundaries,
+                original_start,
+                max_shift,
+                minimum=minimum,
+                maximum=maximum,
+            )
+        if snapped is not None:
             seg["start"] = round(snapped, 3)
-        prev_start = seg["start"]
+        elif original_start < minimum:
+            seg["start"] = round(minimum, 3)
+        previous_boundary = float(seg["start"])
 
     # Contiguïté : fin d'un chapitre = début du suivant (absorbe le décalage).
     for i in range(len(result) - 1):
@@ -1491,6 +1627,7 @@ def rechapter_span(task: VideoTask, span_cues: list[TranscriptCue], start: float
 
     Rules:
     - Produce {n} CONTIGUOUS sections covering EXACTLY this span. First start = {start:.0f}, last end = {end:.0f}. No gaps, no overlaps.
+    - Every internal boundary must fall after a complete sentence or clearly completed thought. Never cut through a sentence just to reach a round duration; prefer the nearest natural boundary visible in the transcript.
     - This span is NOT filler: it contains real spoken content. Give each section a SPECIFIC title based on what is actually said (never "conclusion", "thanks", "outro" unless the transcript truly is that), and a fair score spread across the range (viewer value, not thesis-adherence).
     - Titles and summaries in {lang}. Base everything strictly on the transcript. Never invent.
 
