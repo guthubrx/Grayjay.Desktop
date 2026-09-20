@@ -1,0 +1,53 @@
+.container {
+    box-sizing: border-box;
+    margin: 24px 30px 48px;
+    max-width: 720px;
+}
+
+.container h1 {
+    font-size: 24px;
+    margin: 0 0 32px;
+}
+
+.settingRow {
+    align-items: center;
+    border-bottom: 1px solid #343434;
+    display: flex;
+    gap: 24px;
+    justify-content: space-between;
+    min-height: 62px;
+}
+
+.label {
+    color: #D9D9D9;
+    display: block;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.help {
+    color: #999999;
+    display: block;
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.numberInput {
+    background: #242424;
+    border: 1px solid #494949;
+    border-radius: 4px;
+    color: #F2F2F2;
+    font-size: 14px;
+    min-height: 36px;
+    padding: 0 10px;
+    text-align: right;
+    width: 88px;
+}
+
+.sectionTitle {
+    color: #D9D9D9;
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 28px;
+    padding-bottom: 10px;
+}
